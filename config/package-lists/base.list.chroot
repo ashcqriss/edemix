@@ -1,0 +1,32 @@
+# Core system: kept deliberately small for low-RAM / low-storage targets.
+# No desktop environment here — only the system plumbing.
+
+# init / firmware / networking
+systemd-sysv
+network-manager
+firmware-linux-free
+wireless-regdb
+
+# essential CLI userland
+sudo
+nano
+neovim
+less
+ca-certificates
+curl
+wget
+git
+htop
+pciutils
+usbutils
+xz-utils
+
+# audio (pipewire is lighter and more capable than pulseaudio)
+pipewire
+pipewire-pulse
+wireplumber
+
+# filesystems / disk
+gdisk
+dosfstools
+e2fsprogs

@@ -1,0 +1,41 @@
+# Edemint desktop: Hyprland (wlroots) on Wayland.
+# Chosen for low RAM use + strong customisability + a "new OS" look.
+# Everything here exists in Debian 13 (Trixie) main.
+
+# compositor + session
+hyprland
+xdg-desktop-portal-hyprland
+xdg-desktop-portal-gtk
+
+# login / autologin manager (tiny, Wayland-native)
+greetd
+greetd-tuigreet
+
+# shell components
+waybar
+wofi
+foot
+mako-notifier
+swaybg
+swaylock
+grim
+slurp
+wl-clipboard
+brightnessctl
+playerctl
+
+# fonts (minimal set; one UI font + icons + emoji)
+fonts-jetbrains-mono
+fonts-font-awesome
+fonts-noto-color-emoji
+
+# Wayland-friendly apps (light)
+thunar
+gnome-system-monitor
+
+# glasses-as-monitor support: tools to manage Wayland outputs
+wlr-randr
+
+# Mesa / GPU userland (works on Intel, AMD, and Raspberry Pi VideoCore)
+mesa-vulkan-drivers
+libgl1-mesa-dri

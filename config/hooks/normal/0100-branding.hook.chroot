@@ -1,0 +1,34 @@
+#!/bin/sh
+# Edemint branding + service enablement. Runs inside the chroot during build.
+set -e
+
+# --- OS identity ---------------------------------------------------------
+cat > /usr/lib/os-release <<'EOF'
+PRETTY_NAME="Edemint 0.1"
+NAME="Edemint"
+VERSION_ID="0.1"
+VERSION="0.1 (origin)"
+ID=edemint
+ID_LIKE=debian
+HOME_URL="https://example.invalid/edemint"
+SUPPORT_URL="https://example.invalid/edemint"
+EOF
+ln -sf ../usr/lib/os-release /etc/os-release
+
+# motd
+cat > /etc/motd <<'EOF'
+
+  Edemint — a Wayland-first Debian remix for AR glasses and small machines.
+  Super+Return = terminal   Super+D = launcher   Super+Q = close window
+
+EOF
+
+# --- Login manager -------------------------------------------------------
+# Use greetd for the graphical login; make sure nothing else grabs the VT.
+systemctl enable greetd.service || true
+systemctl set-default graphical.target || true
+
+# --- Slim the image ------------------------------------------------------
+# Drop apt caches and docs to help hit the small-storage target.
+apt-get clean || true
+rm -rf /usr/share/doc/* /var/lib/apt/lists/* || true

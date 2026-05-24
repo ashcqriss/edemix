@@ -1,0 +1,25 @@
+#!/bin/sh
+# live-build configuration for Edemint
+# This script is invoked by `lb config` and defines how the image is assembled.
+
+set -e
+
+lb config noauto \
+	--mode debian \
+	--distribution trixie \
+	--archive-areas "main contrib non-free non-free-firmware" \
+	--architectures amd64 \
+	--linux-flavours amd64 \
+	--binary-images iso-hybrid \
+	--debian-installer live \
+	--debian-installer-gui false \
+	--bootappend-live "boot=live components quiet splash hostname=edemint username=edemint" \
+	--memtest none \
+	--apt-recommends false \
+	--firmware-chroot true \
+	--firmware-binary true \
+	--iso-application "Edemint" \
+	--iso-volume "Edemint Live" \
+	--iso-preparer "edemint" \
+	--iso-publisher "edemint" \
+	"${@}"

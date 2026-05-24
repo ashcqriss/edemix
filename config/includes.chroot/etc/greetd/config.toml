@@ -1,0 +1,15 @@
+# greetd: minimal Wayland login manager for Edemint.
+# Shows tuigreet and launches Hyprland as the default session.
+
+[terminal]
+vt = 1
+
+[default_session]
+command = "tuigreet --time --remember --cmd Hyprland"
+user = "greetd"
+
+# To boot straight into the desktop with no login prompt (kiosk / live feel),
+# comment out the [default_session] above and uncomment this instead:
+# [initial_session]
+# command = "Hyprland"
+# user = "edemint"
