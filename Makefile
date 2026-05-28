@@ -33,7 +33,7 @@ clean:
 lint:
 	$(REPO)scripts/tier-a-lint.sh
 
-sign-test:
+sign-test: metapackages
 	$(REPO)scripts/test-repo-signing.sh
 
 test: lint sign-test metapackages

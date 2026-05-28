@@ -35,10 +35,22 @@ SHFILES="$(
 shellcheck $SHFILES || fail=1
 
 note "nftables.conf"
-if command -v nft >/dev/null 2>&1; then
-    nft -c -f shared/includes/etc/nftables.conf || fail=1
-else
+# `nft -c` opens a netlink socket and validates against live kernel state,
+# so it needs CAP_NET_ADMIN even in check-only mode. CI runs this as a
+# non-root user, where a direct `nft -c` fails with EPERM. Run it as root
+# when we are root; otherwise inside a throwaway user+network namespace
+# (`unshare -rn` maps us to root in a private netns with CAP_NET_ADMIN).
+# If neither path is available, skip rather than fail the whole build over
+# an environment limitation.
+NFT_CONF=shared/includes/etc/nftables.conf
+if ! command -v nft >/dev/null 2>&1; then
     echo "(skip: nft not installed)"
+elif [ "$(id -u)" -eq 0 ]; then
+    nft -c -f "$NFT_CONF" || fail=1
+elif command -v unshare >/dev/null 2>&1 && unshare -rn true 2>/dev/null; then
+    unshare -rn nft -c -f "$NFT_CONF" || fail=1
+else
+    echo "(skip: nft -c needs root or user-namespace support)"
 fi
 
 note "Calamares YAML / TOML / desktop files"

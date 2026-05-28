@@ -17,7 +17,17 @@ if ! command -v apt-ftparchive >/dev/null 2>&1; then
     echo "apt-ftparchive missing; install: apt-get install -y apt-utils" >&2
     exit 1
 fi
-[ -d "$DEBS" ] || { echo "build the metapackages first: make metapackages"; exit 1; }
+# Need at least one metapackage .deb to populate the test repo. Build them
+# if they're not already present (so this works whether or not `make lint`
+# ran first, and on a fresh CI runner where ordering isn't guaranteed).
+if [ -z "$(find "$DEBS" -maxdepth 1 -name '*.deb' 2>/dev/null)" ]; then
+    echo ">> no metapackages present; building them..."
+    "$ROOT/packaging/build-metapackages.sh"
+fi
+if [ -z "$(find "$DEBS" -maxdepth 1 -name '*.deb' 2>/dev/null)" ]; then
+    echo "FAIL: still no .deb in $DEBS after build attempt." >&2
+    exit 1
+fi
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
