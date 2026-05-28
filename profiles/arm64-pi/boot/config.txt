@@ -19,5 +19,7 @@ initramfs initrd.img followkernel
 [pi5]
 arm_boost=1
 dtparam=pciex1_gen=3
+# Active Cooler / fan HAT auto control — silent at idle, ramps under load.
+dtparam=cooling_fan=on
 
 [all]

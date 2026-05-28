@@ -72,6 +72,9 @@ tzdata
 zram-tools
 earlyoom
 
+# --- ISO size trim (~150MB off by removing locale files we don't ship) --
+localepurge
+
 # --- security defaults (§6b) --------------------------------------------
 apparmor
 apparmor-profiles

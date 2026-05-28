@@ -111,6 +111,25 @@ systemctl enable systemd-timesyncd.service  || true
 systemctl enable ModemManager.service       || true
 systemctl enable power-profiles-daemon.service || true
 systemctl enable fprintd.service            || true
+systemctl enable tmp.mount                  || true
+systemctl enable fstrim.timer               || true
+
+# Disable: NetworkManager-wait-online stalls boot for up to 30s waiting
+# for a routable IP — desktops don't need that as a boot barrier. Also
+# disable plymouth-quit-wait (saves ~1s; plymouth already exits with the
+# greeter starting).
+systemctl disable NetworkManager-wait-online.service 2>/dev/null || true
+systemctl mask    plymouth-quit-wait.service        2>/dev/null || true
+
+# --- Locale trim (§optim) — clip ~150MB of unused-locale files ----------
+if command -v localepurge >/dev/null 2>&1; then
+    localepurge 2>/dev/null || true
+fi
+
+# --- Regenerate initramfs with the MODULES=dep + zstd settings ----------
+if command -v update-initramfs >/dev/null 2>&1; then
+    update-initramfs -u -k all 2>/dev/null || true
+fi
 
 # Live media only: enable autologin via greetd; the Calamares 'finished'
 # step (§6b) removes the autologin drop-in so installed disks always show

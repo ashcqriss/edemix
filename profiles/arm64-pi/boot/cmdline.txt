@@ -1,1 +1,1 @@
-console=tty1 root=LABEL=edemint-root rootfstype=ext4 fsck.repair=yes rootwait quiet splash
+console=tty1 root=LABEL=edemint-root rootfstype=ext4 fsck.repair=yes rootwait quiet splash nowatchdog
