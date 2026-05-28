@@ -35,7 +35,8 @@ jobs:
       - name: Build deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y live-build equivs xorriso isolinux
+          sudo apt-get install -y live-build equivs xorriso isolinux \
+            debian-archive-keyring
       - name: Build ISO
         run: sudo ./build.sh amd64
       - name: Collect artifacts
@@ -60,7 +61,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y mmdebstrap qemu-user-static binfmt-support \
-            genimage parted dosfstools mtools e2fsprogs xz-utils equivs
+            genimage parted dosfstools mtools e2fsprogs xz-utils equivs \
+            debian-archive-keyring
           sudo update-binfmts --enable qemu-aarch64 || true
       - name: Build Pi image
         run: sudo ./build.sh pi

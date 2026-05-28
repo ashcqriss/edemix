@@ -88,9 +88,23 @@ PKG_LIST="$(
 # `sync-in` copies the contents of the host path INTO the named chroot
 # directory (rsync-like), which is what we want for both includes and
 # hooks. copy-in's semantics are subtly different — sync-in is correct.
+#
+# --keyring is passed explicitly. On Ubuntu hosts (e.g. GitHub Actions
+# `ubuntu-latest`) the Debian archive keyring is NOT preinstalled, so
+# mmdebstrap can't verify the Trixie InRelease signature and aborts
+# with "NO_PUBKEY ... not signed". The keyring is added to the host
+# dep list above; pointing mmdebstrap at it directly makes us robust
+# even if another distro arrives without it on $PATH.
+DEBIAN_KEYRING=/usr/share/keyrings/debian-archive-keyring.gpg
+if [ ! -f "$DEBIAN_KEYRING" ]; then
+    echo ">> Debian archive keyring missing — installing debian-archive-keyring..."
+    apt-get install -y debian-archive-keyring
+fi
+
 # shellcheck disable=SC2016
 mmdebstrap \
     --arch=arm64 \
+    --keyring="$DEBIAN_KEYRING" \
     --components="main contrib non-free non-free-firmware" \
     --include="$PKG_LIST" \
     --customize-hook='sync-in '"$BUILD_DIR"'/packages.chroot /var/cache/edemint' \
