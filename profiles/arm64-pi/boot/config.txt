@@ -1,0 +1,23 @@
+# Edemint Pi firmware config.
+# 64-bit kernel, Pi 4 / Pi 5 friendly, KMS DRM for Wayland.
+
+arm_64bit=1
+arm_boost=1
+enable_uart=0
+
+# Modern GPU stack — required for Hyprland on Pi 4/5.
+dtoverlay=vc4-kms-v3d
+disable_overscan=1
+gpu_mem=128
+
+# Auto-detect kernel + dtb from /boot/firmware
+auto_initramfs=1
+kernel=vmlinuz
+initramfs initrd.img followkernel
+
+# Pi 5 specific knobs (no-op on Pi 4)
+[pi5]
+arm_boost=1
+dtparam=pciex1_gen=3
+
+[all]

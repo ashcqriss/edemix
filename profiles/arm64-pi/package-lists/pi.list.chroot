@@ -1,0 +1,14 @@
+# Edemint Pi-specific packages (in addition to shared/base + shared/desktop).
+# Debian-canonical kernel + Pi firmware blobs. The Raspberry Pi apt repo
+# (Pi-specific kernel flavors with newer fixes) can be layered on later.
+
+linux-image-arm64
+raspi-firmware
+firmware-misc-nonfree
+
+# Boot/firstboot growfs (the image ships ~5GiB; first boot expands rootfs
+# to the SD/NVMe size).
+parted
+
+# OpenSSH for headless first boot (no greeter on a default Pi without HDMI)
+openssh-server
