@@ -21,6 +21,12 @@ set -eu
 
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/edemint-ai"
 CONFIG="$CONFIG_DIR/config.toml"
+# Privacy meter lock: touched while a cloud call is in flight so the
+# Waybar indicator (edemint-ai-privacy) can show a red dot in real time.
+PRIVACY_LOCK="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/edemint-ai-cloud-active"
+
+cloud_lock_acquire() { mkdir -p "$(dirname "$PRIVACY_LOCK")" 2>/dev/null || true; : > "$PRIVACY_LOCK"; }
+cloud_lock_release() { rm -f "$PRIVACY_LOCK"; }
 
 ensure_config() {
     if [ ! -f "$CONFIG" ]; then
@@ -80,6 +86,8 @@ call_claude() {
     key="$(get_key claude || true)"
     [ -n "$key" ] || { echo "No Claude API key. Run: edemint-ai set-key claude" >&2; exit 1; }
     model="$(cfg_get model_claude)"
+    cloud_lock_acquire
+    trap cloud_lock_release EXIT INT TERM
     curl -fsSL https://api.anthropic.com/v1/messages \
         -H "x-api-key: $key" \
         -H "anthropic-version: 2023-06-01" \
@@ -87,6 +95,8 @@ call_claude() {
         -d "$(jq -nc --arg m "$model" --arg p "$prompt" \
             '{model:$m, max_tokens:1024, messages:[{role:"user", content:$p}]}')" \
         | jq -r '.content[0].text // .error.message // .'
+    cloud_lock_release
+    trap - EXIT INT TERM
 }
 
 call_openai() {
@@ -94,12 +104,16 @@ call_openai() {
     key="$(get_key openai || true)"
     [ -n "$key" ] || { echo "No OpenAI API key. Run: edemint-ai set-key openai" >&2; exit 1; }
     model="$(cfg_get model_openai)"
+    cloud_lock_acquire
+    trap cloud_lock_release EXIT INT TERM
     curl -fsSL https://api.openai.com/v1/chat/completions \
         -H "Authorization: Bearer $key" \
         -H "content-type: application/json" \
         -d "$(jq -nc --arg m "$model" --arg p "$prompt" \
             '{model:$m, messages:[{role:"user", content:$p}]}')" \
         | jq -r '.choices[0].message.content // .error.message // .'
+    cloud_lock_release
+    trap - EXIT INT TERM
 }
 
 call_gemini() {
@@ -107,10 +121,14 @@ call_gemini() {
     key="$(get_key gemini || true)"
     [ -n "$key" ] || { echo "No Gemini API key. Run: edemint-ai set-key gemini" >&2; exit 1; }
     model="$(cfg_get model_gemini)"
+    cloud_lock_acquire
+    trap cloud_lock_release EXIT INT TERM
     curl -fsSL "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$key" \
         -H "content-type: application/json" \
         -d "$(jq -nc --arg p "$prompt" '{contents:[{parts:[{text:$p}]}]}')" \
         | jq -r '.candidates[0].content.parts[0].text // .error.message // .'
+    cloud_lock_release
+    trap - EXIT INT TERM
 }
 
 call_ollama() {

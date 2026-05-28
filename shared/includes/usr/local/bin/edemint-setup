@@ -1,0 +1,148 @@
+#!/bin/sh
+# Edemint first-boot setup wizard — covers what Calamares doesn't.
+#
+# Calamares already handles: user account, locale, keyboard, timezone,
+# partitioning, disk encryption. This wizard runs ONCE on the first
+# graphical login of the installed system and asks for the rest:
+#   - Wi-Fi (if not connected)
+#   - Effects profile (low-power vs full)
+#   - AI assistant opt-in + backend pick + key entry
+#   - Sync remote (optional)
+#
+# Stamps on success so it never re-runs. Use --force to re-show.
+set -eu
+
+STAMP="${XDG_DATA_HOME:-$HOME/.local/share}/edemint/setup.done"
+mkdir -p "$(dirname "$STAMP")"
+
+if [ -e "$STAMP" ] && [ "${1:-}" != "--force" ]; then
+    exit 0
+fi
+
+if ! command -v whiptail >/dev/null 2>&1; then
+    echo "whiptail missing — falling back to noninteractive." >&2
+    touch "$STAMP"
+    exit 0
+fi
+
+NEWT_COLORS='
+root=,#14161c
+window=,#1a1d24
+title=#33ccff,#1a1d24
+border=#33ccff,#1a1d24
+button=#14161c,#33ccff
+actbutton=#14161c,#00ff99
+'
+export NEWT_COLORS
+
+# --- 1. welcome ---------------------------------------------------------
+whiptail --title "Edemint setup" --msgbox \
+"Welcome to Edemint.
+
+A few quick things — none required. Skip any step you don't need." \
+12 64 || exit 0
+
+# --- 2. Wi-Fi -----------------------------------------------------------
+if command -v nmcli >/dev/null 2>&1; then
+    state="$(nmcli -t -f STATE general 2>/dev/null || echo unknown)"
+    if [ "$state" != "connected" ]; then
+        if whiptail --title "Network" --yesno \
+"You're not connected to a network yet.
+
+Open the text-mode Wi-Fi picker now?" 10 60; then
+            if command -v nmtui >/dev/null 2>&1; then
+                nmtui-connect
+            else
+                nmcli device wifi list
+            fi
+        fi
+    fi
+fi
+
+# --- 3. effects profile -------------------------------------------------
+profile_choice="$(whiptail --title "Desktop effects" --notags \
+    --menu "Pick an effects profile (you can change later in ~/.config/hypr/profile.conf):" \
+    14 70 4 \
+    low   "Low-power: no animations / blur / shadows (Pi, 1GB-class)" \
+    full  "Full: animations, rounded corners, blur, shadows" \
+    3>&1 1>&2 2>&3)" || profile_choice=""
+
+case "$profile_choice" in
+    full)
+        # The $low_power literal is meant for Hyprland to read, not the shell.
+        # shellcheck disable=SC2016
+        printf '%s\n' '$low_power = false' > "${XDG_CONFIG_HOME:-$HOME/.config}/hypr/profile.conf"
+        ;;
+    low|"")
+        : # default already low-power
+        ;;
+esac
+
+# --- 4. AI assistant ----------------------------------------------------
+if whiptail --title "AI assistant" --yesno \
+"Enable the AI assistant?
+
+The assistant ships disabled. You can pick any backend:
+  - Claude / OpenAI / Gemini (cloud — sends data out)
+  - ollama (local — nothing leaves this machine)
+
+You can change or disable at any time with \`edemint-ai disable\`." \
+14 70; then
+    backend="$(whiptail --title "AI backend" --notags --menu \
+        "Which backend?" 14 60 4 \
+        claude "Anthropic Claude (cloud)" \
+        openai "OpenAI GPT (cloud)" \
+        gemini "Google Gemini (cloud)" \
+        ollama "ollama (local, offline-capable)" \
+        3>&1 1>&2 2>&3)" || backend=""
+    if [ -n "$backend" ]; then
+        edemint-ai enable >/dev/null 2>&1 || true
+        edemint-ai backend "$backend" >/dev/null 2>&1 || true
+        if [ "$backend" != "ollama" ]; then
+            if whiptail --title "API key" --yesno \
+"Store the $backend API key now?
+
+Keys are stored in gnome-keyring (encrypted at rest, unlocked by your
+login password). You can do this later with \`edemint-ai set-key $backend\`." \
+12 70; then
+                # whiptail can't hide input safely; ask in foot.
+                foot -T "Set $backend API key" -e edemint-ai set-key "$backend" || true
+            fi
+        else
+            whiptail --title "Local model" --msgbox \
+"Pull a model with:
+  edemint-ai pull llama3.2:3b
+
+Small models (1-3B) run on Pi / low-RAM machines; 7B+ wants 8GB RAM." \
+10 60
+        fi
+    fi
+fi
+
+# --- 5. config sync (optional) ------------------------------------------
+if whiptail --title "Config sync" --yesno \
+"Set up config sync now?
+
+Edemint can sync your Hyprland / kanshi / waybar / AI config across
+your machines via a private git repo (GitHub, GitLab, self-hosted).
+Skip if you don't want this." \
+14 70; then
+    remote="$(whiptail --title "Sync remote" --inputbox \
+"Git remote URL (e.g. git@github.com:you/edemint-config.git):" \
+10 70 3>&1 1>&2 2>&3)" || remote=""
+    if [ -n "$remote" ]; then
+        edemint-sync init "$remote" || true
+    fi
+fi
+
+# --- 6. done -----------------------------------------------------------
+whiptail --title "Setup complete" --msgbox \
+"You're set.
+
+  Super+?       keybind cheat-sheet
+  edemint-doctor   one-shot system health check
+  edemint-ai       AI assistant (disabled unless you enabled it above)
+  edemint-rollback to a previous btrfs snapshot if things break
+" 14 70
+
+touch "$STAMP"

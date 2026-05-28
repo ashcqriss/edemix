@@ -1,0 +1,71 @@
+#!/bin/sh
+# Edemint rollback — walk the btrfs root back to a snapper snapshot.
+#
+# Usage:
+#   edemint-rollback          # interactive: list and pick
+#   edemint-rollback <number> # non-interactive
+#   edemint-rollback last     # roll back to the snapshot right before
+#                             # the most recent apt invocation
+#   edemint-rollback list     # just list, don't change anything
+set -eu
+
+if ! findmnt -no FSTYPE / 2>/dev/null | grep -qx btrfs; then
+    echo "edemint-rollback: root is not btrfs. Nothing to do." >&2
+    exit 1
+fi
+if ! command -v snapper >/dev/null 2>&1; then
+    echo "edemint-rollback: snapper is missing." >&2
+    exit 1
+fi
+if ! snapper -c root list >/dev/null 2>&1; then
+    echo "edemint-rollback: snapper has no 'root' config." >&2
+    echo "  initialize it with: sudo snapper -c root create-config /" >&2
+    exit 1
+fi
+
+list_snapshots() {
+    # Tab-friendly listing — number, type, date, description.
+    snapper -c root --csvout list \
+        | awk -F, 'NR>1 {printf "  %-5s %-5s %-20s %s\n", $1, $2, $4, $7}'
+}
+
+case "${1:-}" in
+    ""|interactive)
+        echo "Available snapshots:"
+        list_snapshots
+        printf '\nSnapshot number to roll back to (or blank to cancel): '
+        read -r choice
+        [ -n "${choice:-}" ] || { echo "cancelled."; exit 0; }
+        ;;
+    list)
+        list_snapshots
+        exit 0
+        ;;
+    last)
+        # The pre-snapshot from the most recent apt invocation.
+        choice="$(snapper -c root --csvout list \
+            | awk -F, '$2 == "pre" {n=$1} END {print n}')"
+        [ -n "$choice" ] || { echo "no apt snapshots found." >&2; exit 1; }
+        echo "Rolling back to snapshot $choice (last pre-apt)."
+        ;;
+    *)
+        choice="$1"
+        ;;
+esac
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "Rolling back changes system files needs root."
+    echo "Re-running with sudo..."
+    exec sudo "$0" "$choice"
+fi
+
+echo "About to roll back the root subvolume to snapshot $choice."
+echo "The current root becomes a new snapshot, so this is reversible."
+printf "Type 'yes' to continue: "
+read -r confirm
+[ "$confirm" = "yes" ] || { echo "cancelled."; exit 0; }
+
+snapper -c root rollback "$choice"
+echo
+echo ">> rolled back to snapshot $choice."
+echo ">> reboot to boot into the rolled-back root."

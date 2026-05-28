@@ -1,0 +1,52 @@
+#!/bin/sh
+# Edemint AI privacy meter — emits one JSON line for Waybar's custom module.
+#
+# RED dot ●   = a cloud AI call is in flight RIGHT NOW (data is leaving
+#               this machine; the lock file is touched by edemint-ai
+#               before the curl and removed after).
+# GREEN dot ◉ = AI is enabled, but the active backend is local-only
+#               (ollama / Hailo) — nothing is leaving.
+# GREY  dot ○ = AI is disabled entirely.
+#
+# Designed to be paired with `interval: 1` in Waybar so the indicator
+# reacts within ~1s of a cloud call starting/ending.
+
+set -eu
+
+XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+LOCK="$XDG_RUNTIME_DIR/edemint-ai-cloud-active"
+CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/edemint-ai/config.toml"
+
+cfg() {
+    [ -f "$CONFIG" ] || return 1
+    sed -n "s/^[[:space:]]*${1}[[:space:]]*=[[:space:]]*\"\\(.*\\)\".*\$/\\1/p" "$CONFIG" | head -1
+    sed -n "s/^[[:space:]]*${1}[[:space:]]*=[[:space:]]*\\([^\"#[:space:]][^#[:space:]]*\\).*\$/\\1/p" "$CONFIG" | head -1
+}
+
+enabled="$(cfg enabled || echo false)"
+backend="$(cfg backend || echo claude)"
+
+emit() {
+    # Single-line JSON; Waybar's custom module reads it.
+    printf '{"text":"%s","class":"%s","tooltip":"%s"}\n' "$1" "$2" "$3"
+}
+
+if [ "$enabled" != "true" ]; then
+    emit "○" "disabled" "AI: disabled"
+    exit 0
+fi
+
+if [ -e "$LOCK" ]; then
+    # In-flight cloud call right now.
+    emit "●" "cloud-active" "AI: $backend — CLOUD CALL IN FLIGHT"
+    exit 0
+fi
+
+case "$backend" in
+    ollama|hailo)
+        emit "◉" "local"  "AI: $backend (local; no egress)"
+        ;;
+    *)
+        emit "◉" "cloud-idle" "AI: $backend (idle; cloud-capable)"
+        ;;
+esac

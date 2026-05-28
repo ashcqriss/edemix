@@ -1,0 +1,186 @@
+#!/bin/sh
+# Edemint sync — git-based config sync across machines.
+#
+# What's synced:  ~/.config/{hypr,kanshi,edemint-ai,foot,waybar,wlogout,
+#                            mimeapps.list,fontconfig,gtk-3.0,gtk-4.0}
+# What's NOT:     anything in gnome-keyring (API keys), session state,
+#                 caches, $HOME/.local/share/*, ~/.ssh, ~/.gnupg.
+#
+# Storage:        a private git repo of your choice (GitHub, GitLab, a
+#                 self-hosted box, syncthing-watched dir, etc.). You
+#                 own it; Edemint never touches it directly.
+#
+# Usage:
+#   edemint-sync init <git-remote>     # one-time, on the first machine
+#   edemint-sync push ["message"]      # snapshot local config, push
+#   edemint-sync pull                  # fetch + apply remote config
+#   edemint-sync status                # what would change?
+#   edemint-sync clone <git-remote>    # set up a NEW machine from an existing repo
+
+set -eu
+
+STORE="${XDG_DATA_HOME:-$HOME/.local/share}/edemint-sync"
+CFG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}"
+
+# What to sync — relative paths inside $CFG_DIR.
+PATHS_REL="
+hypr
+kanshi
+edemint-ai
+foot
+waybar
+wlogout
+mimeapps.list
+fontconfig
+gtk-3.0
+gtk-4.0
+"
+
+# Sensitive files even inside synced dirs that must NEVER leave.
+# (Belt-and-braces; keys live in gnome-keyring, not in ~/.config.)
+GITIGNORE='# Edemint sync — never leave this machine
+*.key
+*.pem
+*.token
+*secret*
+*credentials*
+'
+
+ensure_git() {
+    command -v git >/dev/null 2>&1 || { echo "git missing"; exit 1; }
+}
+
+sync_in() {
+    # Mirror $CFG_DIR/<path> → $STORE/<path>
+    for p in $PATHS_REL; do
+        src="$CFG_DIR/$p"
+        dst="$STORE/$p"
+        [ -e "$src" ] || continue
+        mkdir -p "$(dirname "$dst")"
+        rm -rf "$dst"
+        cp -a "$src" "$dst"
+    done
+}
+
+sync_out() {
+    # Apply $STORE/<path> → $CFG_DIR/<path> (with .bak backup on first run).
+    for p in $PATHS_REL; do
+        src="$STORE/$p"
+        dst="$CFG_DIR/$p"
+        [ -e "$src" ] || continue
+        if [ -e "$dst" ] && [ ! -e "$dst.edemint-sync.bak" ]; then
+            cp -a "$dst" "$dst.edemint-sync.bak"
+        fi
+        rm -rf "$dst"
+        mkdir -p "$(dirname "$dst")"
+        cp -a "$src" "$dst"
+    done
+}
+
+ensure_identity() {
+    # Set a per-repo identity so `git commit` works even on a fresh box
+    # where the user hasn't run `git config --global`.
+    [ -d "$STORE/.git" ] || return 0
+    git -C "$STORE" config user.email >/dev/null 2>&1 \
+        || git -C "$STORE" config user.email "${USER:-edemint}@$(hostname)"
+    git -C "$STORE" config user.name  >/dev/null 2>&1 \
+        || git -C "$STORE" config user.name  "${USER:-edemint}"
+}
+
+cmd_init() {
+    ensure_git
+    remote="${1:?usage: edemint-sync init <git-remote>}"
+    mkdir -p "$STORE"
+    cd "$STORE"
+    if [ -d .git ]; then
+        echo "Already initialized at $STORE"
+    else
+        git init -q -b main
+        printf '%s' "$GITIGNORE" > .gitignore
+        git remote add origin "$remote"
+    fi
+    ensure_identity
+    sync_in
+    git add -A
+    git commit -q -m "edemint-sync: initial snapshot from $(hostname)" 2>/dev/null || true
+    echo ">> initialized $STORE → $remote"
+    echo "   first push:  edemint-sync push"
+}
+
+cmd_clone() {
+    ensure_git
+    remote="${1:?usage: edemint-sync clone <git-remote>}"
+    [ ! -d "$STORE" ] || { echo "$STORE already exists. Remove it first if you mean to re-clone." >&2; exit 1; }
+    git clone -q "$remote" "$STORE" 2>/dev/null || git clone "$remote" "$STORE"
+    # If the remote's HEAD ref didn't resolve (bare repo with mismatched
+    # default branch), pick the first remote branch and check it out.
+    if [ -z "$(git -C "$STORE" rev-parse --verify HEAD 2>/dev/null)" ]; then
+        first_branch="$(git -C "$STORE" branch -r | sed -n 's|.*origin/||p' | grep -v HEAD | head -1)"
+        [ -n "$first_branch" ] || { echo "remote has no branches" >&2; exit 1; }
+        git -C "$STORE" checkout -q -B "$first_branch" "origin/$first_branch"
+    fi
+    ensure_identity
+    sync_out
+    echo ">> cloned from $remote and applied to ~/.config/"
+    echo "   originals (if any) backed up as <name>.edemint-sync.bak"
+}
+
+cmd_push() {
+    ensure_git
+    [ -d "$STORE/.git" ] || { echo "Not initialized. Run: edemint-sync init <remote>" >&2; exit 1; }
+    ensure_identity
+    msg="${1:-sync from $(hostname) $(date -Iseconds)}"
+    sync_in
+    cd "$STORE"
+    git add -A
+    if git diff --cached --quiet; then
+        echo ">> no local changes to commit."
+    else
+        git commit -q -m "$msg"
+        echo ">> committed: $msg"
+    fi
+    # Always try to push; covers the first-push case where the remote
+    # has no HEAD yet but we have a local initial commit.
+    git push -q -u origin HEAD
+    echo ">> pushed to origin."
+}
+
+cmd_pull() {
+    ensure_git
+    [ -d "$STORE/.git" ] || { echo "Not initialized. Run: edemint-sync init <remote>" >&2; exit 1; }
+    cd "$STORE"
+    git fetch -q origin
+    if git diff --quiet HEAD origin/HEAD 2>/dev/null; then
+        echo ">> already up to date."
+        exit 0
+    fi
+    git pull -q --ff-only origin "$(git rev-parse --abbrev-ref HEAD)"
+    sync_out
+    echo ">> pulled and applied."
+    echo "   reload Hyprland (Super+M then re-login, or hyprctl reload)."
+}
+
+cmd_status() {
+    [ -d "$STORE/.git" ] || { echo "Not initialized."; exit 0; }
+    cd "$STORE"
+    sync_in
+    git add -A
+    if git diff --cached --quiet; then
+        echo "Local config matches the last synced snapshot."
+    else
+        echo "Local config has uncommitted changes:"
+        git diff --cached --stat
+    fi
+}
+
+case "${1:-status}" in
+    init)   shift; cmd_init  "$@" ;;
+    clone)  shift; cmd_clone "$@" ;;
+    push)   shift; cmd_push  "$@" ;;
+    pull)         cmd_pull       ;;
+    status)       cmd_status     ;;
+    -h|--help|help)
+        sed -n '2,28p' "$0" | sed 's/^# \?//'
+        ;;
+    *) echo "Unknown command: $1" >&2; exit 2 ;;
+esac

@@ -1,0 +1,24 @@
+# Edemint: snapshot the btrfs root before every apt dpkg pass.
+# Mirrors openSUSE's MicroOS pattern. snapper takes a pre snapshot, dpkg
+# runs, snapper takes a post snapshot. `edemint rollback` lets you walk
+# back to any pre/post snapshot from before the bad upgrade.
+#
+# Cleanly no-ops on non-btrfs roots or when snapper isn't initialized.
+
+DPkg::Pre-Invoke {
+    "if findmnt -no FSTYPE / 2>/dev/null | grep -qx btrfs && \
+        snapper -c root list >/dev/null 2>&1; then \
+            snapper -c root create -t pre -c number --print-number \
+                -d 'apt invocation' > /run/edemint-snapper-pre 2>/dev/null || true; \
+     fi";
+};
+
+DPkg::Post-Invoke {
+    "if [ -s /run/edemint-snapper-pre ] && \
+        snapper -c root list >/dev/null 2>&1; then \
+            snapper -c root create -t post -c number \
+                --pre-number=\"$(cat /run/edemint-snapper-pre)\" \
+                -d 'apt invocation' >/dev/null 2>&1 || true; \
+            rm -f /run/edemint-snapper-pre; \
+     fi";
+};

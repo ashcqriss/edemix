@@ -88,6 +88,27 @@ fi
 if grep -qE '^setRootPassword:\s*true' shared/includes/etc/calamares/modules/users.conf; then
     echo "FAIL: Calamares users sets root password"; fail=1
 fi
+# AI privacy meter: cloud lock acquire/release must wrap every cloud call.
+for fn in call_claude call_openai call_gemini; do
+    if ! awk "/$fn\(\)/,/^}/" shared/includes/usr/local/bin/edemint-ai \
+        | grep -q cloud_lock_acquire; then
+        echo "FAIL: $fn missing cloud_lock_acquire"; fail=1
+    fi
+    if ! awk "/$fn\(\)/,/^}/" shared/includes/usr/local/bin/edemint-ai \
+        | grep -q cloud_lock_release; then
+        echo "FAIL: $fn missing cloud_lock_release"; fail=1
+    fi
+done
+# btrfs snapshot apt hook must be present
+if ! grep -q 'snapper -c root create -t pre' \
+        shared/includes/etc/apt/apt.conf.d/80edemint-snapshots; then
+    echo "FAIL: apt pre-snapshot hook is missing"; fail=1
+fi
+# All four 'mega' helpers must be executable shell.
+for tool in edemint-rollback edemint-ai-privacy edemint-sync edemint-setup edemint-doctor; do
+    p="shared/includes/usr/local/bin/$tool"
+    [ -x "$p" ] || { echo "FAIL: $p not executable"; fail=1; }
+done
 echo "(invariant checks done)"
 
 if [ $fail -eq 0 ]; then

@@ -30,3 +30,14 @@ window#waybar {
 
 #battery.warning { color: #ffcc00; }
 #battery.critical { color: #ff4444; }
+
+/* AI privacy meter (custom/ai-privacy). The colors are the trust signal,
+   not decoration — keep distinct hues even in the design pass. */
+#custom-ai-privacy {
+    padding: 0 10px;
+    font-size: 14px;
+}
+#custom-ai-privacy.disabled    { color: #555; }       /* AI off entirely */
+#custom-ai-privacy.local       { color: #00ff99; }    /* local-only (ollama/hailo) */
+#custom-ai-privacy.cloud-idle  { color: #ffcc00; }    /* cloud-capable, idle */
+#custom-ai-privacy.cloud-active{ color: #ff4444; background: rgba(255,68,68,0.12); }  /* call in flight */

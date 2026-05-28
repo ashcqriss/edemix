@@ -90,6 +90,9 @@ libpam-gnome-keyring
 #     edemint-welcome popup silently falls back to stdout) --------------
 libnotify-bin
 
+# --- whiptail (TUI for edemint-setup) -----------------------------------
+whiptail
+
 # --- fingerprint auth (§0g) — driver only; PAM wired in includes --------
 fprintd
 libpam-fprintd
