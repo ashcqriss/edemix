@@ -1,12 +1,16 @@
-# Edemint localepurge — keep these locales; purge everything else (§optim).
-# Trims ~150MB off the installed system / ISO. Users with other locales
-# can `dpkg-reconfigure localepurge` and pick more.
+# Edemint localepurge config — read by localepurge(8) at install time.
+# Listed locales are KEPT; everything else is purged. Trims ~150MB.
+# Users can re-add locales with `sudo dpkg-reconfigure localepurge`.
+
+# Run on every dpkg invocation, quietly, after showing freed space.
 USE_DPKG
 SHOWFREEDSPACE
 QUICKNDIRTY
-VERBOSE
-NEEDSCONFIGFIRST
+# Note: NEEDSCONFIGFIRST intentionally omitted — that flag makes
+# localepurge refuse to run until manually configured. We've already
+# configured it (this file).
 
+# Locales to keep
 en
 en_US
 en_US.UTF-8

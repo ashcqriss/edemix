@@ -1,0 +1,16 @@
+[Unit]
+Description=Expand the root partition + filesystem to fill the SD/NVMe on first boot
+DefaultDependencies=no
+After=local-fs.target
+Before=basic.target shutdown.target
+Conflicts=shutdown.target
+ConditionPathExists=!/var/lib/edemint/firstboot-grown
+ConditionPathIsReadWrite=/
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/edemint-firstboot-growfs
+RemainAfterExit=yes
+
+[Install]
+WantedBy=basic.target

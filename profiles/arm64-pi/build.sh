@@ -96,8 +96,10 @@ mmdebstrap \
     --customize-hook='sync-in '"$BUILD_DIR"'/packages.chroot /var/cache/edemint' \
     --customize-hook='chroot "$1" sh -c "dpkg -i /var/cache/edemint/*.deb || apt-get -y -f install"' \
     --customize-hook='sync-in '"$REPO_ROOT"'/shared/includes /' \
+    --customize-hook='sync-in '"$PROFILE_DIR"'/includes /' \
     --customize-hook='sync-in '"$REPO_ROOT"'/shared/hooks/normal /usr/local/share/edemint-hooks' \
     --customize-hook='chroot "$1" sh -c "for h in /usr/local/share/edemint-hooks/*.hook.chroot; do echo running $h; sh \"$h\" || true; done"' \
+    --customize-hook='chroot "$1" sh -c "systemctl enable edemint-firstboot-growfs.service ssh.service || true"' \
     trixie \
     "$ROOTFS_DIR" \
     'http://deb.debian.org/debian'

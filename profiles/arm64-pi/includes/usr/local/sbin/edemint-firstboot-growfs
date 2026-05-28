@@ -1,0 +1,22 @@
+#!/bin/sh
+# Edemint Pi firstboot: grow the root partition to fill the SD/NVMe and
+# resize the ext4 filesystem to match. Idempotent via /var/lib/edemint/
+# firstboot-grown stamp; the unit also gates on that path.
+set -eu
+
+STAMP=/var/lib/edemint/firstboot-grown
+mkdir -p "$(dirname "$STAMP")"
+[ -e "$STAMP" ] && exit 0
+
+ROOT_SRC="$(findmnt -no SOURCE /)"          # e.g. /dev/mmcblk0p2
+ROOT_DEV="$(lsblk -no PKNAME "$ROOT_SRC")"  # e.g. mmcblk0
+ROOT_PART_NUM="$(echo "$ROOT_SRC" | sed 's|.*[^0-9]||')"
+
+# Grow the partition then the filesystem. parted prints a warning when
+# the partition isn't aligned; tolerate it.
+parted -s "/dev/$ROOT_DEV" resizepart "$ROOT_PART_NUM" 100% || true
+partprobe "/dev/$ROOT_DEV" || true
+resize2fs "$ROOT_SRC"
+
+touch "$STAMP"
+echo "edemint-firstboot: root grown to fill device."

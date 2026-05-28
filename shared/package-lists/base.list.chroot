@@ -86,6 +86,10 @@ apt-listchanges
 gnome-keyring
 libpam-gnome-keyring
 
+# --- notify-send (mako already in desktop list; without this the
+#     edemint-welcome popup silently falls back to stdout) --------------
+libnotify-bin
+
 # --- fingerprint auth (§0g) — driver only; PAM wired in includes --------
 fprintd
 libpam-fprintd

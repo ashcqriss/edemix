@@ -1,0 +1,112 @@
+#!/bin/sh
+# Edemint system health check — paste-able report covering the bits a
+# desktop install actually needs to work. Usable on the live image, on
+# an installed disk, and on the Pi. Read-only; never modifies state.
+#
+# Usage: edemint-doctor
+
+set -u
+
+OK="  [ok]  "
+WARN="  [warn]"
+FAIL="  [FAIL]"
+
+pass=0; warn=0; fail=0
+note() { printf '\n── %s ──────────────────────────────────────────\n' "$1"; }
+ok()   { printf '%s %s\n' "$OK"   "$1"; pass=$((pass+1)); }
+wn()   { printf '%s %s\n' "$WARN" "$1"; warn=$((warn+1)); }
+nf()   { printf '%s %s\n' "$FAIL" "$1"; fail=$((fail+1)); }
+
+note "identity"
+PRETTY_NAME=""
+# shellcheck disable=SC1091  # /etc/os-release isn't a shellcheck input
+[ -r /etc/os-release ] && . /etc/os-release
+printf '  %-12s %s\n' "distro:"   "${PRETTY_NAME:-unknown}"
+printf '  %-12s %s\n' "kernel:"   "$(uname -srm)"
+printf '  %-12s %s\n' "hostname:" "$(hostnamectl --static 2>/dev/null || hostname)"
+printf '  %-12s %s\n' "boot mode:" "$([ -d /sys/firmware/efi ] && echo UEFI || echo BIOS/legacy)"
+
+note "services"
+for svc in greetd bluetooth cups avahi-daemon nftables apparmor \
+           zramswap earlyoom systemd-timesyncd power-profiles-daemon \
+           ModemManager fprintd; do
+    if systemctl is-enabled "$svc.service" >/dev/null 2>&1; then
+        if systemctl is-active "$svc.service" >/dev/null 2>&1; then
+            ok "$svc"
+        else
+            wn "$svc enabled but not active"
+        fi
+    else
+        wn "$svc not enabled"
+    fi
+done
+
+note "firewall + AppArmor"
+if command -v nft >/dev/null 2>&1 && nft list ruleset 2>/dev/null | grep -q 'policy drop'; then
+    ok "nftables default-deny inbound"
+else
+    nf "nftables default-deny not active"
+fi
+if command -v aa-status >/dev/null 2>&1 && aa-status --enabled 2>/dev/null; then
+    ok "AppArmor enabled"
+else
+    wn "AppArmor not enabled"
+fi
+
+note "credentials + root"
+if [ "$(passwd -S root 2>/dev/null | awk '{print $2}')" = "L" ]; then
+    ok "root account locked"
+else
+    nf "root account NOT locked — run: sudo passwd -l root"
+fi
+if command -v secret-tool >/dev/null 2>&1; then
+    ok "secret-tool (gnome-keyring) present"
+else
+    wn "secret-tool missing — AI key storage will fail"
+fi
+
+note "graphics + audio"
+if command -v vainfo >/dev/null 2>&1; then
+    if vainfo 2>/dev/null | grep -q 'VAEntrypointVLD'; then
+        ok "VA-API hardware decode available"
+    else
+        wn "VA-API loaded but no HW decode profile (Mesa software path)"
+    fi
+else
+    wn "vainfo missing"
+fi
+if pgrep -x pipewire >/dev/null 2>&1; then
+    ok "pipewire running"
+else
+    wn "pipewire not running (not yet in a user session?)"
+fi
+
+note "memory + swap"
+free -h | sed 's/^/  /'
+if swapon --show 2>/dev/null | grep -q zram; then
+    ok "zram active"
+else
+    wn "zram not active"
+fi
+
+note "AR + AI"
+if [ -e /etc/udev/rules.d/70-edemint-ar.rules ]; then
+    if grep -q 'MODE="0660"' /etc/udev/rules.d/70-edemint-ar.rules; then
+        ok "XR udev rules installed (0660, group-scoped)"
+    else
+        nf "XR udev rules present but mode != 0660"
+    fi
+else
+    wn "XR udev rules absent — XR driver hook skipped (offline / SHA mismatch?)"
+fi
+if [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/edemint-ai/config.toml" ]; then
+    if grep -qE '^enabled\s*=\s*false' "${XDG_CONFIG_HOME:-$HOME/.config}/edemint-ai/config.toml"; then
+        ok "edemint-ai disabled (privacy default)"
+    else
+        ok "edemint-ai ENABLED for $(whoami) — backend $(grep '^backend' "${XDG_CONFIG_HOME:-$HOME/.config}/edemint-ai/config.toml" | head -1)"
+    fi
+fi
+
+note "summary"
+printf '  ok=%d  warn=%d  fail=%d\n' "$pass" "$warn" "$fail"
+[ "$fail" -eq 0 ] || exit 1
