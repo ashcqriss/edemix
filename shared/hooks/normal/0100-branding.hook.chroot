@@ -13,9 +13,9 @@ VERSION="0.1 (origin)"
 VERSION_CODENAME=trixie
 ID=edemint
 ID_LIKE=debian
-HOME_URL="https://example.invalid/edemint"
-SUPPORT_URL="https://example.invalid/edemint"
-BUG_REPORT_URL="https://example.invalid/edemint/issues"
+HOME_URL="https://github.com/ashcqriss/edemint"
+SUPPORT_URL="https://github.com/ashcqriss/edemint"
+BUG_REPORT_URL="https://github.com/ashcqriss/edemint/issues"
 EOF
 ln -sf ../usr/lib/os-release /etc/os-release
 

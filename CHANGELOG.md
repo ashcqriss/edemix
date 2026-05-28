@@ -48,10 +48,9 @@ All notable changes to Edemint are recorded here.
 
 ### Known placeholders
 - `XR_SHA256` in the XR-driver hook — every build skips AR driver build
-  until updated with a real upstream hash.
-- `repo.edemint.invalid` in the deb822 source — `Enabled: no` until a
-  real apt repo host is provisioned.
-- `example.invalid` URLs in os-release, branding, and packaging control
-  files — replace with the real domain.
+  until updated with a real upstream tag + hash (vendored per release).
+- deb822 Edemint apt source ships `Enabled: no` until CI populates
+  `https://ashcqriss.github.io/edemint/debian` from the publish job and a
+  matching public key is shipped to `/etc/apt/keyrings/`.
 - Calamares logo / slideshow / Hyprland visuals are placeholders pending
   the deferred design pass.

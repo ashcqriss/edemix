@@ -3,7 +3,7 @@
 # /etc/apt/keyrings/edemint-archive-keyring.gpg by the branding hook.
 # The repo URL is a placeholder until the publish target is online.
 Types: deb
-URIs: https://repo.edemint.invalid/debian
+URIs: https://ashcqriss.github.io/edemint/debian
 Suites: trixie
 Components: main
 Signed-By: /etc/apt/keyrings/edemint-archive-keyring.gpg

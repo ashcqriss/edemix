@@ -37,11 +37,16 @@ build_one() {
     deps="$(grep -vE '^\s*(#|$)' "$list_file" | paste -sd, - | sed 's/,/, /g')"
 
     tmp="$(mktemp -d)"
+    # equivs-build copies the control into its OWN internal build dir
+    # under $TMPDIR and writes the resulting .deb to $TMPDIR itself, not
+    # to the user's cwd. Override $TMPDIR so its output lands under $tmp,
+    # which we own and clean up — and never pollutes the parent /tmp.
+    mkdir "$tmp/work" "$tmp/out"
     trap 'rm -rf "$tmp"' EXIT
-    sed "s|@DEPS@|$deps|" "$pkg_dir/control" > "$tmp/control"
+    sed "s|@DEPS@|$deps|" "$pkg_dir/control" > "$tmp/work/control"
 
-    (cd "$tmp" && equivs-build control >/dev/null)
-    deb="$(find "$tmp" -maxdepth 1 -name "${pkg}_*_all.deb" | head -1)"
+    (cd "$tmp/work" && TMPDIR="$tmp/out" equivs-build control >/dev/null)
+    deb="$(find "$tmp" -name "${pkg}_*_all.deb" | head -1)"
     [ -n "$deb" ] || { echo "equivs-build produced no .deb for $pkg" >&2; exit 1; }
 
     mkdir -p "$AMD64_DROP"

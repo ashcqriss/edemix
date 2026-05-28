@@ -3,8 +3,8 @@ Priority: optional
 Standards-Version: 4.6.2
 Package: edemint-ai
 Version: 0.1
-Maintainer: Edemint <hello@edemint.invalid>
-Homepage: https://example.invalid/edemint
+Maintainer: Edemint <noreply@github.com>
+Homepage: https://github.com/ashcqriss/edemint
 Architecture: all
 Depends: @DEPS@
 Description: Edemint AI assistant — pluggable LLM helper (off by default)

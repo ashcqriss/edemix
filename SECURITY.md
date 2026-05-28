@@ -2,12 +2,12 @@
 
 ## Reporting a vulnerability
 
-Email security@edemint.invalid (replace with the real address once the
-domain is real) — please don't open a public GitHub issue for security
-problems until a fix is shipped.
+Open a private report via GitHub Security Advisories:
 
-For now (placeholder phase): open an issue prefixed `[security]` and
-mark it as confidential if your fork supports that.
+  https://github.com/ashcqriss/edemint/security/advisories/new
+
+Please don't open a public GitHub issue for security problems until a
+fix is shipped.
 
 ## Threat model
 

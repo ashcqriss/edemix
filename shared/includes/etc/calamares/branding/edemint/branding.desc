@@ -10,11 +10,11 @@ strings:
     versionedName:      Edemint 0.1 "Origin"
     shortVersionedName: Edemint 0.1
     bootloaderEntryName: Edemint
-    productUrl:         https://example.invalid/edemint
-    supportUrl:         https://example.invalid/edemint/support
-    knownIssuesUrl:     https://example.invalid/edemint/issues
-    releaseNotesUrl:    https://example.invalid/edemint/release-notes
-    donateUrl:          https://example.invalid/edemint/donate
+    productUrl:         https://github.com/ashcqriss/edemint
+    supportUrl:         https://github.com/ashcqriss/edemint/discussions
+    knownIssuesUrl:     https://github.com/ashcqriss/edemint/issues
+    releaseNotesUrl:    https://github.com/ashcqriss/edemint/releases
+    donateUrl:          https://github.com/sponsors/ashcqriss
 
 # Image slots (real art replaces these in the deferred design pass).
 # Only reference files we actually ship — Calamares warns/errors on

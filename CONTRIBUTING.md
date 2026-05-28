@@ -65,5 +65,6 @@ local_only cloud refusal.
 - Don't add "future-proofing" abstractions for cases that don't exist.
 - Don't change defaults silently — call them out in the PR.
 - Don't ship images with placeholders that the user has to fix
-  themselves (the XR_SHA256 and `edemint.invalid` URLs are
-  intentional, time-bounded exceptions documented in CHANGELOG).
+  themselves. The remaining intentional exception is the XR_SHA256 in
+  the AR-driver hook (a fresh upstream tag must be vendored each release);
+  see CHANGELOG.

@@ -3,8 +3,8 @@ Priority: optional
 Standards-Version: 4.6.2
 Package: edemint-desktop
 Version: 0.1
-Maintainer: Edemint <hello@edemint.invalid>
-Homepage: https://example.invalid/edemint
+Maintainer: Edemint <noreply@github.com>
+Homepage: https://github.com/ashcqriss/edemint
 Architecture: all
 Depends: edemint-base, @DEPS@
 Description: Edemint desktop metapackage — Hyprland Wayland session
