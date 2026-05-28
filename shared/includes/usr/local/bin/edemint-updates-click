@@ -1,0 +1,30 @@
+#!/bin/sh
+# Edemint Waybar updates+reboot click handler.
+# Routes the click on the updates pill:
+#   - if a reboot is pending, prompt to reboot now (mako action button,
+#     fallback to wlogout)
+#   - else, open a terminal showing the upgradable list and let the
+#     user run upgrade/reboot from there.
+set -eu
+
+if [ -f /var/run/reboot-required ]; then
+    pkgs="$(tr '\n' ' ' < /var/run/reboot-required.pkgs 2>/dev/null || true)"
+    if command -v notify-send >/dev/null 2>&1; then
+        ans=$(notify-send -A "reboot=Reboot now" -A "cancel=Later" \
+              -t 0 \
+              "Reboot required" "Packages installed that need a reboot:${pkgs:+ }$pkgs")
+        if [ "$ans" = "reboot" ]; then
+            systemctl reboot
+            exit 0
+        fi
+        # Cancelled or unsupported → fall through to wlogout (any wlroots
+        # builds with a notification daemon that swallows actions still
+        # get the wlogout chooser).
+    fi
+    command -v wlogout >/dev/null 2>&1 && exec wlogout
+    foot -T "Reboot required" -e sh -c \
+        'echo "Reboot required."; read -p "Press enter to reboot, Ctrl-C to cancel..."; systemctl reboot'
+else
+    foot -T "Edemint updates" -e sh -c \
+        'sudo apt update && apt list --upgradable; read -p "press enter to close..."'
+fi

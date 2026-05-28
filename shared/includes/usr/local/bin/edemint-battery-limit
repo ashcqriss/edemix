@@ -1,0 +1,82 @@
+#!/bin/sh
+# Edemint battery charge limit helper.
+#
+# Writes the kernel sysfs charge_control_end_threshold (Lenovo ThinkPad,
+# many HP/Dell/ASUS on recent kernels; Apple uses a different ABI). The
+# percentage you set is the upper cap — stops charging there, prolongs
+# battery life. Common safe value: 80%.
+#
+# Persisted across reboots via /etc/edemint/battery-limit, re-applied at
+# boot by edemint-battery-limit.service.
+#
+# Usage:
+#   edemint-battery-limit show
+#   edemint-battery-limit set 80      # cap charge at 80%
+#   edemint-battery-limit reset       # remove cap (100%)
+set -eu
+
+STATE=/etc/edemint/battery-limit
+
+# Resolve the glob at use time, not assignment time (SC2125).
+threshold_paths() {
+    set -- /sys/class/power_supply/BAT*/charge_control_end_threshold
+    [ -e "$1" ] && printf '%s\n' "$@"
+}
+
+require_root() {
+    [ "$(id -u)" -eq 0 ] || exec sudo -E "$0" "$@"
+}
+
+found=0
+for f in $(threshold_paths); do
+    [ -e "$f" ] && found=1
+done
+if [ $found -eq 0 ] && [ "${1:-}" != "show" ]; then
+    echo "edemint-battery-limit: no battery charge-threshold sysfs found." >&2
+    echo "  Your laptop/firmware may not expose this knob on Linux." >&2
+    exit 1
+fi
+
+case "${1:-show}" in
+    show)
+        if [ -f "$STATE" ]; then
+            echo "persisted limit: $(cat "$STATE")%"
+        else
+            echo "persisted limit: none (charges to 100%)"
+        fi
+        for f in $(threshold_paths); do
+            [ -e "$f" ] || continue
+            printf '  %s : %s%%\n' "$f" "$(cat "$f")"
+        done
+        ;;
+    set)
+        pct="${2:?usage: edemint-battery-limit set <40-100>}"
+        case "$pct" in
+            ''|*[!0-9]*) echo "not a number: $pct" >&2; exit 2 ;;
+        esac
+        if [ "$pct" -lt 40 ] || [ "$pct" -gt 100 ]; then
+            echo "must be 40-100" >&2; exit 2
+        fi
+        require_root "$@"
+        mkdir -p "$(dirname "$STATE")"
+        echo "$pct" > "$STATE"
+        for f in $(threshold_paths); do
+            [ -e "$f" ] || continue
+            echo "$pct" > "$f"
+        done
+        echo ">> battery charge cap set to $pct% (persisted)."
+        ;;
+    reset)
+        require_root "$@"
+        rm -f "$STATE"
+        for f in $(threshold_paths); do
+            [ -e "$f" ] || continue
+            echo 100 > "$f"
+        done
+        echo ">> battery charge cap removed (100%)."
+        ;;
+    *)
+        echo "Usage: $0 {show|set <40-100>|reset}" >&2
+        exit 2
+        ;;
+esac

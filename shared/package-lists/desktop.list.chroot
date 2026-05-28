@@ -68,6 +68,8 @@ file-roller
 gnome-calculator
 gnome-disk-utility
 gnome-system-monitor
+baobab
+deja-dup
 thunar
 
 # --- Flatpak (Flathub remote registered in 0300-flatpak-flathub.hook) ---

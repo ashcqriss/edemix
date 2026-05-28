@@ -55,7 +55,7 @@
         "exec":       "edemint-updates-status",
         "return-type": "json",
         "interval":    300,
-        "on-click":    "foot -T 'Edemint updates' -e sh -c 'sudo apt update && apt list --upgradable; read -p \"return to close...\"'",
+        "on-click":    "edemint-updates-click",
         "tooltip":     true
     }
 }

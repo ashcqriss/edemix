@@ -120,6 +120,9 @@ systemctl enable power-profiles-daemon.service || true
 systemctl enable fprintd.service            || true
 systemctl enable tmp.mount                  || true
 systemctl enable fstrim.timer               || true
+# Battery charge limit re-applier — guarded by ConditionPathExists so it
+# only does anything on machines with /etc/edemint/battery-limit set.
+systemctl enable edemint-battery-limit.service || true
 
 # Disable: NetworkManager-wait-online stalls boot for up to 30s waiting
 # for a routable IP — desktops don't need that as a boot barrier. Also

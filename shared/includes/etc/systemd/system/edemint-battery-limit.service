@@ -1,0 +1,13 @@
+[Unit]
+Description=Re-apply Edemint battery charge limit at boot
+ConditionPathExists=/etc/edemint/battery-limit
+After=power-profiles-daemon.service systemd-modules-load.service
+Wants=power-profiles-daemon.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c '/usr/local/bin/edemint-battery-limit set "$(cat /etc/edemint/battery-limit)"'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
