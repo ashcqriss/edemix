@@ -20,24 +20,30 @@ ordinary PCs. Tuned to stay light on low-end hardware.
 ## Layout
 
 ```
-auto/config                         live-build options (distro, arch, areas)
-build.sh                            one-command builder (sudo ./build.sh)
-config/package-lists/base.list      core system packages (small)
-config/package-lists/desktop.list   Hyprland + Wayland desktop
-config/hooks/normal/0100-branding   os-release, motd, enable greetd, slimming
-config/includes.chroot/             files baked into the image:
-  etc/greetd/config.toml              login manager -> Hyprland
-  etc/skel/.config/hypr/              default Hyprland config (low-power)
-  etc/skel/.config/waybar/            status bar
-  etc/skel/.config/foot/              terminal
+build.sh                            dispatcher: ./build.sh <amd64|pi|clean>
+shared/                             single source of truth, used by every target
+  package-lists/base.list.chroot      core system packages
+  package-lists/desktop.list.chroot   Hyprland + Wayland desktop
+  hooks/normal/0100-branding.*        os-release, motd, enable greetd, slimming
+  includes/etc/greetd/config.toml     login manager -> Hyprland
+  includes/etc/skel/.config/          default user configs (hypr, waybar, foot)
+profiles/
+  amd64-iso/                        live-build profile for the PC ISO
+    auto/config                       live-build options (distro, arch, areas)
+    config/                           symlinks back to ../../../shared/*
+  arm64-pi/                         mmdebstrap + genimage pipeline (planned)
 ```
 
 ## Build (amd64 live ISO)
 
-Run on a Debian/Ubuntu host with root, ~10GB free disk, and network:
+Image builds need root + loop devices (live-build/debootstrap), so the
+canonical path is **GitHub Actions** on a privileged runner; tagged releases
+publish both images automatically. To build locally on a Debian/Ubuntu host
+with root, ~10GB free disk, and network:
 
 ```sh
-sudo ./build.sh           # -> live-image-amd64.hybrid.iso
+sudo ./build.sh amd64     # -> profiles/amd64-iso/live-image-amd64.hybrid.iso
+sudo ./build.sh pi        # -> profiles/arm64-pi/edemint-*-arm64-rpi.img.xz
 sudo ./build.sh clean     # remove build artifacts
 ```
 
@@ -62,12 +68,14 @@ Plug glasses in over USB-C; they show up as a monitor. List them with
 `~/.config/hypr/hyprland.conf` (see the `monitor =` lines). `wlr-randr` is
 included for quick output tweaks.
 
-## Roadmap / not done yet
+## Roadmap
 
-- **arm64 / Raspberry Pi image.** `live-build` here targets amd64 ISO only.
-  The Pi needs a separate `.img` pipeline (e.g. `rpi-image-gen` or a
-  debootstrap + genimage script reusing the same package lists). This is the
-  next milestone.
-- **Spatial AR** (head tracking, floating windows in 3D) — research track,
-  per-device, not started.
-- **Installer polish** (Calamares) for installs to disk.
+In-flight (this build-out): metapackages (`edemint-base`/`-desktop`/`-ai`),
+Calamares installer, arm64/Pi image via mmdebstrap+genimage, signed apt repo
++ unattended-upgrades, AppArmor / nftables / Secure Boot defaults, AR-glasses
+support layer (kanshi + XR-driver IMU + sensor plumbing), optional AI
+assistant (disabled by default), GitHub Actions release pipeline.
+
+Deferred (later passes): graphical/shell visual design, 3D head-tracked
+virtual-screen compositor on Hyprland (experimental), Bluetooth-companion
+glasses (no Linux SDK).
