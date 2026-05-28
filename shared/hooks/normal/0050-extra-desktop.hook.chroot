@@ -1,0 +1,46 @@
+#!/bin/sh
+# Edemint best-effort desktop extras.
+#
+# These packages are part of the intended desktop but are recent additions
+# to Debian whose presence/naming varies across the Trixie lifecycle. If we
+# put them in a *.list.chroot, a single missing one makes live-build /
+# mmdebstrap abort the WHOLE image (apt exit 100). So we install them here,
+# one at a time, best-effort: a missing package is logged and skipped, the
+# image still builds and boots on the guaranteed core.
+#
+# Runs before 0100-branding (which cleans the apt lists), so apt metadata
+# is still available. We refresh first in case lists are sparse.
+set -u
+
+EXTRAS="
+xdg-desktop-portal-hyprland
+greetd-tuigreet
+hyprlock
+hypridle
+hyprpicker
+swayosd
+cliphist
+wlogout
+wf-recorder
+distrobox
+fastfetch
+"
+
+echo "edemint: installing best-effort desktop extras..."
+apt-get update 2>/dev/null || true
+
+ok=""
+skip=""
+for pkg in $EXTRAS; do
+    if apt-get install -y --no-install-recommends "$pkg" >/dev/null 2>&1; then
+        ok="$ok $pkg"
+    else
+        skip="$skip $pkg"
+    fi
+done
+
+echo "edemint extras installed:${ok:- (none)}"
+[ -z "$skip" ] || echo "edemint extras SKIPPED (not available):${skip}"
+
+# Never fail the build over an optional extra.
+exit 0

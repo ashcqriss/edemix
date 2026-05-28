@@ -11,31 +11,32 @@ dbus-user-session
 dconf-cli
 
 # --- portals (screen sharing, file pickers, Flatpak integration; §8) ---
+# NOTE: xdg-desktop-portal-hyprland is installed best-effort by
+# 0050-extra-desktop.hook.chroot (may not be in Trixie main); the gtk
+# backend below is the guaranteed fallback.
 xdg-desktop-portal
-xdg-desktop-portal-hyprland
 xdg-desktop-portal-gtk
 xdg-utils
 xdg-user-dirs
 
 # --- login / autologin manager (tiny, Wayland-native) -------------------
+# greetd is in main; the tuigreet greeter is installed best-effort by the
+# extras hook, with agreety (bundled with greetd) as the fallback greeter.
 greetd
-greetd-tuigreet
 
 # --- Hyprland UX layer (§9) — functional UX; visuals deferred -----------
+# Several wlroots/Hyprland tools below are recent additions that may not be
+# in Trixie main yet; those (hyprlock, hypridle, hyprpicker, swayosd,
+# cliphist, wlogout) are installed best-effort by 0050-extra-desktop.hook.
+# The load-bearing core stays here so the image always builds and boots.
 waybar
 wofi
 foot
 mako-notifier
 swaybg
-hyprlock
-hypridle
-wlogout
-swayosd
-cliphist
 grim
 slurp
 swappy
-hyprpicker
 wl-clipboard
 brightnessctl
 playerctl
@@ -121,12 +122,9 @@ wlr-randr
 gamemode
 mangohud
 
-# --- screen recording (key-bindable; pairs with grim/slurp for stills) --
-wf-recorder
-
 # --- dev containers (modern toolbox; podman is rootless) ----------------
-distrobox
 podman
 
-# --- discoverability (first-run welcome wired in includes) --------------
-fastfetch
+# NOTE: wf-recorder, distrobox, and fastfetch are installed best-effort by
+# 0050-extra-desktop.hook.chroot (availability/naming varies across the
+# Trixie lifecycle); none are load-bearing for first boot.

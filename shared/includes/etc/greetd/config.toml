@@ -1,11 +1,13 @@
 # greetd: minimal Wayland login manager for Edemint.
-# Shows tuigreet and launches Hyprland as the default session.
+# Launches Hyprland as the session. Prefers tuigreet (installed best-effort
+# by 0050-extra-desktop.hook); falls back to agreety, which ships with the
+# greetd package itself, so login always works even if tuigreet is absent.
 
 [terminal]
 vt = 1
 
 [default_session]
-command = "tuigreet --time --remember --cmd Hyprland"
+command = "sh -c 'command -v tuigreet >/dev/null 2>&1 && exec tuigreet --time --remember --cmd Hyprland || exec agreety --cmd Hyprland'"
 user = "greetd"
 
 # To boot straight into the desktop with no login prompt (kiosk / live feel),
