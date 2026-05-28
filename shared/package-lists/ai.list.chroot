@@ -1,0 +1,17 @@
+# Edemint AI assistant runtime (§11). Ships disabled by default; the user
+# opts in via `edemint-ai enable`. Cloud calls and local inference are
+# fully optional — the helper degrades gracefully when offline.
+
+# Local LLM: ollama (single-binary daemon + CLI; runs on amd64 + arm64).
+ollama
+
+# Cloud HTTP plumbing
+jq
+curl
+libsecret-tools
+
+# Optional STT (voice → assistant). Whisper.cpp ships as a recent package
+# in Trixie's contrib component; degrades cleanly when not present.
+# whisper-cpp is not yet in Debian Trixie; users on Trixie can install it
+# from upstream binaries. Listed here as a comment so the intent is clear:
+# whisper-cpp

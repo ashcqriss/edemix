@@ -58,3 +58,4 @@ build_one() {
 
 build_one edemint-base    base
 build_one edemint-desktop desktop
+build_one edemint-ai      ai

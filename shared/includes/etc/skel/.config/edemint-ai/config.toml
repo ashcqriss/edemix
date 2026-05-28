@@ -1,0 +1,24 @@
+# Edemint AI assistant — disabled by default (§11).
+#
+# Run `edemint-ai enable` to turn it on; `edemint-ai backend <name>` to pick
+# a backend; `edemint-ai set-key <backend>` to store an API key in the
+# gnome-keyring login keyring (no plaintext on disk).
+#
+# Backends:
+#   claude   — Anthropic Claude (cloud)
+#   openai   — OpenAI GPT (cloud)
+#   gemini   — Google Gemini (cloud)
+#   ollama   — local LLM via ollama (offline-capable)
+#
+# Privacy:
+#   local_only = true   refuses every cloud backend (zero egress mode).
+
+enabled = false
+backend = "claude"
+local_only = false
+
+# Default models per backend
+model_claude  = "claude-opus-4-7"
+model_openai  = "gpt-4o-mini"
+model_gemini  = "gemini-1.5-flash"
+model_ollama  = "llama3.2:3b"

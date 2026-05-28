@@ -1,0 +1,244 @@
+#!/bin/sh
+# Edemint AI assistant helper (§11).
+#
+# A thin router around three backends — cloud (Claude / OpenAI / Gemini),
+# local (ollama), and Pi NPU vision (Hailo) — selected via
+# ~/.config/edemint-ai/config.toml. Disabled by default; opt in with
+# `edemint-ai enable`. API keys are read from gnome-keyring (secret-tool),
+# never on disk in plaintext. A `local_only = true` switch refuses every
+# cloud backend.
+#
+# Usage:
+#   edemint-ai status
+#   edemint-ai enable            # set enabled=true in user config
+#   edemint-ai disable
+#   edemint-ai chat ["prompt"]   # one-shot or interactive
+#   edemint-ai pull <model>      # ollama pull
+#   edemint-ai vision <image>    # Hailo / Pi-only
+#   edemint-ai backend <name>    # claude|openai|gemini|ollama
+#   edemint-ai set-key <backend> # prompts for the API key and stores it
+set -eu
+
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/edemint-ai"
+CONFIG="$CONFIG_DIR/config.toml"
+
+ensure_config() {
+    if [ ! -f "$CONFIG" ]; then
+        mkdir -p "$CONFIG_DIR"
+        if [ -f /etc/skel/.config/edemint-ai/config.toml ]; then
+            cp /etc/skel/.config/edemint-ai/config.toml "$CONFIG"
+        else
+            cat > "$CONFIG" <<'EOF'
+# Edemint AI helper — disabled by default. See `edemint-ai status`.
+enabled = false
+backend = "claude"
+local_only = false
+model_claude = "claude-opus-4-7"
+model_openai = "gpt-4o-mini"
+model_gemini = "gemini-1.5-flash"
+model_ollama = "llama3.2:3b"
+EOF
+        fi
+    fi
+}
+
+cfg_get() {
+    # crude TOML reader: reads a quoted or bool/numeric value for $1.
+    k="$1"
+    sed -n "s/^[[:space:]]*${k}[[:space:]]*=[[:space:]]*\"\\(.*\\)\"[[:space:]]*\$/\\1/p" "$CONFIG" | head -1 \
+        || true
+    sed -n "s/^[[:space:]]*${k}[[:space:]]*=[[:space:]]*\\([^\"#[:space:]][^#[:space:]]*\\)[[:space:]]*\\(#.*\\)\\?\$/\\1/p" "$CONFIG" | head -1
+}
+
+cfg_set() {
+    key="$1"; value="$2"
+    if grep -qE "^\\s*$key\\s*=" "$CONFIG"; then
+        sed -i "s|^\\s*$key\\s*=.*|$key = $value|" "$CONFIG"
+    else
+        echo "$key = $value" >> "$CONFIG"
+    fi
+}
+
+require_enabled() {
+    [ "$(cfg_get enabled)" = "true" ] || {
+        echo "edemint-ai is disabled. Run: edemint-ai enable" >&2
+        exit 1
+    }
+}
+
+get_key() {
+    backend="$1"
+    if ! command -v secret-tool >/dev/null 2>&1; then
+        echo "secret-tool missing (install libsecret-tools)" >&2
+        return 1
+    fi
+    secret-tool lookup edemint-ai "$backend" 2>/dev/null
+}
+
+call_claude() {
+    prompt="$1"
+    key="$(get_key claude || true)"
+    [ -n "$key" ] || { echo "No Claude API key. Run: edemint-ai set-key claude" >&2; exit 1; }
+    model="$(cfg_get model_claude)"
+    curl -fsSL https://api.anthropic.com/v1/messages \
+        -H "x-api-key: $key" \
+        -H "anthropic-version: 2023-06-01" \
+        -H "content-type: application/json" \
+        -d "$(jq -nc --arg m "$model" --arg p "$prompt" \
+            '{model:$m, max_tokens:1024, messages:[{role:"user", content:$p}]}')" \
+        | jq -r '.content[0].text // .error.message // .'
+}
+
+call_openai() {
+    prompt="$1"
+    key="$(get_key openai || true)"
+    [ -n "$key" ] || { echo "No OpenAI API key. Run: edemint-ai set-key openai" >&2; exit 1; }
+    model="$(cfg_get model_openai)"
+    curl -fsSL https://api.openai.com/v1/chat/completions \
+        -H "Authorization: Bearer $key" \
+        -H "content-type: application/json" \
+        -d "$(jq -nc --arg m "$model" --arg p "$prompt" \
+            '{model:$m, messages:[{role:"user", content:$p}]}')" \
+        | jq -r '.choices[0].message.content // .error.message // .'
+}
+
+call_gemini() {
+    prompt="$1"
+    key="$(get_key gemini || true)"
+    [ -n "$key" ] || { echo "No Gemini API key. Run: edemint-ai set-key gemini" >&2; exit 1; }
+    model="$(cfg_get model_gemini)"
+    curl -fsSL "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$key" \
+        -H "content-type: application/json" \
+        -d "$(jq -nc --arg p "$prompt" '{contents:[{parts:[{text:$p}]}]}')" \
+        | jq -r '.candidates[0].content.parts[0].text // .error.message // .'
+}
+
+call_ollama() {
+    prompt="$1"
+    command -v ollama >/dev/null 2>&1 || { echo "ollama missing" >&2; exit 1; }
+    model="$(cfg_get model_ollama)"
+    echo "$prompt" | ollama run "$model"
+}
+
+cmd_chat() {
+    require_enabled
+    backend="$(cfg_get backend)"
+    local_only="$(cfg_get local_only)"
+
+    if [ "$local_only" = "true" ] && [ "$backend" != "ollama" ]; then
+        echo "local_only is set; refusing cloud backend '$backend'." >&2
+        echo "Switch backend to ollama or unset local_only in $CONFIG." >&2
+        exit 1
+    fi
+
+    if [ $# -ge 1 ]; then
+        prompt="$*"
+    else
+        printf '> '
+        IFS= read -r prompt
+    fi
+
+    case "$backend" in
+        claude)  call_claude  "$prompt" ;;
+        openai)  call_openai  "$prompt" ;;
+        gemini)  call_gemini  "$prompt" ;;
+        ollama)  call_ollama  "$prompt" ;;
+        *) echo "Unknown backend: $backend" >&2; exit 1 ;;
+    esac
+}
+
+cmd_vision() {
+    require_enabled
+    img="${1:-}"
+    [ -n "$img" ] || { echo "Usage: edemint-ai vision <image>" >&2; exit 2; }
+    if ! command -v hailortcli >/dev/null 2>&1; then
+        echo "Hailo runtime (hailortcli) not present. Install on Pi 5 + AI HAT+:" >&2
+        echo "  see /etc/edemint-ai/hailo-install.md" >&2
+        exit 1
+    fi
+    # Real pipeline is a user-supplied HEF model; for now just print runtime version.
+    hailortcli scan
+    echo "(vision pipeline stub — wire your own HEF model under ~/.local/share/edemint-ai/models/)"
+}
+
+cmd_pull() {
+    require_enabled
+    command -v ollama >/dev/null 2>&1 || { echo "ollama missing" >&2; exit 1; }
+    ollama pull "${1:?usage: edemint-ai pull <model>}"
+}
+
+cmd_set_key() {
+    backend="${1:?usage: edemint-ai set-key <backend>}"
+    command -v secret-tool >/dev/null 2>&1 || { echo "secret-tool missing"; exit 1; }
+    echo "Enter API key for $backend (input hidden):"
+    stty -echo 2>/dev/null || true
+    IFS= read -r KEY
+    stty echo 2>/dev/null || true
+    echo
+    printf '%s' "$KEY" | secret-tool store --label="edemint-ai $backend" edemint-ai "$backend"
+    echo ">> stored API key for $backend in the login keyring."
+}
+
+cmd_enable() {
+    ensure_config
+    cfg_set enabled true
+    echo ">> edemint-ai enabled. Backend: $(cfg_get backend)."
+    [ "$(cfg_get backend)" = "ollama" ] || {
+        echo "   To set an API key:  edemint-ai set-key $(cfg_get backend)"
+    }
+}
+
+cmd_disable() {
+    ensure_config
+    cfg_set enabled false
+    echo ">> edemint-ai disabled."
+}
+
+cmd_backend() {
+    ensure_config
+    new="${1:?usage: edemint-ai backend <claude|openai|gemini|ollama>}"
+    case "$new" in claude|openai|gemini|ollama) ;; *) echo "Unknown backend: $new" >&2; exit 2 ;; esac
+    cfg_set backend "\"$new\""
+    echo ">> backend set to $new"
+}
+
+cmd_status() {
+    ensure_config
+    cat <<EOF
+── edemint-ai status ────────────────────────────────────────────────
+config:      $CONFIG
+enabled:     $(cfg_get enabled)
+backend:     $(cfg_get backend)
+local_only:  $(cfg_get local_only)
+models:
+  claude:    $(cfg_get model_claude)
+  openai:    $(cfg_get model_openai)
+  gemini:    $(cfg_get model_gemini)
+  ollama:    $(cfg_get model_ollama)
+binaries:
+  ollama:    $(command -v ollama >/dev/null 2>&1 && echo present || echo missing)
+  hailortcli:$(command -v hailortcli >/dev/null 2>&1 && echo " present" || echo " missing (Pi 5 + AI HAT+ only)")
+  secret-tool: $(command -v secret-tool >/dev/null 2>&1 && echo present || echo missing)
+─────────────────────────────────────────────────────────────────────
+EOF
+}
+
+ensure_config
+
+case "${1:-status}" in
+    status)     cmd_status ;;
+    enable)     cmd_enable ;;
+    disable)    cmd_disable ;;
+    backend)    shift; cmd_backend "$@" ;;
+    chat)       shift; cmd_chat "$@" ;;
+    pull)       shift; cmd_pull "$@" ;;
+    vision)     shift; cmd_vision "$@" ;;
+    set-key)    shift; cmd_set_key "$@" ;;
+    -h|--help|help)
+        sed -n '2,30p' "$0" | sed 's/^# \?//'
+        ;;
+    *)
+        # Treat any other word as a chat prompt (matches the `ai "..."` alias)
+        cmd_chat "$@"
+        ;;
+esac

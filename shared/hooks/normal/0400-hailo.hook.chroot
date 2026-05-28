@@ -1,0 +1,35 @@
+#!/bin/sh
+# Edemint Hailo NPU stack — Pi 5 + AI HAT+ only (§11).
+#
+# Gated by /proc/device-tree/model so it cleanly skips on amd64 and on
+# pre-Pi-5 boards (the Hailo PCIe HAT+ needs Pi 5's PCIe lane). On
+# matching hardware it pulls hailo-all from the Raspberry Pi apt
+# component (which the live-build host must have wired). Off-target
+# images just log + exit 0.
+set -e
+
+MODEL=""
+[ -r /proc/device-tree/model ] && MODEL="$(tr -d '\0' </proc/device-tree/model 2>/dev/null || true)"
+
+case "$MODEL" in
+    "Raspberry Pi 5"*) : ;;
+    *) echo "INFO: not a Pi 5 ($MODEL) — skipping Hailo install."; exit 0 ;;
+esac
+
+# The Raspberry Pi apt repo provides hailo-all (HailoRT + drivers). It is
+# not part of Debian; sources.list.d/raspi.sources, if present, lets us
+# `apt-get install` it. Skip on offline builders.
+if ! apt-get update 2>/dev/null; then
+    echo "WARN: apt-get update failed (offline?); skipping Hailo install." >&2
+    exit 0
+fi
+
+if apt-cache show hailo-all >/dev/null 2>&1; then
+    apt-get install -y hailo-all || {
+        echo "WARN: hailo-all install failed; skipping." >&2
+        exit 0
+    }
+    echo "INFO: Hailo runtime installed."
+else
+    echo "WARN: hailo-all not found in apt cache (raspi apt source missing?); skipping." >&2
+fi
