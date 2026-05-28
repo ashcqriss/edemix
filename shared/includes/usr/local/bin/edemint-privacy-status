@@ -1,0 +1,37 @@
+#!/bin/sh
+# Edemint webcam/microphone in-use indicator (Waybar module).
+#
+# Detects:
+#   - camera in use via fuser on /dev/video*
+#   - microphone in use via `pactl list source-outputs short` (PipeWire's
+#     PulseAudio compat surface; lists active capture clients)
+#
+# Output: one JSON line for Waybar.
+set -eu
+
+cam_pids=""
+for d in /dev/video*; do
+    [ -e "$d" ] || continue
+    fuser "$d" 2>/dev/null && cam_pids="$cam_pids $d"
+done
+
+mic_active=0
+if command -v pactl >/dev/null 2>&1; then
+    # pactl list source-outputs short prints one line per active capture.
+    # Filter out the monitor sources (loopback) — those don't count.
+    if pactl list source-outputs short 2>/dev/null \
+        | grep -vq 'monitor' \
+        && pactl list source-outputs short 2>/dev/null | grep -q .; then
+        mic_active=1
+    fi
+fi
+
+if [ -n "$cam_pids" ] && [ "$mic_active" = "1" ]; then
+    printf '{"text":"●cam+mic","class":"both","tooltip":"camera AND microphone in use"}\n'
+elif [ -n "$cam_pids" ]; then
+    printf '{"text":"●cam","class":"camera","tooltip":"camera in use:%s"}\n' "$cam_pids"
+elif [ "$mic_active" = "1" ]; then
+    printf '{"text":"●mic","class":"mic","tooltip":"microphone in use"}\n'
+else
+    printf '{"text":"","class":"idle","tooltip":"camera + mic idle"}\n'
+fi

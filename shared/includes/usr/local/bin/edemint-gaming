@@ -1,0 +1,84 @@
+#!/bin/sh
+# Edemint gaming mode toggle.
+#
+# `on`  flips a handful of sysctls and starts gamemoded; `off` reverts.
+# Pairs gamemode (CPU governor → performance, real-time priority) with
+# mangohud (FPS overlay) and turns on a few I/O knobs that hurt
+# desktop responsiveness but help frame pacing.
+#
+# Pre-reqs (already in desktop.list.chroot once this commit lands):
+# gamemode, mangohud. Steam itself ships via Flathub:
+#   flatpak install -y flathub com.valvesoftware.Steam
+#
+# Usage:
+#   edemint-gaming status
+#   edemint-gaming on
+#   edemint-gaming off
+set -eu
+
+STATE_DIR=/var/lib/edemint
+STATE_FILE="$STATE_DIR/gaming-on"
+SYSCTL_DROPIN=/etc/sysctl.d/95-edemint-gaming.conf
+
+usage() { echo "Usage: $0 {status|on|off}" >&2; exit 2; }
+
+require_root() {
+    [ "$(id -u)" -eq 0 ] || exec sudo -E "$0" "$@"
+}
+
+case "${1:-status}" in
+    status)
+        if [ -e "$STATE_FILE" ]; then
+            echo "edemint-gaming: ON"
+        else
+            echo "edemint-gaming: off"
+        fi
+        ;;
+    on)
+        require_root "$@"
+        mkdir -p "$STATE_DIR"
+        cat > "$SYSCTL_DROPIN" <<'EOF'
+# Edemint gaming-mode tunings (active while edemint-gaming is ON).
+vm.swappiness                = 1
+vm.max_map_count             = 2147483642
+kernel.split_lock_mitigate   = 0
+EOF
+        sysctl -q -p "$SYSCTL_DROPIN" || true
+
+        # Real-time scheduler priority for games (gamemode requests it).
+        systemctl enable --now gamemoded.service 2>/dev/null \
+            || systemctl --user enable --now gamemoded.service 2>/dev/null \
+            || true
+
+        # CPU governor: performance.
+        if command -v cpupower >/dev/null 2>&1; then
+            cpupower frequency-set -g performance >/dev/null || true
+        fi
+
+        touch "$STATE_FILE"
+        cat <<EOF
+>> gaming mode ON.
+   - vm.swappiness=1, split-lock mitigation OFF
+   - gamemoded running
+   - CPU governor: performance
+   Launch a game with:
+     gamemoderun mangohud %command%
+   Steam: add "gamemoderun mangohud %command%" to launch options.
+EOF
+        ;;
+    off)
+        require_root "$@"
+        rm -f "$SYSCTL_DROPIN" "$STATE_FILE"
+        sysctl --system >/dev/null 2>&1 || true
+        systemctl disable --now gamemoded.service 2>/dev/null \
+            || systemctl --user disable --now gamemoded.service 2>/dev/null \
+            || true
+        if command -v cpupower >/dev/null 2>&1; then
+            cpupower frequency-set -g schedutil >/dev/null 2>&1 \
+                || cpupower frequency-set -g powersave >/dev/null 2>&1 \
+                || true
+        fi
+        echo ">> gaming mode off."
+        ;;
+    *) usage ;;
+esac

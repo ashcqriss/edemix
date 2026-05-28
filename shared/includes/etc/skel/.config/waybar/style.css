@@ -41,3 +41,14 @@ window#waybar {
 #custom-ai-privacy.local       { color: #00ff99; }    /* local-only (ollama/hailo) */
 #custom-ai-privacy.cloud-idle  { color: #ffcc00; }    /* cloud-capable, idle */
 #custom-ai-privacy.cloud-active{ color: #ff4444; background: rgba(255,68,68,0.12); }  /* call in flight */
+
+/* Camera/mic in-use indicator (custom/cam-mic). */
+#custom-cam-mic { padding: 0 8px; }
+#custom-cam-mic.camera { color: #ff4444; }
+#custom-cam-mic.mic    { color: #ff8844; }
+#custom-cam-mic.both   { color: #ff4444; background: rgba(255,68,68,0.12); }
+
+/* Updates indicator (custom/updates). */
+#custom-updates { padding: 0 8px; }
+#custom-updates.available { color: #33ccff; }
+#custom-updates.reboot    { color: #ffcc00; background: rgba(255,204,0,0.10); }

@@ -94,6 +94,13 @@ for stack in login greetd; do
         printf '\n# Edemint: unlock gnome-keyring at login\n@include edemint-keyring\n' >> "$pf"
 done
 
+# --- Shell helper sourcing — give every new user the ?ai and gmr aliases.
+for rc in /etc/skel/.bashrc /etc/skel/.zshrc; do
+    [ -f "$rc" ] || continue
+    grep -q edemint-shell-helper "$rc" || \
+        printf '\n# Edemint shell helper (?ai, gmr aliases)\n[ -f ~/.config/edemint-shell-helper.sh ] && . ~/.config/edemint-shell-helper.sh\n' >> "$rc"
+done
+
 # --- Services ------------------------------------------------------------
 # Enable
 systemctl enable greetd.service             || true

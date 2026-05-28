@@ -2,9 +2,9 @@
     "layer": "top",
     "position": "top",
     "height": 28,
-    "modules-left":   ["hyprland/workspaces", "custom/ai-privacy"],
+    "modules-left":   ["hyprland/workspaces", "custom/ai-privacy", "custom/cam-mic"],
     "modules-center": ["clock"],
-    "modules-right":  ["tray", "pulseaudio", "network", "cpu", "memory", "battery"],
+    "modules-right":  ["custom/updates", "tray", "pulseaudio", "network", "cpu", "memory", "battery"],
 
     "hyprland/workspaces": {
         "format": "{id}"
@@ -43,6 +43,19 @@
         "return-type": "json",
         "interval":    1,
         "on-click":    "foot -T 'Edemint AI' -e edemint-ai status",
+        "tooltip":     true
+    },
+    "custom/cam-mic": {
+        "exec":       "edemint-privacy-status",
+        "return-type": "json",
+        "interval":    2,
+        "tooltip":     true
+    },
+    "custom/updates": {
+        "exec":       "edemint-updates-status",
+        "return-type": "json",
+        "interval":    300,
+        "on-click":    "foot -T 'Edemint updates' -e sh -c 'sudo apt update && apt list --upgradable; read -p \"return to close...\"'",
         "tooltip":     true
     }
 }

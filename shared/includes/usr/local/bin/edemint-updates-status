@@ -1,0 +1,21 @@
+#!/bin/sh
+# Edemint updates-available Waybar module.
+#
+# Reads apt's cached list (refreshed by APT::Periodic::Update-Package-Lists,
+# i.e. /etc/apt/apt.conf.d/20auto-upgrades — daily). No apt-get update from
+# here; the indicator only counts what's already known.
+#
+# Output: one JSON line for Waybar's custom module.
+set -eu
+
+# `apt list --upgradable` is the canonical source; quiet it.
+count=$(LC_ALL=C apt list --upgradable 2>/dev/null | grep -vc '^Listing\|^$' || echo 0)
+needs_reboot=$([ -f /var/run/reboot-required ] && echo 1 || echo 0)
+
+if [ "$needs_reboot" = "1" ]; then
+    printf '{"text":"⟳ %d","class":"reboot","tooltip":"%d updates ready · reboot required"}\n' "$count" "$count"
+elif [ "$count" = "0" ]; then
+    printf '{"text":"","class":"none","tooltip":"system is up to date"}\n'
+else
+    printf '{"text":"↓ %d","class":"available","tooltip":"%d updates available"}\n' "$count" "$count"
+fi

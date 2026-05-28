@@ -115,5 +115,16 @@ orca
 # --- glasses-as-monitor support: Wayland output tools (§7a) -------------
 wlr-randr
 
+# --- gaming (gamemode flips governor + RT prio while a game is running) -
+gamemode
+mangohud
+
+# --- screen recording (key-bindable; pairs with grim/slurp for stills) --
+wf-recorder
+
+# --- dev containers (modern toolbox; podman is rootless) ----------------
+distrobox
+podman
+
 # --- discoverability (first-run welcome wired in includes) --------------
 fastfetch
