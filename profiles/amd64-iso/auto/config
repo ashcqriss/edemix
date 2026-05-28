@@ -13,6 +13,9 @@ lb config noauto \
 	--binary-images iso-hybrid \
 	--debian-installer live \
 	--debian-installer-gui false \
+	--security false \
+	--updates true \
+	--backports false \
 	--bootappend-live "boot=live components quiet splash hostname=edemint username=edemint mitigations=auto,nosmt amd_pstate=guided intel_pstate=active pcie_aspm=force nowatchdog" \
 	--memtest none \
 	--apt-recommends false \
