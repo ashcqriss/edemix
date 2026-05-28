@@ -1,0 +1,99 @@
+#!/bin/sh
+# Edemint AR head-tracking driver build (§7b, §6c).
+#
+# Fetches a pinned commit/tag of wheaney/XRLinuxDriver, verifies its
+# SHA-256, builds as a non-root user, installs the daemon + udev rules
+# scoped to the edemint-ar group at 0660, and installs a disabled
+# systemd --user unit. The user opts in via `edemint-ar-status enable`.
+#
+# Degrades gracefully: if the network is unavailable OR the SHA mismatches,
+# logs a warning and exits 0 so the core image build never fails on the
+# AR add-on.
+set -e
+
+# --- pinned upstream version + SHA --------------------------------------
+# Bump together: update XR_TAG, recompute the SHA-256 of the tarball, and
+# update XR_SHA256 in the SAME commit. The placeholder below intentionally
+# trips the mismatch path so an un-vetted upstream never lands silently.
+XR_TAG="v2.0.0"
+XR_URL="https://github.com/wheaney/XRLinuxDriver/archive/refs/tags/${XR_TAG}.tar.gz"
+XR_SHA256="PLACEHOLDER-replace-with-real-sha256-before-shipping-aaaaaaaaaa"
+
+skip() {
+    echo "WARN: $* — skipping XR driver build. AR head-tracking will not be available until rebuilt." >&2
+    exit 0
+}
+
+command -v curl >/dev/null 2>&1 || skip "curl missing"
+command -v sha256sum >/dev/null 2>&1 || skip "sha256sum missing"
+
+WORK_DIR="$(mktemp -d)"
+trap 'rm -rf "$WORK_DIR"' EXIT
+
+echo "INFO: fetching XRLinuxDriver $XR_TAG..."
+if ! curl -fsSL "$XR_URL" -o "$WORK_DIR/xr.tar.gz"; then
+    skip "fetch failed (offline?)"
+fi
+
+ACTUAL="$(sha256sum "$WORK_DIR/xr.tar.gz" | awk '{print $1}')"
+if [ "$ACTUAL" != "$XR_SHA256" ]; then
+    echo "WARN: XRLinuxDriver SHA mismatch."          >&2
+    echo "      expected: $XR_SHA256"                  >&2
+    echo "      actual:   $ACTUAL"                     >&2
+    skip "SHA-256 verification failed"
+fi
+
+tar -xzf "$WORK_DIR/xr.tar.gz" -C "$WORK_DIR"
+SRC_DIR="$(find "$WORK_DIR" -maxdepth 1 -type d -name 'XRLinuxDriver-*' | head -1)"
+[ -d "$SRC_DIR" ] || skip "no source dir after extract"
+
+# --- non-root build user (-6c) ------------------------------------------
+getent passwd edemintbuild >/dev/null \
+    || useradd --system --no-create-home --shell /usr/sbin/nologin edemintbuild
+
+chown -R edemintbuild:edemintbuild "$SRC_DIR"
+
+# Build (su drops privileges; the install step below is run as root but only
+# touches /usr/local).
+su -s /bin/sh edemintbuild -c "
+    set -e
+    cd '$SRC_DIR'
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+    cmake --build build -j\$(nproc)
+" || skip "build failed"
+
+cmake --install "$SRC_DIR/build" --prefix /usr/local || skip "install failed"
+
+# --- AR group + udev rules (§6c) ----------------------------------------
+getent group edemint-ar >/dev/null || groupadd --system edemint-ar
+
+install -m 0644 -D /dev/null /etc/udev/rules.d/70-edemint-ar.rules
+cat > /etc/udev/rules.d/70-edemint-ar.rules <<'EOF'
+# Edemint AR-glasses HID/USB access (group-scoped, 0660 — never world-readable).
+# RayNeo (3318), XREAL (3318), Rokid (35bd), Viture (1f24), TCL (3318).
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3318", MODE="0660", GROUP="edemint-ar"
+SUBSYSTEM=="usb",    ATTRS{idVendor}=="3318", MODE="0660", GROUP="edemint-ar"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="35bd", MODE="0660", GROUP="edemint-ar"
+SUBSYSTEM=="usb",    ATTRS{idVendor}=="35bd", MODE="0660", GROUP="edemint-ar"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1f24", MODE="0660", GROUP="edemint-ar"
+SUBSYSTEM=="usb",    ATTRS{idVendor}=="1f24", MODE="0660", GROUP="edemint-ar"
+EOF
+
+# --- systemd --user unit (disabled by default) ---------------------------
+install -m 0644 -D /dev/null /etc/systemd/user/edemint-xr.service
+cat > /etc/systemd/user/edemint-xr.service <<'EOF'
+[Unit]
+Description=Edemint XR head-tracking daemon (AR glasses)
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+ExecStart=/usr/local/bin/xrDriver
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
+EOF
+
+echo "INFO: XR driver installed (disabled). Enable with: edemint-ar-status enable"

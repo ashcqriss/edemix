@@ -77,9 +77,8 @@ mkdir -p "$ROOTFS_DIR" "$IMAGES_DIR" "$TMP_DIR"
 # Combine the shared base list (no installer.list — ISO-only) with the
 # Pi-specific list. Strip comments/blank lines, join with spaces.
 PKG_LIST="$(
-    cat "$REPO_ROOT/shared/package-lists/base.list.chroot" \
-        "$REPO_ROOT/shared/package-lists/desktop.list.chroot" \
-        "$PROFILE_DIR/package-lists/pi.list.chroot" \
+    cat "$REPO_ROOT"/shared/package-lists/*.list.chroot \
+        "$PROFILE_DIR"/package-lists/*.list.chroot \
     | grep -vE '^\s*(#|$)' \
     | tr '\n' ' '
 )"

@@ -1,0 +1,86 @@
+#!/bin/sh
+# Edemint AR-glasses status + toggle helper (§7c).
+#
+# Reports detected glasses, current output state, and whether the XR daemon
+# is running. The `enable`/`disable` subcommands toggle the per-user systemd
+# unit installed by 0200-xr-driver.hook.chroot.
+#
+# Usage:
+#   edemint-ar-status            # one-shot status
+#   edemint-ar-status enable     # enable + start the XR daemon for this user
+#   edemint-ar-status disable    # stop + disable the daemon
+set -eu
+
+KNOWN_VENDORS="3318 35bd 1f24"
+
+detect_glasses() {
+    if ! command -v lsusb >/dev/null 2>&1; then
+        echo "(lsusb missing — install usbutils)"
+        return
+    fi
+    found=0
+    for v in $KNOWN_VENDORS; do
+        if lsusb -d "$v:" 2>/dev/null | head -1 | grep -q .; then
+            lsusb -d "$v:" | sed 's/^/  /'
+            found=1
+        fi
+    done
+    [ $found -eq 1 ] || echo "  (no AR glasses detected on USB)"
+}
+
+show_outputs() {
+    if command -v wlr-randr >/dev/null 2>&1 && [ -n "${WAYLAND_DISPLAY:-}" ]; then
+        wlr-randr | head -40 | sed 's/^/  /'
+    elif command -v hyprctl >/dev/null 2>&1 && [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+        hyprctl monitors | head -30 | sed 's/^/  /'
+    else
+        echo "  (no Wayland session — run inside Hyprland)"
+    fi
+}
+
+daemon_state() {
+    if systemctl --user is-active edemint-xr.service >/dev/null 2>&1; then
+        echo "running"
+    elif systemctl --user is-enabled edemint-xr.service >/dev/null 2>&1; then
+        echo "enabled but not running"
+    else
+        echo "disabled"
+    fi
+}
+
+case "${1:-status}" in
+    enable)
+        systemctl --user enable --now edemint-xr.service
+        echo ">> XR head-tracking enabled (current user only)."
+        echo ">> Add yourself to the 'edemint-ar' group if you haven't:"
+        echo "   sudo gpasswd -a \$USER edemint-ar && newgrp edemint-ar"
+        ;;
+    disable)
+        systemctl --user disable --now edemint-xr.service
+        echo ">> XR head-tracking disabled."
+        ;;
+    status|"")
+        echo "── Edemint AR glasses ─────────────────────────────────────"
+        echo "Detected glasses:"
+        detect_glasses
+        echo
+        echo "Outputs:"
+        show_outputs
+        echo
+        printf "XR daemon: %s\n" "$(daemon_state)"
+        printf "edemint-ar group membership: "
+        if id -nG 2>/dev/null | tr ' ' '\n' | grep -qx edemint-ar; then
+            echo "yes"
+        else
+            echo "no (sudo gpasswd -a \$USER edemint-ar)"
+        fi
+        echo "─────────────────────────────────────────────────────────"
+        ;;
+    -h|--help|help)
+        echo "Usage: $0 {status|enable|disable}"
+        ;;
+    *)
+        echo "Unknown command: $1" >&2
+        exit 2
+        ;;
+esac

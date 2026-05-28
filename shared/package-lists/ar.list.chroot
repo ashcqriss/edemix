@@ -1,0 +1,18 @@
+# Edemint AR-glasses support (§7).
+# Off by default; the XR daemon ships disabled and must be enabled per user.
+
+# Build deps for the XRLinuxDriver hook (0200-xr-driver.hook.chroot)
+build-essential
+cmake
+pkg-config
+libusb-1.0-0-dev
+libjson-c-dev
+libevdev-dev
+libhidapi-dev
+libcurl4-openssl-dev
+
+# Runtime: USB sound/camera + Wayland output juggling
+v4l-utils
+libcamera-tools
+
+# kanshi already pulled in by edemint-desktop; listed here for clarity.
