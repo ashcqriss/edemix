@@ -1,0 +1,17 @@
+Section: metapackages
+Priority: optional
+Standards-Version: 4.6.2
+Package: edemint-base
+Version: 0.1
+Maintainer: Edemint <hello@edemint.invalid>
+Homepage: https://example.invalid/edemint
+Architecture: all
+Depends: @DEPS@
+Description: Edemint base metapackage — system plumbing
+ The Edemint base metapackage pulls in everything a complete Edemint OS
+ needs below the desktop: firmware (non-free-firmware), CPU microcode,
+ NetworkManager + ModemManager, BlueZ, CUPS + Avahi, power-profiles-daemon,
+ storage tools (ntfs-3g/exfat/btrfs/LVM/cryptsetup), audio (PipeWire +
+ WirePlumber), zram + earlyoom, AppArmor + nftables + unattended-upgrades,
+ gnome-keyring, fprintd. Installing this metapackage on a vanilla Debian
+ Trixie box reproduces the Edemint base.

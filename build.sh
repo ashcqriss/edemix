@@ -43,8 +43,11 @@ case "$target" in
             command -v lb >/dev/null 2>&1 || {
                 echo ">> live-build not found; installing it..."
                 apt-get update
-                apt-get install -y live-build
+                apt-get install -y live-build equivs
             }
+            command -v equivs-build >/dev/null 2>&1 || apt-get install -y equivs
+            echo ">> building edemint metapackages..."
+            "$REPO_ROOT/packaging/build-metapackages.sh"
             cd "$profile_dir"
             echo ">> configuring (auto/config)..."
             lb config

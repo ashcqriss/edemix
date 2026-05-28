@@ -1,0 +1,16 @@
+# Build artifacts
+profiles/*/config/packages.chroot/*.deb
+profiles/amd64-iso/cache/
+profiles/amd64-iso/.build/
+profiles/amd64-iso/binary/
+profiles/amd64-iso/chroot/
+profiles/amd64-iso/*.iso
+profiles/amd64-iso/*.img
+profiles/amd64-iso/*.log
+profiles/arm64-pi/build/
+profiles/arm64-pi/*.img*
+
+# equivs build droppings
+packaging/*/*_*.deb
+packaging/*/*_*.buildinfo
+packaging/*/*_*.changes
