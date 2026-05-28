@@ -1,0 +1,18 @@
+# Edemint amd64 ISO — installer + Secure Boot chain.
+# This list is ISO-only; the arm64/Pi profile does not symlink it.
+
+# Calamares + Debian-friendly module set
+calamares
+calamares-settings-debian
+qml-module-qtquick-controls
+qml-module-qtquick-controls2
+
+# Secure Boot signed chain (§6d)
+shim-signed
+grub-efi-amd64-signed
+linux-image-amd64
+
+# Live + install glue
+live-boot
+live-config
+live-config-systemd

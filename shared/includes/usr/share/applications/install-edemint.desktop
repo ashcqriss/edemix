@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Install Edemint
+GenericName=System Installer
+Comment=Install Edemint to disk
+Exec=sudo -E calamares
+Icon=calamares
+Terminal=false
+Categories=System;
+StartupNotify=true
+NoDisplay=false
+OnlyShowIn=Hyprland;
