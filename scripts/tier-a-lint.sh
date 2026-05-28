@@ -22,16 +22,15 @@ fail=0
 note() { printf '\n── %s ──────────────────────────────────────────\n' "$1"; }
 
 note "shellcheck"
+# Collect shell scripts: explicit *.sh / *.hook.chroot under the tree, plus
+# the helper bin/ directory (real files only — skip symlinks like `ai`).
 SHFILES="$(
-    find . \
-        -type f \
-        \( -name '*.sh' -o -name '*.hook.chroot' \) \
-        ! -path './.git/*' ! -path './profiles/*/build/*'
-    find shared/includes/usr/local/bin -type f ! -type l 2>/dev/null
+    {
+        find . -type f \( -name '*.sh' -o -name '*.hook.chroot' \) \
+            ! -path './.git/*' ! -path './profiles/*/build/*'
+        find shared/includes/usr/local/bin -type f ! -type l 2>/dev/null
+    } | awk 'NF && !seen[$0]++'
 )"
-SHFILES="$SHFILES $(find shared/includes/usr/local/bin -type f ! -type l 2>/dev/null)"
-# de-dup + skip symlinks
-SHFILES="$(printf '%s\n' "$SHFILES" | awk 'NF && !seen[$0]++')"
 # shellcheck disable=SC2086
 shellcheck $SHFILES || fail=1
 

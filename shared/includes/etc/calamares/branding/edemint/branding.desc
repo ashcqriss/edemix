@@ -17,11 +17,11 @@ strings:
     donateUrl:          https://example.invalid/edemint/donate
 
 # Image slots (real art replaces these in the deferred design pass).
+# Only reference files we actually ship — Calamares warns/errors on
+# missing image paths.
 images:
     productLogo:         logo.svg
     productIcon:         logo.svg
-    productWelcome:      welcome.png
-    productWallpaper:    wallpaper.png
 
 # Layout / typography — placeholder values
 style:

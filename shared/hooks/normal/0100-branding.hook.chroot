@@ -67,16 +67,27 @@ install -d -m 0755 /etc/apt/keyrings
 touch /etc/apt/keyrings/edemint-archive-keyring.gpg
 chmod 0644 /etc/apt/keyrings/edemint-archive-keyring.gpg
 
-# --- CUPS: bind to localhost only (§6e) ---------------------------------
+# --- CUPS: bind TCP listen to localhost only (§6e) ----------------------
+# Only rewrite TCP Listen lines (Listen *:631, Listen 0.0.0.0:631, etc.).
+# The Unix-socket Listen (Listen /run/cups/cups.sock) MUST stay intact —
+# every CUPS client reaches the daemon over that socket.
 if [ -f /etc/cups/cupsd.conf ]; then
     sed -i \
-        -e 's/^\s*Listen\s.*$/Listen localhost:631/' \
-        -e 's/^\s*Port\s\+631\s*$/Listen localhost:631/' \
+        -e 's|^Listen \*:631.*|Listen localhost:631|' \
+        -e 's|^Listen 0\.0\.0\.0:631.*|Listen localhost:631|' \
+        -e 's|^Port 631.*|Listen localhost:631|' \
         /etc/cups/cupsd.conf
 fi
 
-# --- PAM: wire the keyring snippet into login + greetd + sudo ------------
-for stack in login sudo greetd; do
+# --- AR group — created here so Calamares 'users' module can add the user
+#     even if the XR-driver hook later skips (offline / SHA mismatch).
+getent group edemint-ar >/dev/null || groupadd --system edemint-ar
+
+# --- PAM: wire the keyring snippet into login + greetd only -------------
+# sudo intentionally NOT touched: gnome-keyring auto-unlock is a login-time
+# concern; adding it to sudo's auth stack widens the attack surface for
+# no real benefit (the keyring is already unlocked by then).
+for stack in login greetd; do
     pf="/etc/pam.d/$stack"
     [ -f "$pf" ] || continue
     grep -q 'edemint-keyring' "$pf" || \

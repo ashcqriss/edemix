@@ -83,16 +83,20 @@ PKG_LIST="$(
     | tr '\n' ' '
 )"
 
-# mmdebstrap evaluates $1 inside the chroot hook; keep single-quoted.
+# mmdebstrap evaluates $1 inside the chroot hook; keep those bits
+# single-quoted so the host shell doesn't expand them.
+# `sync-in` copies the contents of the host path INTO the named chroot
+# directory (rsync-like), which is what we want for both includes and
+# hooks. copy-in's semantics are subtly different — sync-in is correct.
 # shellcheck disable=SC2016
 mmdebstrap \
     --arch=arm64 \
     --components="main contrib non-free non-free-firmware" \
     --include="$PKG_LIST" \
-    --customize-hook='copy-in '"$BUILD_DIR"'/packages.chroot /var/cache/edemint' \
+    --customize-hook='sync-in '"$BUILD_DIR"'/packages.chroot /var/cache/edemint' \
     --customize-hook='chroot "$1" sh -c "dpkg -i /var/cache/edemint/*.deb || apt-get -y -f install"' \
-    --customize-hook='copy-in '"$REPO_ROOT"'/shared/includes/. /' \
-    --customize-hook='copy-in '"$REPO_ROOT"'/shared/hooks/normal /usr/local/share/edemint-hooks' \
+    --customize-hook='sync-in '"$REPO_ROOT"'/shared/includes /' \
+    --customize-hook='sync-in '"$REPO_ROOT"'/shared/hooks/normal /usr/local/share/edemint-hooks' \
     --customize-hook='chroot "$1" sh -c "for h in /usr/local/share/edemint-hooks/*.hook.chroot; do echo running $h; sh \"$h\" || true; done"' \
     trixie \
     "$ROOTFS_DIR" \

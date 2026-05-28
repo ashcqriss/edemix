@@ -1,7 +1,7 @@
 #!/bin/sh
-# Edemint first-run welcome (§0h).
-# Marks itself complete via a per-user stamp file; the autostart entry exits
-# silently after the first successful run.
+# Edemint first-run welcome (§0h). Marks itself complete via a per-user
+# stamp file; the autostart entry exits silently after the first run.
+# Routes the message through mako (notify-send), with stdout as fallback.
 
 STAMP="${XDG_DATA_HOME:-$HOME/.local/share}/edemint/welcome.done"
 mkdir -p "$(dirname "$STAMP")"
@@ -10,28 +10,16 @@ if [ -e "$STAMP" ] && [ "${1:-}" != "--force" ]; then
     exit 0
 fi
 
-MSG=$(cat <<'EOF'
-Welcome to Edemint.
+TITLE="Welcome to Edemint"
+BODY="Super + ? — keybind cheat-sheet
+Super + Return — terminal · Super + D — launcher · Super + E — files
+Network: nm-applet in the tray. AR glasses: plug in over USB-C DP-Alt.
+AI assistant ships disabled; run  edemint-ai enable  to opt in."
 
-  Super + ?        keybind cheat-sheet
-  Super + Return   terminal
-  Super + D        launcher
-  Super + E        files
-
-Network: nm-applet in the tray (top right).
-AR glasses: plug in over USB-C DP-Alt; they show up automatically.
-AI assistant: ships disabled. Run  edemint-ai enable  to opt in.
-
-Edemint is a Debian-based Wayland desktop. Pass --force to show this again.
-EOF
-)
-
-if command -v wofi >/dev/null 2>&1; then
-    echo "$MSG" | wofi --dmenu --width 640 --height 420 \
-        --prompt "Edemint" --insensitive >/dev/null 2>&1 || \
-        printf '%s\n' "$MSG"
+if command -v notify-send >/dev/null 2>&1; then
+    notify-send -t 12000 -u normal -i computer "$TITLE" "$BODY"
 else
-    printf '%s\n' "$MSG"
+    printf '%s\n\n%s\n' "$TITLE" "$BODY"
 fi
 
 touch "$STAMP"
