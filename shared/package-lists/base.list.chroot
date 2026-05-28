@@ -1,13 +1,40 @@
-# Core system: kept deliberately small for low-RAM / low-storage targets.
-# No desktop environment here — only the system plumbing.
+# Edemint base — system plumbing, before any GUI.
+# Kept lean enough for the Pi / 1GB-class targets (zram + earlyoom make
+# low-RAM survivable; see §0d of the plan).
 
-# init / firmware / networking
+# --- init / networking ---------------------------------------------------
 systemd-sysv
 network-manager
-firmware-linux-free
+modemmanager
+
+# --- firmware (the non-free-firmware archive area is enabled in auto/config)
+# Without these most Wi-Fi/GPUs are dead on first boot. apt-recommends is off,
+# so list the firmware packages explicitly rather than relying on metapackages.
+firmware-misc-nonfree
+firmware-iwlwifi
+firmware-realtek
+firmware-atheros
+firmware-amd-graphics
+firmware-brcm80211
 wireless-regdb
 
-# essential CLI userland
+# CPU microcode (Intel + AMD; the kernel loads the right one at boot)
+intel-microcode
+amd64-microcode
+
+# --- bluetooth (stack only; GUI lives in desktop.list) ------------------
+bluez
+libspa-0.2-bluetooth
+
+# --- power management ---------------------------------------------------
+power-profiles-daemon
+
+# --- printing services (CUPS bound to localhost in includes; see §6e) ---
+cups
+cups-browsed
+avahi-daemon
+
+# --- essential CLI userland ---------------------------------------------
 sudo
 nano
 neovim
@@ -21,12 +48,41 @@ pciutils
 usbutils
 xz-utils
 
-# audio (pipewire is lighter and more capable than pulseaudio)
+# --- audio (pipewire — lighter and more capable than pulseaudio) --------
 pipewire
 pipewire-pulse
 wireplumber
 
-# filesystems / disk
+# --- filesystems / disk -------------------------------------------------
 gdisk
 dosfstools
 e2fsprogs
+ntfs-3g
+exfatprogs
+btrfs-progs
+udisks2
+cryptsetup
+lvm2
+
+# --- i18n: locale + tz data ---------------------------------------------
+locales
+tzdata
+
+# --- low-RAM resilience (§0d) -------------------------------------------
+zram-tools
+earlyoom
+
+# --- security defaults (§6b) --------------------------------------------
+apparmor
+apparmor-profiles
+nftables
+unattended-upgrades
+apt-listchanges
+
+# --- credential store + PAM integration (§6e) ---------------------------
+gnome-keyring
+libpam-gnome-keyring
+
+# --- fingerprint auth (§0g) — driver only; PAM wired in includes --------
+fprintd
+libpam-fprintd

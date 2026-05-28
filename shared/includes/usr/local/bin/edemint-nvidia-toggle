@@ -1,0 +1,53 @@
+#!/bin/sh
+# Edemint NVIDIA opt-in toggle (§0e).
+#
+# Run once on an NVIDIA-equipped machine to install the proprietary driver and
+# enable the Hyprland environment that makes Wayland render correctly. Mesa
+# stays the default for Intel/AMD GPUs.
+#
+# Usage:
+#   sudo edemint-nvidia-toggle on    # install nvidia-driver + write env file
+#   sudo edemint-nvidia-toggle off   # leave the driver, drop the env file
+
+set -e
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "This needs root. Re-run with sudo." >&2
+    exit 1
+fi
+
+ENV_FILE=/etc/environment.d/90-edemint-nvidia.conf
+
+case "${1:-status}" in
+    on)
+        apt-get update
+        apt-get install -y nvidia-driver firmware-misc-nonfree
+        mkdir -p "$(dirname "$ENV_FILE")"
+        cat > "$ENV_FILE" <<'EOF'
+# Edemint NVIDIA Wayland env — wlroots/Hyprland on NVIDIA proprietary
+LIBVA_DRIVER_NAME=nvidia
+__GLX_VENDOR_LIBRARY_NAME=nvidia
+GBM_BACKEND=nvidia-drm
+WLR_NO_HARDWARE_CURSORS=1
+NVD_BACKEND=direct
+EOF
+        echo ">> NVIDIA driver installed; env at $ENV_FILE."
+        echo ">> Reboot to pick up the kernel module."
+        ;;
+    off)
+        rm -f "$ENV_FILE"
+        echo ">> NVIDIA env file removed; driver package left in place."
+        echo ">> To uninstall the driver: apt-get purge nvidia-driver"
+        ;;
+    status)
+        if [ -e "$ENV_FILE" ]; then
+            echo "edemint-nvidia: ON ($ENV_FILE present)"
+        else
+            echo "edemint-nvidia: OFF (Mesa default)"
+        fi
+        ;;
+    *)
+        echo "Usage: $0 {on|off|status}" >&2
+        exit 2
+        ;;
+esac

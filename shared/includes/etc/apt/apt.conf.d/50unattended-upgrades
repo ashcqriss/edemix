@@ -1,0 +1,24 @@
+// Edemint unattended-upgrades policy.
+// Pulls from the Debian security suite + the Edemint origin (once the repo
+// is online; the deb822 source ships in sources.list.d/edemint.sources).
+//
+// Reboots are NOT taken automatically; a notification surfaces in Waybar
+// when one is needed. Adjust here if you prefer aggressive reboots.
+
+Unattended-Upgrade::Origins-Pattern {
+    "origin=Debian,codename=${distro_codename},label=Debian-Security";
+    "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";
+    "origin=Edemint,codename=${distro_codename}";
+};
+
+Unattended-Upgrade::Package-Blacklist {
+};
+
+Unattended-Upgrade::DevRelease "auto";
+Unattended-Upgrade::AutoFixInterruptedDpkg "true";
+Unattended-Upgrade::MinimalSteps "true";
+Unattended-Upgrade::Mail "";
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+Unattended-Upgrade::Remove-New-Unused-Dependencies "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "false";
+Unattended-Upgrade::Automatic-Reboot "false";

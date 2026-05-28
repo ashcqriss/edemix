@@ -1,0 +1,37 @@
+#!/bin/sh
+# Edemint first-run welcome (§0h).
+# Marks itself complete via a per-user stamp file; the autostart entry exits
+# silently after the first successful run.
+
+STAMP="${XDG_DATA_HOME:-$HOME/.local/share}/edemint/welcome.done"
+mkdir -p "$(dirname "$STAMP")"
+
+if [ -e "$STAMP" ] && [ "${1:-}" != "--force" ]; then
+    exit 0
+fi
+
+MSG=$(cat <<'EOF'
+Welcome to Edemint.
+
+  Super + ?        keybind cheat-sheet
+  Super + Return   terminal
+  Super + D        launcher
+  Super + E        files
+
+Network: nm-applet in the tray (top right).
+AR glasses: plug in over USB-C DP-Alt; they show up automatically.
+AI assistant: ships disabled. Run  edemint-ai enable  to opt in.
+
+Edemint is a Debian-based Wayland desktop. Pass --force to show this again.
+EOF
+)
+
+if command -v wofi >/dev/null 2>&1; then
+    echo "$MSG" | wofi --dmenu --width 640 --height 420 \
+        --prompt "Edemint" --insensitive >/dev/null 2>&1 || \
+        printf '%s\n' "$MSG"
+else
+    printf '%s\n' "$MSG"
+fi
+
+touch "$STAMP"

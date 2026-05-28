@@ -1,5 +1,7 @@
 #!/bin/sh
 # Edemint branding + service enablement. Runs inside the chroot during build.
+# Owns: os identity, lsb-release, apt sources, service enable/disable,
+# CUPS localhost bind, PAM keyring wiring, image slimming.
 set -e
 
 # --- OS identity ---------------------------------------------------------
@@ -8,27 +10,103 @@ PRETTY_NAME="Edemint 0.1"
 NAME="Edemint"
 VERSION_ID="0.1"
 VERSION="0.1 (origin)"
+VERSION_CODENAME=trixie
 ID=edemint
 ID_LIKE=debian
 HOME_URL="https://example.invalid/edemint"
 SUPPORT_URL="https://example.invalid/edemint"
+BUG_REPORT_URL="https://example.invalid/edemint/issues"
 EOF
 ln -sf ../usr/lib/os-release /etc/os-release
+
+cat > /etc/lsb-release <<'EOF'
+DISTRIB_ID=Edemint
+DISTRIB_RELEASE=0.1
+DISTRIB_CODENAME=origin
+DISTRIB_DESCRIPTION="Edemint 0.1"
+EOF
+
+cat > /etc/issue <<'EOF'
+Edemint 0.1 \n \l
+
+EOF
+cp /etc/issue /etc/issue.net
+
+# Default hostname (Calamares overrides on install)
+echo "edemint" > /etc/hostname
 
 # motd
 cat > /etc/motd <<'EOF'
 
   Edemint — a Wayland-first Debian remix for AR glasses and small machines.
-  Super+Return = terminal   Super+D = launcher   Super+Q = close window
+  Super+Return = terminal   Super+D = launcher   Super+? = keybind help
 
 EOF
 
-# --- Login manager -------------------------------------------------------
-# Use greetd for the graphical login; make sure nothing else grabs the VT.
-systemctl enable greetd.service || true
-systemctl set-default graphical.target || true
+# --- apt sources: Debian Trixie + non-free-firmware ----------------------
+# Use deb822 in /etc/apt/sources.list.d/ and clear the legacy file.
+cat > /etc/apt/sources.list.d/debian.sources <<'EOF'
+Types: deb
+URIs: http://deb.debian.org/debian
+Suites: trixie trixie-updates
+Components: main contrib non-free non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+Types: deb
+URIs: http://security.debian.org/debian-security
+Suites: trixie-security
+Components: main contrib non-free non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+EOF
+: > /etc/apt/sources.list
+
+# Edemint repo keyring placeholder. The real public key lands here when CI
+# (§12) replaces the placeholder via the build artifact; the deb822 source
+# in /etc/apt/sources.list.d/edemint.sources references this path.
+install -d -m 0755 /etc/apt/keyrings
+touch /etc/apt/keyrings/edemint-archive-keyring.gpg
+chmod 0644 /etc/apt/keyrings/edemint-archive-keyring.gpg
+
+# --- CUPS: bind to localhost only (§6e) ---------------------------------
+if [ -f /etc/cups/cupsd.conf ]; then
+    sed -i \
+        -e 's/^\s*Listen\s.*$/Listen localhost:631/' \
+        -e 's/^\s*Port\s\+631\s*$/Listen localhost:631/' \
+        /etc/cups/cupsd.conf
+fi
+
+# --- PAM: wire the keyring snippet into login + greetd + sudo ------------
+for stack in login sudo greetd; do
+    pf="/etc/pam.d/$stack"
+    [ -f "$pf" ] || continue
+    grep -q 'edemint-keyring' "$pf" || \
+        printf '\n# Edemint: unlock gnome-keyring at login\n@include edemint-keyring\n' >> "$pf"
+done
+
+# --- Services ------------------------------------------------------------
+# Enable
+systemctl enable greetd.service             || true
+systemctl set-default graphical.target      || true
+systemctl enable bluetooth.service          || true
+systemctl enable cups.service               || true
+systemctl enable cups-browsed.service       || true
+systemctl enable avahi-daemon.service       || true
+systemctl enable nftables.service           || true
+systemctl enable apparmor.service           || true
+systemctl enable unattended-upgrades.service|| true
+systemctl enable zramswap.service           || true
+systemctl enable earlyoom.service           || true
+systemctl enable systemd-timesyncd.service  || true
+systemctl enable ModemManager.service       || true
+systemctl enable power-profiles-daemon.service || true
+systemctl enable fprintd.service            || true
+
+# Live media only: enable autologin via greetd; the Calamares 'finished'
+# step (§6b) removes the autologin drop-in so installed disks always show
+# the greeter.
+mkdir -p /etc/greetd
+# The shipped config.toml already wires autologin — left intact here.
 
 # --- Slim the image ------------------------------------------------------
-# Drop apt caches and docs to help hit the small-storage target.
 apt-get clean || true
 rm -rf /usr/share/doc/* /var/lib/apt/lists/* || true

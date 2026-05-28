@@ -1,0 +1,14 @@
+#!/bin/sh
+# Edemint: register the Flathub remote system-wide (§8).
+# Tolerates offline builders — Flatpak's `remote-add` only touches a local
+# config file; a real sync happens the first time a user installs an app.
+set -e
+
+if ! command -v flatpak >/dev/null 2>&1; then
+    echo "flatpak not installed, skipping flathub remote add" >&2
+    exit 0
+fi
+
+flatpak remote-add --if-not-exists --system flathub \
+    https://flathub.org/repo/flathub.flatpakrepo || \
+    echo ">> flathub remote add failed (offline?); continuing." >&2

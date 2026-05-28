@@ -1,0 +1,10 @@
+# Edemint PAM drop-in — referenced by the branding hook which inserts
+# `@include edemint-keyring` into /etc/pam.d/{login,gdm-password,greetd,sudo}
+# style stacks at chroot time. Keeping the snippet here makes it easy to
+# audit and edit.
+
+# auth: unlock the login keyring with the user's password
+auth     optional   pam_gnome_keyring.so
+
+# session: start the keyring agent for the user's session
+session  optional   pam_gnome_keyring.so auto_start

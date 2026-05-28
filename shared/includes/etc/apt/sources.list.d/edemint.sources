@@ -1,0 +1,10 @@
+# deb822-format source for the Edemint apt repo.
+# The public key matching the repo signing key (§6a) is shipped as
+# /etc/apt/keyrings/edemint-archive-keyring.gpg by the branding hook.
+# The repo URL is a placeholder until the publish target is online.
+Types: deb
+URIs: https://repo.edemint.invalid/debian
+Suites: trixie
+Components: main
+Signed-By: /etc/apt/keyrings/edemint-archive-keyring.gpg
+Enabled: no

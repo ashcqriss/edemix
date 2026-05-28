@@ -1,0 +1,18 @@
+# Edemint kanshi profiles — applied automatically on hotplug (§7a).
+# Override placement here; "glasses" matches RayNeo/Xreal/Rokid/Viture EDIDs.
+
+profile laptop_only {
+    output eDP-1 enable position 0,0
+}
+
+profile glasses_mirror {
+    output eDP-1 enable position 0,0
+    output "RayNeo Air" enable mode 1920x1080@60Hz position 0,0
+}
+
+profile glasses_extend_right {
+    output eDP-1 enable position 0,0
+    output "RayNeo Air" enable mode 1920x1080@60Hz position 1920,0
+}
+
+# Fallback: leave whatever Hyprland's catch-all decides.

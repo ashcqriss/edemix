@@ -1,0 +1,36 @@
+[Default Applications]
+# Edemint default file associations. Visual design pass may swap individual
+# apps; the structure is final.
+
+# Web
+text/html=firefox-esr.desktop
+x-scheme-handler/http=firefox-esr.desktop
+x-scheme-handler/https=firefox-esr.desktop
+x-scheme-handler/about=firefox-esr.desktop
+x-scheme-handler/unknown=firefox-esr.desktop
+
+# Images (imv is Wayland-native; eog for GTK fallback)
+image/png=imv.desktop
+image/jpeg=imv.desktop
+image/gif=imv.desktop
+image/webp=imv.desktop
+image/svg+xml=imv.desktop
+
+# Documents
+application/pdf=org.gnome.Evince.desktop
+
+# Media
+video/mp4=mpv.desktop
+video/x-matroska=mpv.desktop
+video/webm=mpv.desktop
+audio/mpeg=mpv.desktop
+audio/flac=mpv.desktop
+audio/x-vorbis+ogg=mpv.desktop
+
+# Archives
+application/zip=org.gnome.FileRoller.desktop
+application/x-tar=org.gnome.FileRoller.desktop
+application/x-compressed-tar=org.gnome.FileRoller.desktop
+
+# Text
+text/plain=foot.desktop

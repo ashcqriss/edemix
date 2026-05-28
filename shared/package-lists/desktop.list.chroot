@@ -1,41 +1,119 @@
-# Edemint desktop: Hyprland (wlroots) on Wayland.
-# Chosen for low RAM use + strong customisability + a "new OS" look.
-# Everything here exists in Debian 13 (Trixie) main.
+# Edemint desktop — Hyprland (wlroots) on Wayland, plus the userland a
+# general-purpose desktop needs to feel normal. Everything here exists in
+# Debian 13 (Trixie) main / non-free-firmware.
 
-# compositor + session
+# --- compositor + session -----------------------------------------------
 hyprland
+xwayland
+qt6-wayland
+qt5-wayland
+dbus-user-session
+dconf-cli
+
+# --- portals (screen sharing, file pickers, Flatpak integration; §8) ---
+xdg-desktop-portal
 xdg-desktop-portal-hyprland
 xdg-desktop-portal-gtk
+xdg-utils
+xdg-user-dirs
 
-# login / autologin manager (tiny, Wayland-native)
+# --- login / autologin manager (tiny, Wayland-native) -------------------
 greetd
 greetd-tuigreet
 
-# shell components
+# --- Hyprland UX layer (§9) — functional UX; visuals deferred -----------
 waybar
 wofi
 foot
 mako-notifier
 swaybg
-swaylock
+hyprlock
+hypridle
+wlogout
+swayosd
+cliphist
 grim
 slurp
+swappy
+hyprpicker
 wl-clipboard
 brightnessctl
 playerctl
+kanshi
 
-# fonts (minimal set; one UI font + icons + emoji)
-fonts-jetbrains-mono
-fonts-font-awesome
-fonts-noto-color-emoji
+# --- tray GUIs (Hyprland has no settings app, so these provide them) ----
+network-manager-gnome
+blueman
+pavucontrol
 
-# Wayland-friendly apps (light)
-thunar
+# --- privilege prompts (GUI polkit agent autostarted in hyprland.conf) --
+polkit-kde-agent-1
+
+# --- input method (CJK et al; env wired in hyprland.conf) ---------------
+fcitx5
+fcitx5-chinese-addons
+fcitx5-mozc
+
+# --- automount / file dialogs back-end (§8) -----------------------------
+gvfs
+gvfs-backends
+
+# --- baseline apps (browser + viewers + utilities; §0b) -----------------
+firefox-esr
+eog
+imv
+evince
+mpv
+file-roller
+gnome-calculator
+gnome-disk-utility
 gnome-system-monitor
+thunar
 
-# glasses-as-monitor support: tools to manage Wayland outputs
-wlr-randr
+# --- Flatpak (Flathub remote registered in 0300-flatpak-flathub.hook) ---
+flatpak
+gnome-software
+gnome-software-plugin-flatpak
 
-# Mesa / GPU userland (works on Intel, AMD, and Raspberry Pi VideoCore)
+# --- graphics: Mesa userland + VA-API HW video decode (§0e) -------------
 mesa-vulkan-drivers
 libgl1-mesa-dri
+libva2
+mesa-va-drivers
+intel-media-va-driver
+vainfo
+wlsunset
+
+# --- codecs (FFmpeg + GStreamer; §0f) -----------------------------------
+ffmpeg
+gstreamer1.0-plugins-good
+gstreamer1.0-plugins-bad
+gstreamer1.0-plugins-ugly
+gstreamer1.0-libav
+
+# --- fonts (broad Unicode + monospace + emoji + icons; §0f) -------------
+fonts-noto
+fonts-noto-color-emoji
+fonts-liberation
+fonts-jetbrains-mono
+fonts-firacode
+fonts-font-awesome
+
+# --- snapshots/rollback (§0g) — assumes btrfs root from Calamares -------
+snapper
+grub-btrfs
+
+# --- VPN integration for NetworkManager (§0g) ---------------------------
+network-manager-openvpn-gnome
+network-manager-openconnect-gnome
+wireguard-tools
+
+# --- accessibility (§10) ------------------------------------------------
+at-spi2-core
+orca
+
+# --- glasses-as-monitor support: Wayland output tools (§7a) -------------
+wlr-randr
+
+# --- discoverability (first-run welcome wired in includes) --------------
+fastfetch

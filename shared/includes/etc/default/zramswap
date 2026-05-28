@@ -1,0 +1,5 @@
+# Edemint zram defaults — compressed RAM swap (§0d).
+# zstd is fast + small; PERCENT scales swap with available RAM.
+ALGO=zstd
+PERCENT=50
+PRIORITY=100
