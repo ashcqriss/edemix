@@ -156,7 +156,8 @@ mmdebstrap \
     --customize-hook='sync-in '"$REPO_ROOT"'/shared/includes /' \
     --customize-hook='sync-in '"$PROFILE_DIR"'/includes /' \
     --customize-hook='sync-in '"$REPO_ROOT"'/shared/hooks/normal /usr/local/share/edemint-hooks' \
-    --customize-hook='chroot "$1" sh -c "for h in /usr/local/share/edemint-hooks/*.hook.chroot; do echo running $h; sh \"$h\" || true; done"' \
+    --customize-hook='copy-in '"$PROFILE_DIR"'/scripts/edemint-run-hooks /usr/local/sbin/' \
+    --customize-hook='chroot "$1" sh /usr/local/sbin/edemint-run-hooks' \
     --customize-hook='chroot "$1" sh -c "systemctl enable edemint-firstboot-growfs.service ssh.service || true"' \
     --customize-hook='sync-out /var/cache/apt/archives '"$APT_CACHE" \
     trixie \

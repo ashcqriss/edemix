@@ -1,0 +1,24 @@
+#!/bin/sh
+# Edemint Pi-image hook runner. Invoked inside the chroot via mmdebstrap's
+# customize-hook, AFTER metapackages and shared/hooks/normal/* have been
+# synced into /usr/local/share/edemint-hooks/. Runs each *.hook.chroot in
+# alphabetical order, swallowing per-hook failures so one bad hook doesn't
+# tank the whole image.
+#
+# Living as a script file (rather than inline `chroot "$1" sh -c "..."`)
+# avoids the nested-quoting bug where the outer mmdebstrap wrapper shell
+# eats $h before the inner shell can iterate.
+set -u
+
+HOOK_DIR=/usr/local/share/edemint-hooks
+[ -d "$HOOK_DIR" ] || { echo "edemint-run-hooks: no $HOOK_DIR"; exit 0; }
+
+found=0
+for h in "$HOOK_DIR"/*.hook.chroot; do
+    [ -f "$h" ] || continue
+    found=1
+    echo "edemint-run-hooks: $h"
+    sh "$h" || echo "edemint-run-hooks: $h FAILED (continuing)"
+done
+
+[ "$found" -eq 1 ] || echo "edemint-run-hooks: nothing matched $HOOK_DIR/*.hook.chroot"

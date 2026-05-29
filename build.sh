@@ -74,30 +74,31 @@ case "$target" in
             # lb_chroot_archives' apt-get update fails with
             # "env: 'gpg': No such file or directory" / "GPG exited
             # with error status 127" right after fetching InRelease.
-            # Ubuntu's lb_config rejects the matching --debootstrap-
-            # options front-end flag outright ("unrecognized option"),
-            # so we MUST do this directly in the generated config files.
-            # Set both LB_BOOTSTRAP_INCLUDES (newer live-build) and
-            # LB_DEBOOTSTRAP_OPTIONS (older) so we work across vintages.
+            #
+            # Ubuntu's lb_config rejects --debootstrap-options outright
+            # ("unrecognized option"), so we MUST set the underlying
+            # live-build variable directly in config/bootstrap.
+            #
+            # The variable live-build actually reads is LB_BOOTSTRAP_INCLUDE
+            # (singular), comma-separated (gets passed as --include=$LB_
+            # BOOTSTRAP_INCLUDE to debootstrap). The plural form is also
+            # set for any forked version that reads it.
             if [ -f config/bootstrap ]; then
-                EXTRA_SPACE="gnupg ca-certificates apt-transport-https"
                 EXTRA_COMMA="gnupg,ca-certificates,apt-transport-https"
+                EXTRA_SPACE="gnupg ca-certificates apt-transport-https"
 
-                if grep -q '^LB_BOOTSTRAP_INCLUDES=' config/bootstrap; then
-                    sed -i "s|^LB_BOOTSTRAP_INCLUDES=.*|LB_BOOTSTRAP_INCLUDES=\"$EXTRA_SPACE\"|" config/bootstrap
-                else
-                    echo "LB_BOOTSTRAP_INCLUDES=\"$EXTRA_SPACE\"" >> config/bootstrap
-                fi
-
-                DEBOPTS="--include=$EXTRA_COMMA"
-                if grep -q '^LB_DEBOOTSTRAP_OPTIONS=' config/bootstrap; then
-                    # Append to existing options rather than replace, so we
-                    # don't stomp on anything lb_config legitimately set.
-                    sed -i "s|^LB_DEBOOTSTRAP_OPTIONS=\"\\(.*\\)\"|LB_DEBOOTSTRAP_OPTIONS=\"\\1 $DEBOPTS\"|" config/bootstrap
-                else
-                    echo "LB_DEBOOTSTRAP_OPTIONS=\"$DEBOPTS\"" >> config/bootstrap
-                fi
-                echo ">> forced LB_BOOTSTRAP_INCLUDES + LB_DEBOOTSTRAP_OPTIONS in config/bootstrap"
+                for var_assign in \
+                    "LB_BOOTSTRAP_INCLUDE=\"$EXTRA_COMMA\"" \
+                    "LB_BOOTSTRAP_INCLUDES=\"$EXTRA_SPACE\""
+                do
+                    key="${var_assign%%=*}"
+                    if grep -q "^$key=" config/bootstrap; then
+                        sed -i "s|^$key=.*|$var_assign|" config/bootstrap
+                    else
+                        echo "$var_assign" >> config/bootstrap
+                    fi
+                done
+                echo ">> forced LB_BOOTSTRAP_INCLUDE(S) in config/bootstrap"
             fi
             echo ">> building image (this takes a while and needs network)..."
             lb build
