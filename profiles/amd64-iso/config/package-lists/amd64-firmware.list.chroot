@@ -1,0 +1,14 @@
+# Edemint amd64-only hardware/firmware bits.
+# These exist only on amd64 — Debian's intel-microcode and amd64-microcode
+# are arch:amd64, and intel-media-va-driver is x86-Intel-only. The Pi
+# build never references this file (it lives under the amd64 profile, not
+# shared/), so arm64 doesn't try to install them.
+
+# CPU microcode — kernel auto-picks the right one at boot (Intel OR AMD,
+# whichever the CPU actually is).
+intel-microcode
+amd64-microcode
+
+# Intel Media VA-API driver — hardware video decode for Intel iGPUs.
+# AMD uses mesa-va-drivers (kept in the shared desktop list).
+intel-media-va-driver

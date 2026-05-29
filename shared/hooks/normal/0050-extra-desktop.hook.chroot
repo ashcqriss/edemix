@@ -13,6 +13,7 @@
 set -u
 
 EXTRAS="
+hyprland
 xdg-desktop-portal-hyprland
 greetd-tuigreet
 hyprlock
@@ -24,6 +25,8 @@ wlogout
 wf-recorder
 distrobox
 fastfetch
+grub-btrfs
+ollama
 "
 
 echo "edemint: installing best-effort desktop extras..."

@@ -3,10 +3,13 @@
 # Debian 13 (Trixie) main / non-free-firmware.
 
 # --- compositor + session -----------------------------------------------
-hyprland
+# hyprland itself is installed best-effort by 0050-extra-desktop.hook —
+# its availability in Trixie main varies between arches/snapshots, and a
+# missing one would tank both image builds. The hook treats failure as
+# "warn and continue"; the rest of the desktop still builds + boots.
 xwayland
 qt6-wayland
-qt5-wayland
+qtwayland5
 dbus-user-session
 dconf-cli
 
@@ -83,9 +86,10 @@ mesa-vulkan-drivers
 libgl1-mesa-dri
 libva2
 mesa-va-drivers
-intel-media-va-driver
 vainfo
 wlsunset
+# intel-media-va-driver is Intel-only (arch:amd64,i386) — ships from
+# profiles/amd64-iso/config/package-lists/amd64-firmware.list.chroot.
 
 # --- codecs (FFmpeg + GStreamer; §0f) -----------------------------------
 ffmpeg
@@ -103,8 +107,9 @@ fonts-firacode
 fonts-font-awesome
 
 # --- snapshots/rollback (§0g) — assumes btrfs root from Calamares -------
+# grub-btrfs is best-effort (Trixie packaging varies); snapper alone is
+# enough for `edemint-rollback` to work from a TTY.
 snapper
-grub-btrfs
 
 # --- VPN integration for NetworkManager (§0g) ---------------------------
 network-manager-openvpn-gnome

@@ -18,9 +18,10 @@ firmware-amd-graphics
 firmware-brcm80211
 wireless-regdb
 
-# CPU microcode (Intel + AMD; the kernel loads the right one at boot)
-intel-microcode
-amd64-microcode
+# CPU microcode (Intel + AMD) is shipped only on amd64 — Debian's
+# intel-microcode / amd64-microcode are arch:amd64 and obviously have no
+# meaning on arm64. They live in profiles/amd64-iso/config/package-lists/
+# amd64-firmware.list.chroot, NOT here, so the Pi build skips them.
 
 # --- bluetooth (stack only; GUI lives in desktop.list) ------------------
 bluez

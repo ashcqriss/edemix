@@ -2,8 +2,9 @@
 # opts in via `edemint-ai enable`. Cloud calls and local inference are
 # fully optional — the helper degrades gracefully when offline.
 
-# Local LLM: ollama (single-binary daemon + CLI; runs on amd64 + arm64).
-ollama
+# Local LLM: ollama is NOT in Debian — installed best-effort by
+# 0050-extra-desktop.hook.chroot (apt sees it only if a third-party
+# repo is wired). edemint-ai degrades cleanly when ollama is missing.
 
 # Cloud HTTP plumbing
 jq
