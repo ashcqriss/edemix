@@ -39,7 +39,7 @@ fi
 
 # --- 0. install host build deps if missing -------------------------------
 need_pkgs=""
-for cmd in mmdebstrap qemu-aarch64-static genimage parted mkfs.vfat mkfs.ext4 xz equivs-build; do
+for cmd in mmdebstrap qemu-aarch64-static genimage parted mkfs.vfat mkfs.ext4 xz equivs-build gpg curl; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
         case "$cmd" in
             mmdebstrap)       need_pkgs="$need_pkgs mmdebstrap" ;;
@@ -50,6 +50,8 @@ for cmd in mmdebstrap qemu-aarch64-static genimage parted mkfs.vfat mkfs.ext4 xz
             mkfs.ext4)        need_pkgs="$need_pkgs e2fsprogs" ;;
             xz)               need_pkgs="$need_pkgs xz-utils" ;;
             equivs-build)     need_pkgs="$need_pkgs equivs" ;;
+            gpg)              need_pkgs="$need_pkgs gnupg" ;;
+            curl)             need_pkgs="$need_pkgs curl" ;;
         esac
     fi
 done
@@ -89,17 +91,35 @@ PKG_LIST="$(
 # directory (rsync-like), which is what we want for both includes and
 # hooks. copy-in's semantics are subtly different — sync-in is correct.
 #
-# --keyring is passed explicitly. On Ubuntu hosts (e.g. GitHub Actions
-# `ubuntu-latest`) the Debian archive keyring is NOT preinstalled, so
-# mmdebstrap can't verify the Trixie InRelease signature and aborts
-# with "NO_PUBKEY ... not signed". The keyring is added to the host
-# dep list above; pointing mmdebstrap at it directly makes us robust
-# even if another distro arrives without it on $PATH.
-DEBIAN_KEYRING=/usr/share/keyrings/debian-archive-keyring.gpg
-if [ ! -f "$DEBIAN_KEYRING" ]; then
-    echo ">> Debian archive keyring missing — installing debian-archive-keyring..."
-    apt-get install -y debian-archive-keyring
+# Keyring: mmdebstrap is strict and aborts if it can't verify Trixie's
+# InRelease signature (NO_PUBKEY 6ED0E7B8... etc). Ubuntu hosts (GitHub
+# Actions ubuntu-latest) ship a debian-archive-keyring that PREDATES
+# Debian 13's 2025 archive keys, so the packaged keyring is useless here.
+# Fetch the authoritative Debian 13 keys straight from ftp-master over
+# HTTPS and dearmor them into a binary keyring mmdebstrap/gpgv can use.
+DEBIAN_KEYRING="$BUILD_DIR/debian-trixie-keyring.gpg"
+build_trixie_keyring() {
+    keydir="$BUILD_DIR/keys"
+    mkdir -p "$keydir"
+    : > "$keydir/all.asc"
+    got=0
+    for k in archive-key-13.asc archive-key-13-security.asc release-13.asc; do
+        if curl -fsSL "https://ftp-master.debian.org/keys/$k" >> "$keydir/all.asc" 2>/dev/null; then
+            got=1
+        fi
+    done
+    [ "$got" -eq 1 ] || return 1
+    gpg --dearmor < "$keydir/all.asc" > "$DEBIAN_KEYRING" 2>/dev/null || return 1
+    [ -s "$DEBIAN_KEYRING" ]
+}
+echo ">> assembling Debian 13 archive keyring from ftp-master.debian.org..."
+if ! build_trixie_keyring; then
+    echo ">> ftp-master fetch failed; falling back to host debian-archive-keyring."
+    command -v gpg >/dev/null 2>&1 || apt-get install -y gnupg
+    apt-get install -y debian-archive-keyring 2>/dev/null || true
+    DEBIAN_KEYRING=/usr/share/keyrings/debian-archive-keyring.gpg
 fi
+[ -s "$DEBIAN_KEYRING" ] || { echo "no usable Debian keyring"; exit 1; }
 
 # shellcheck disable=SC2016
 mmdebstrap \

@@ -62,7 +62,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y mmdebstrap qemu-user-static binfmt-support \
             genimage parted dosfstools mtools e2fsprogs xz-utils equivs \
-            debian-archive-keyring
+            debian-archive-keyring gnupg curl
           sudo update-binfmts --enable qemu-aarch64 || true
       - name: Build Pi image
         run: sudo ./build.sh pi

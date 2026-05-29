@@ -51,6 +51,24 @@ case "$target" in
             cd "$profile_dir"
             echo ">> configuring (auto/config)..."
             lb config
+            # Belt-and-suspenders: Ubuntu's packaged live-build can be old
+            # enough that --security false in auto/config is silently
+            # ignored, leaving lb_chroot_archives to generate a
+            # pre-Bullseye security source ('security.debian.org
+            # <codename>/updates' → 404 since Debian 11). Force the
+            # underlying flag directly in the generated config so we
+            # don't depend on the lb_config front-end recognising it.
+            # Our branding hook bakes the correct deb822 trixie-security
+            # source into the final image; this only affects build-time
+            # apt-get update inside lb_chroot.
+            if [ -f config/chroot ]; then
+                if grep -q '^LB_SECURITY=' config/chroot; then
+                    sed -i 's|^LB_SECURITY=.*|LB_SECURITY="false"|' config/chroot
+                else
+                    echo 'LB_SECURITY="false"' >> config/chroot
+                fi
+                echo ">> forced LB_SECURITY=false in config/chroot"
+            fi
             echo ">> building image (this takes a while and needs network)..."
             lb build
             echo ">> done. Look for the *.iso in $profile_dir."
