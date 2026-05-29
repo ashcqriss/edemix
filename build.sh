@@ -69,6 +69,29 @@ case "$target" in
                 fi
                 echo ">> forced LB_SECURITY=false in config/chroot"
             fi
+            # Disable debian-installer bundling. Live-build's `--debian-
+            # installer live` causes lb_chroot_archives to sign a d-i
+            # local apt repo with a freshly generated gpg key. The chroot
+            # has no TTY, so gpg --gen-key fails with:
+            #   gpg: agent_genkey failed: Inappropriate ioctl for device
+            # We don't use d-i anyway — Calamares is our installer (LUKS,
+            # btrfs, user creation, root-locked finalize). Bundling d-i
+            # is dead weight + this active failure mode.
+            for cfg in config/binary config/common; do
+                [ -f "$cfg" ] || continue
+                if grep -q '^LB_DEBIAN_INSTALLER=' "$cfg"; then
+                    sed -i 's|^LB_DEBIAN_INSTALLER=.*|LB_DEBIAN_INSTALLER="none"|' "$cfg"
+                fi
+            done
+            # And the matching GUI variable can't be set when installer is
+            # none — wipe it to avoid lb_binary tripping on contradiction.
+            for cfg in config/binary config/common; do
+                [ -f "$cfg" ] || continue
+                if grep -q '^LB_DEBIAN_INSTALLER_GUI=' "$cfg"; then
+                    sed -i 's|^LB_DEBIAN_INSTALLER_GUI=.*|LB_DEBIAN_INSTALLER_GUI="false"|' "$cfg"
+                fi
+            done
+            echo ">> forced LB_DEBIAN_INSTALLER=none (Calamares is the installer)"
             # Ensure gnupg + ca-certificates + apt-transport-https are
             # debootstrapped early. Without gnupg in the chroot,
             # lb_chroot_archives' apt-get update fails with

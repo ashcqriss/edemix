@@ -159,6 +159,19 @@ if ! grep -q 'LB_BOOTSTRAP_INCLUDE=' build.sh; then
     fail=1
 fi
 
+# debian-installer MUST be 'none'. Anything else (live/text/cdrom/etc.)
+# makes lb_chroot_archives try to gen-key a d-i local repo signing key
+# in a TTY-less chroot, which fails with "agent_genkey: Inappropriate
+# ioctl for device". We use Calamares, not d-i.
+if ! grep -qE '^\s*--debian-installer\s+none' profiles/amd64-iso/auto/config; then
+    echo "FAIL: auto/config doesn't pass --debian-installer none"
+    fail=1
+fi
+if ! grep -q 'LB_DEBIAN_INSTALLER="none"' build.sh; then
+    echo "FAIL: build.sh does not force LB_DEBIAN_INSTALLER=none"
+    fail=1
+fi
+
 echo "(invariant checks done)"
 
 if [ $fail -eq 0 ]; then
