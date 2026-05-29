@@ -69,6 +69,23 @@ case "$target" in
                 fi
                 echo ">> forced LB_SECURITY=false in config/chroot"
             fi
+            # Belt-and-suspenders: ensure gnupg + ca-certificates +
+            # apt-transport-https are debootstrapped early. Without gnupg
+            # in the chroot, lb_chroot_archives' apt-get update fails
+            # with "env: 'gpg': No such file or directory" / "GPG exited
+            # with error status 127" right after fetching InRelease.
+            # We pass --debootstrap-options in auto/config too, but
+            # forcing the underlying LB_BOOTSTRAP_INCLUDES means it
+            # can't be silently swallowed by an older lb_config.
+            if [ -f config/bootstrap ]; then
+                EXTRA="gnupg ca-certificates apt-transport-https"
+                if grep -q '^LB_BOOTSTRAP_INCLUDES=' config/bootstrap; then
+                    sed -i "s|^LB_BOOTSTRAP_INCLUDES=.*|LB_BOOTSTRAP_INCLUDES=\"$EXTRA\"|" config/bootstrap
+                else
+                    echo "LB_BOOTSTRAP_INCLUDES=\"$EXTRA\"" >> config/bootstrap
+                fi
+                echo ">> forced LB_BOOTSTRAP_INCLUDES in config/bootstrap"
+            fi
             echo ">> building image (this takes a while and needs network)..."
             lb build
             echo ">> done. Look for the *.iso in $profile_dir."
