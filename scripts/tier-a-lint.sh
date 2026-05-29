@@ -121,6 +121,44 @@ for tool in edemint-rollback edemint-ai-privacy edemint-sync edemint-setup edemi
     p="shared/includes/usr/local/bin/$tool"
     [ -x "$p" ] || { echo "FAIL: $p not executable"; fail=1; }
 done
+
+# --- regressions to lock in from the CI debug rounds ---
+
+# Pi hook runner must exist + be executable (its absence makes the chroot
+# run zero hooks; broken-image-on-success regression from a39e029).
+if [ ! -x profiles/arm64-pi/scripts/edemint-run-hooks ]; then
+    echo "FAIL: profiles/arm64-pi/scripts/edemint-run-hooks not executable"
+    fail=1
+fi
+
+# apt config: every Pre-/Post-Invoke string must be a single line. Apt's
+# config grammar does NOT honour backslash-newline inside "...". A
+# multiline string parses as "Malformed tag" and breaks every apt run.
+for f in shared/includes/etc/apt/apt.conf.d/*; do
+    [ -f "$f" ] || continue
+    if grep -E '"[^"]*\\\s*$' "$f" >/dev/null; then
+        echo "FAIL: $f has backslash-newline inside a quoted string"
+        fail=1
+    fi
+done
+
+# Pi build.sh customize-hooks: no inner sh -c "..." containing a shell
+# variable. The OUTER mmdebstrap-wrapper shell expands $var before the
+# inner shell ever sees it (the run-hooks loop hit this bug). Script
+# files via copy-in are the safe pattern.
+if grep -nE 'sh -c "[^"]*\$[a-zA-Z_{]' profiles/arm64-pi/build.sh; then
+    echo "FAIL: Pi build.sh has inner-double-quoted sh -c with a \$variable"
+    fail=1
+fi
+
+# build.sh must override LB_BOOTSTRAP_INCLUDE (singular — live-build
+# reads this name) for the gnupg+ca-certs early install. Setting only
+# the plural form has no effect on Ubuntu's packaged live-build.
+if ! grep -q 'LB_BOOTSTRAP_INCLUDE=' build.sh; then
+    echo "FAIL: build.sh does not set LB_BOOTSTRAP_INCLUDE (singular)"
+    fail=1
+fi
+
 echo "(invariant checks done)"
 
 if [ $fail -eq 0 ]; then
