@@ -64,6 +64,17 @@ jobs:
             genimage parted dosfstools mtools e2fsprogs xz-utils equivs \
             debian-archive-keyring gnupg curl
           sudo update-binfmts --enable qemu-aarch64 || true
+      # Cache the downloaded arm64 .debs between runs. Key includes the
+      # package-list hash so the cache invalidates when the lists change.
+      # On a cache hit, mmdebstrap skips most of the download phase
+      # (~10-15 minutes off the second+ run).
+      - name: Restore apt-archives cache
+        uses: actions/cache@v4
+        with:
+          path: profiles/arm64-pi/build/apt-cache
+          key: pi-apt-cache-${{ hashFiles('shared/package-lists/**', 'profiles/arm64-pi/package-lists/**') }}
+          restore-keys: |
+            pi-apt-cache-
       - name: Build Pi image
         run: sudo ./build.sh pi
       - name: Collect artifacts

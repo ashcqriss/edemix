@@ -121,12 +121,35 @@ if ! build_trixie_keyring; then
 fi
 [ -s "$DEBIAN_KEYRING" ] || { echo "no usable Debian keyring"; exit 1; }
 
+# apt-archives cache. mmdebstrap downloads .debs into /var/cache/apt/
+# archives inside the chroot; we save them to the host so the 2nd+ CI
+# run skips most of the apt download phase. APT::Keep-Downloaded-
+# Packages keeps the .debs around (mmdebstrap's default cleans them).
+# essential-hook seeds the chroot from cache before "installing
+# remaining packages"; the trailing customize-hook copies back out.
+APT_CACHE="$BUILD_DIR/apt-cache"
+mkdir -p "$APT_CACHE"
+cached_in=$(find "$APT_CACHE" -maxdepth 1 -name '*.deb' 2>/dev/null | wc -l)
+echo ">> apt-cache: seeding $cached_in cached .debs into chroot"
+
 # shellcheck disable=SC2016
 mmdebstrap \
     --arch=arm64 \
     --keyring="$DEBIAN_KEYRING" \
     --components="main contrib non-free non-free-firmware" \
     --include="$PKG_LIST" \
+    --aptopt='Acquire::Languages "none"' \
+    --aptopt='APT::Install-Recommends "false"' \
+    --aptopt='APT::Install-Suggests "false"' \
+    --aptopt='APT::Keep-Downloaded-Packages "true"' \
+    --dpkgopt='path-exclude=/usr/share/man/*' \
+    --dpkgopt='path-exclude=/usr/share/groff/*' \
+    --dpkgopt='path-exclude=/usr/share/info/*' \
+    --dpkgopt='path-exclude=/usr/share/lintian/*' \
+    --dpkgopt='path-exclude=/usr/share/doc/*' \
+    --dpkgopt='path-include=/usr/share/doc/*/copyright' \
+    --essential-hook='chroot "$1" mkdir -p /var/cache/apt/archives' \
+    --essential-hook='sync-in '"$APT_CACHE"' /var/cache/apt/archives' \
     --customize-hook='chroot "$1" mkdir -p /var/cache/edemint /usr/local/share/edemint-hooks' \
     --customize-hook='sync-in '"$BUILD_DIR"'/packages.chroot /var/cache/edemint' \
     --customize-hook='chroot "$1" sh -c "dpkg -i /var/cache/edemint/*.deb || apt-get -y -f install"' \
@@ -135,9 +158,15 @@ mmdebstrap \
     --customize-hook='sync-in '"$REPO_ROOT"'/shared/hooks/normal /usr/local/share/edemint-hooks' \
     --customize-hook='chroot "$1" sh -c "for h in /usr/local/share/edemint-hooks/*.hook.chroot; do echo running $h; sh \"$h\" || true; done"' \
     --customize-hook='chroot "$1" sh -c "systemctl enable edemint-firstboot-growfs.service ssh.service || true"' \
+    --customize-hook='sync-out /var/cache/apt/archives '"$APT_CACHE" \
     trixie \
     "$ROOTFS_DIR" \
     'http://deb.debian.org/debian'
+
+# sync-out may have brought back the partial/ subdir; drop it.
+rm -rf "$APT_CACHE/partial" 2>/dev/null || true
+cached_out=$(find "$APT_CACHE" -maxdepth 1 -name '*.deb' 2>/dev/null | wc -l)
+echo ">> apt-cache: $cached_out .debs saved for next run"
 
 # --- 3. Pi firmware boot files -------------------------------------------
 # raspi-firmware lays files under /usr/lib/raspi-firmware; the package
@@ -173,7 +202,10 @@ genimage \
     --outputpath "$IMAGES_DIR"
 
 # --- 5. compress --------------------------------------------------------
+# xz -3 over -9e: ~5-10x faster compression for ~20% larger output. Pi
+# images are network/SD-transferred once, so a few extra MB matter much
+# less than the time saved on every CI run.
 echo ">> compressing..."
-xz -T0 -9e -f "$IMAGES_DIR/$IMG_NAME"
+xz -T0 -3 -f "$IMAGES_DIR/$IMG_NAME"
 ls -lh "$IMAGES_DIR/$IMG_NAME.xz"
 echo ">> done: $IMAGES_DIR/$IMG_NAME.xz"
