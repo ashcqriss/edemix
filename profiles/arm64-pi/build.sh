@@ -127,6 +127,7 @@ mmdebstrap \
     --keyring="$DEBIAN_KEYRING" \
     --components="main contrib non-free non-free-firmware" \
     --include="$PKG_LIST" \
+    --customize-hook='chroot "$1" mkdir -p /var/cache/edemint /usr/local/share/edemint-hooks' \
     --customize-hook='sync-in '"$BUILD_DIR"'/packages.chroot /var/cache/edemint' \
     --customize-hook='chroot "$1" sh -c "dpkg -i /var/cache/edemint/*.deb || apt-get -y -f install"' \
     --customize-hook='sync-in '"$REPO_ROOT"'/shared/includes /' \
