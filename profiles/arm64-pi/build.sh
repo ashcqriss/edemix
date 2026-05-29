@@ -142,14 +142,18 @@ mmdebstrap \
     --aptopt='APT::Install-Recommends "false"' \
     --aptopt='APT::Install-Suggests "false"' \
     --aptopt='APT::Keep-Downloaded-Packages "true"' \
+    --aptopt='Acquire::http::Pipeline-Depth "10"' \
+    --aptopt='Acquire::Retries "5"' \
+    --dpkgopt='force-unsafe-io' \
     --dpkgopt='path-exclude=/usr/share/man/*' \
     --dpkgopt='path-exclude=/usr/share/groff/*' \
     --dpkgopt='path-exclude=/usr/share/info/*' \
     --dpkgopt='path-exclude=/usr/share/lintian/*' \
     --dpkgopt='path-exclude=/usr/share/doc/*' \
     --dpkgopt='path-include=/usr/share/doc/*/copyright' \
-    --essential-hook='chroot "$1" mkdir -p /var/cache/apt/archives' \
+    --essential-hook='chroot "$1" mkdir -p /var/cache/apt/archives /etc/initramfs-tools/conf.d' \
     --essential-hook='sync-in '"$APT_CACHE"' /var/cache/apt/archives' \
+    --essential-hook='copy-in '"$REPO_ROOT"'/shared/includes/etc/initramfs-tools/conf.d/edemint.conf /etc/initramfs-tools/conf.d/' \
     --customize-hook='chroot "$1" mkdir -p /var/cache/edemint /usr/local/share/edemint-hooks' \
     --customize-hook='sync-in '"$BUILD_DIR"'/packages.chroot /var/cache/edemint' \
     --customize-hook='chroot "$1" sh -c "dpkg -i /var/cache/edemint/*.deb || apt-get -y -f install"' \

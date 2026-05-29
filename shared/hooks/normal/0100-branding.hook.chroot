@@ -136,10 +136,12 @@ if command -v localepurge >/dev/null 2>&1; then
     localepurge 2>/dev/null || true
 fi
 
-# --- Regenerate initramfs with the MODULES=dep + zstd settings ----------
-if command -v update-initramfs >/dev/null 2>&1; then
-    update-initramfs -u -k all 2>/dev/null || true
-fi
+# initramfs is NOT regenerated here. Under qemu emulation
+# update-initramfs -u costs ~5-10 min and was a major Pi build hog.
+# The MODULES=dep + zstd settings now land via an mmdebstrap
+# essential-hook (Pi) and live-build's own includes mechanism (amd64),
+# both BEFORE the kernel package's postinst runs. So initramfs is
+# generated correctly the first time and no regeneration is needed.
 
 # Live media only: enable autologin via greetd; the Calamares 'finished'
 # step (§6b) removes the autologin drop-in so installed disks always show
