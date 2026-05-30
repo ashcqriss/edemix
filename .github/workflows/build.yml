@@ -38,10 +38,28 @@ jobs:
           sudo apt-get install -y live-build equivs xorriso isolinux \
             debian-archive-keyring
       - name: Build ISO
-        run: sudo ./build.sh amd64
-      - name: Collect artifacts
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          sudo ./build.sh amd64 2>&1 | tee artifacts/iso-build-full.log
+      - name: Extract failing tail
+        if: failure()
         run: |
           mkdir -p artifacts
+          if [ -f artifacts/iso-build-full.log ]; then
+            tail -300 artifacts/iso-build-full.log > artifacts/iso-build-tail.log
+            echo "=== last 300 lines of the ISO build log ==="
+            cat artifacts/iso-build-tail.log
+          fi
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: edemint-iso-build-log
+          path: artifacts/iso-build-*.log
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Collect artifacts
+        run: |
           find profiles/amd64-iso -maxdepth 1 -name '*.iso' -exec cp {} artifacts/ \;
           ls -lh artifacts/
       - uses: actions/upload-artifact@v4
@@ -76,10 +94,33 @@ jobs:
           restore-keys: |
             pi-apt-cache-
       - name: Build Pi image
-        run: sudo ./build.sh pi
-      - name: Collect artifacts
+        # Tee the full build log to a file and ALSO let it stream live
+        # so the Actions UI still shows everything in real time.
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          sudo ./build.sh pi 2>&1 | tee artifacts/pi-build-full.log
+      # When the build fails, surface JUST the tail (last 300 lines) as a
+      # tiny separate artifact you can download in one click. No more
+      # scrolling 7000+ lines to find the actual error.
+      - name: Extract failing tail
+        if: failure()
         run: |
           mkdir -p artifacts
+          if [ -f artifacts/pi-build-full.log ]; then
+            tail -300 artifacts/pi-build-full.log > artifacts/pi-build-tail.log
+            echo "=== last 300 lines of the Pi build log ==="
+            cat artifacts/pi-build-tail.log
+          fi
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: edemint-pi-build-log
+          path: artifacts/pi-build-*.log
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Collect artifacts
+        run: |
           find profiles/arm64-pi/build/images -maxdepth 1 -name '*.img.xz' -exec cp {} artifacts/ \;
           ls -lh artifacts/
       - uses: actions/upload-artifact@v4
