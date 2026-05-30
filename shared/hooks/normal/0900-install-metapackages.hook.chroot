@@ -1,0 +1,33 @@
+#!/bin/sh
+# Install Edemint metapackages from /usr/share/edemint/metapackages/.
+#
+# These .debs land in the chroot via includes.chroot — NOT
+# config/packages.chroot (which would make live-build create a signed
+# local apt repo for them, which gen-keys gpg, which fails in TTY-less
+# chroots with "agent_genkey: Inappropriate ioctl for device").
+#
+# By the time this hook runs, every Depends: of the metapackages is
+# already installed by *.list.chroot, so a plain dpkg -i succeeds.
+# We still call `apt-get -y -f install` as a safety net.
+#
+# Hook ordered 0900 so it runs AFTER all other normal hooks (extras,
+# branding, xr-driver, flatpak, hailo) — the metapackages don't depend
+# on hook side-effects, but ordering keeps logs readable.
+set -e
+
+DEBDIR=/usr/share/edemint/metapackages
+if [ ! -d "$DEBDIR" ]; then
+    echo "0900-install-metapackages: $DEBDIR missing — skipping"
+    exit 0
+fi
+
+count=$(find "$DEBDIR" -maxdepth 1 -name '*.deb' 2>/dev/null | wc -l)
+if [ "$count" -eq 0 ]; then
+    echo "0900-install-metapackages: no .debs in $DEBDIR — skipping"
+    exit 0
+fi
+
+echo "0900-install-metapackages: installing $count metapackage(s) from $DEBDIR"
+dpkg -i "$DEBDIR"/*.deb 2>&1 \
+    || apt-get -y --no-install-recommends -f install
+echo "0900-install-metapackages: done"

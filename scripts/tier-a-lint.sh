@@ -66,14 +66,26 @@ done
 note "equivs metapackages"
 if command -v equivs-build >/dev/null 2>&1; then
     "$ROOT/packaging/build-metapackages.sh"
-    for d in profiles/amd64-iso/config/packages.chroot/edemint-base_0.1_all.deb \
-             profiles/amd64-iso/config/packages.chroot/edemint-desktop_0.1_all.deb \
-             profiles/amd64-iso/config/packages.chroot/edemint-ai_0.1_all.deb; do
+    DROP=shared/includes/usr/share/edemint/metapackages
+    for d in "$DROP/edemint-base_0.1_all.deb" \
+             "$DROP/edemint-desktop_0.1_all.deb" \
+             "$DROP/edemint-ai_0.1_all.deb"; do
         [ -s "$d" ] || { echo "MISSING: $d"; fail=1; }
     done
     # leave the .debs in place — image builds need them
 else
     echo "(skip: equivs-build missing)"
+fi
+
+# Nothing must ever land in profiles/*/config/packages.chroot/. live-build
+# treats anything there as input for a signed local apt repo, and the
+# signing gen-keys gpg, which fails in TTY-less chroots with
+# "agent_genkey: Inappropriate ioctl for device". Our metapackages go
+# through includes.chroot + the 0900 hook instead.
+if find profiles/*/config/packages.chroot -maxdepth 1 -name '*.deb' 2>/dev/null | grep -q .; then
+    echo "FAIL: .debs found under profiles/*/config/packages.chroot/ —"
+    echo "      live-build will try to sign a local apt repo and fail."
+    fail=1
 fi
 
 note "Security invariants"

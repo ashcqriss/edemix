@@ -1,26 +1,34 @@
 #!/bin/sh
-# Build Edemint equivs metapackages and drop the .debs where each profile's
-# build pipeline can pick them up as local packages.
+# Build Edemint equivs metapackages and drop the .debs under
+# shared/includes/usr/share/edemint/metapackages/ — they ship via
+# includes.chroot to BOTH targets, and the late 0900-install-metapackages
+# hook installs them with dpkg -i (deps already satisfied by the
+# *.list.chroot installs that ran earlier).
+#
+# Why not config/packages.chroot/?  live-build builds an internal
+# signed local-apt-archive for any .deb dropped under that path, and
+# the signing step needs gpg --gen-key, which needs a TTY/pinentry —
+# the chroot has neither, so the build dies with:
+#   gpg: agent_genkey failed: Inappropriate ioctl for device
+# Bypassing the local-archive avoids the whole class of failure.
 #
 # Inputs:  packaging/<pkg>/control (with a @DEPS@ marker)
 #          shared/package-lists/<list>.list.chroot (one package per line)
-# Outputs: profiles/amd64-iso/config/packages.chroot/<pkg>_<ver>_all.deb
-#          profiles/arm64-pi/build/packages.chroot/<pkg>_<ver>_all.deb (if dir exists)
-#
-# Usage:   packaging/build-metapackages.sh
+# Output:  shared/includes/usr/share/edemint/metapackages/<pkg>_<ver>_all.deb
 
 set -e
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PKG_DIR="$ROOT/packaging"
 LISTS="$ROOT/shared/package-lists"
-AMD64_DROP="$ROOT/profiles/amd64-iso/config/packages.chroot"
-PI_DROP="$ROOT/profiles/arm64-pi/build/packages.chroot"
+DROP="$ROOT/shared/includes/usr/share/edemint/metapackages"
 
 if ! command -v equivs-build >/dev/null 2>&1; then
     echo "equivs-build not found. Install: apt-get install -y equivs" >&2
     exit 1
 fi
+
+mkdir -p "$DROP"
 
 # pkg_name, list_basename
 build_one() {
@@ -39,8 +47,7 @@ build_one() {
     tmp="$(mktemp -d)"
     # equivs-build copies the control into its OWN internal build dir
     # under $TMPDIR and writes the resulting .deb to $TMPDIR itself, not
-    # to the user's cwd. Override $TMPDIR so its output lands under $tmp,
-    # which we own and clean up — and never pollutes the parent /tmp.
+    # to the user's cwd. Override $TMPDIR so its output lands under $tmp.
     mkdir "$tmp/work" "$tmp/out"
     trap 'rm -rf "$tmp"' EXIT
     sed "s|@DEPS@|$deps|" "$pkg_dir/control" > "$tmp/work/control"
@@ -49,13 +56,8 @@ build_one() {
     deb="$(find "$tmp" -name "${pkg}_*_all.deb" | head -1)"
     [ -n "$deb" ] || { echo "equivs-build produced no .deb for $pkg" >&2; exit 1; }
 
-    mkdir -p "$AMD64_DROP"
-    cp "$deb" "$AMD64_DROP/"
-    if [ -d "$(dirname "$PI_DROP")" ]; then
-        mkdir -p "$PI_DROP"
-        cp "$deb" "$PI_DROP/"
-    fi
-    echo ">> built $(basename "$deb")"
+    cp "$deb" "$DROP/"
+    echo ">> built $(basename "$deb") -> $DROP"
 
     rm -rf "$tmp"
     trap - EXIT

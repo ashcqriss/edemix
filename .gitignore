@@ -1,5 +1,6 @@
 # Build artifacts
 profiles/*/config/packages.chroot/*.deb
+shared/includes/usr/share/edemint/metapackages/*.deb
 profiles/amd64-iso/cache/
 profiles/amd64-iso/.build/
 profiles/amd64-iso/binary/

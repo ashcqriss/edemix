@@ -62,14 +62,13 @@ if [ -n "$need_pkgs" ]; then
     apt-get install -y $need_pkgs
 fi
 
-# --- 1. build the equivs metapackages and stash them ---------------------
+# --- 1. build the equivs metapackages -----------------------------------
+# The script drops .debs under shared/includes/usr/share/edemint/
+# metapackages/, which the sync-in shared/includes hook below carries
+# into the chroot. The 0900-install-metapackages hook then dpkg -i's
+# them. No more per-target packages.chroot/ copy.
 echo ">> building edemint metapackages..."
-mkdir -p "$BUILD_DIR/packages.chroot"
-EDEMINT_PI_PKG_DROP="$BUILD_DIR/packages.chroot" \
-    "$REPO_ROOT/packaging/build-metapackages.sh"
-# build-metapackages.sh always writes to amd64; copy from there.
-cp "$REPO_ROOT/profiles/amd64-iso/config/packages.chroot/"*.deb \
-   "$BUILD_DIR/packages.chroot/" 2>/dev/null || true
+"$REPO_ROOT/packaging/build-metapackages.sh"
 
 # --- 2. build the arm64 rootfs with mmdebstrap ---------------------------
 echo ">> bootstrapping arm64 Trixie rootfs (this fetches packages)..."
@@ -154,9 +153,7 @@ mmdebstrap \
     --essential-hook='chroot "$1" mkdir -p /var/cache/apt/archives /etc/initramfs-tools/conf.d' \
     --essential-hook='sync-in '"$APT_CACHE"' /var/cache/apt/archives' \
     --essential-hook='copy-in '"$REPO_ROOT"'/shared/includes/etc/initramfs-tools/conf.d/edemint.conf /etc/initramfs-tools/conf.d/' \
-    --customize-hook='chroot "$1" mkdir -p /var/cache/edemint /usr/local/share/edemint-hooks' \
-    --customize-hook='sync-in '"$BUILD_DIR"'/packages.chroot /var/cache/edemint' \
-    --customize-hook='chroot "$1" sh -c "dpkg -i /var/cache/edemint/*.deb || apt-get -y -f install"' \
+    --customize-hook='chroot "$1" mkdir -p /usr/local/share/edemint-hooks' \
     --customize-hook='sync-in '"$REPO_ROOT"'/shared/includes /' \
     --customize-hook='sync-in '"$PROFILE_DIR"'/includes /' \
     --customize-hook='sync-in '"$REPO_ROOT"'/shared/hooks/normal /usr/local/share/edemint-hooks' \
