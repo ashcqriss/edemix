@@ -88,6 +88,21 @@ if find profiles/*/config/packages.chroot -maxdepth 1 -name '*.deb' 2>/dev/null 
     fail=1
 fi
 
+# Pi: /etc/flash-kernel/machine must be pre-populated before kernel
+# install. Otherwise flash-kernel's postinst hook can't detect the
+# target machine inside a qemu-emulated chroot and the kernel package
+# configure step fails with "Errors were encountered while processing
+# linux-image-arm64". This is the file the essential-hook copy-ins
+# put in place before mmdebstrap installs the kernel.
+FK_MACHINE=profiles/arm64-pi/includes/etc/flash-kernel/machine
+if [ ! -s "$FK_MACHINE" ]; then
+    echo "FAIL: $FK_MACHINE missing — kernel postinst will fail under qemu"
+    fail=1
+elif ! grep -q '^Raspberry Pi ' "$FK_MACHINE"; then
+    echo "FAIL: $FK_MACHINE does not start with 'Raspberry Pi '"
+    fail=1
+fi
+
 note "Security invariants"
 # XR udev rule must be 0660, edemint-ar group, NOT 0666 / NOT plugdev-only
 if ! grep -q 'MODE="0660".*GROUP="edemint-ar"' shared/hooks/normal/0200-xr-driver.hook.chroot; then

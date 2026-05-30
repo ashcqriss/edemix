@@ -150,16 +150,18 @@ mmdebstrap \
     --dpkgopt='path-exclude=/usr/share/lintian/*' \
     --dpkgopt='path-exclude=/usr/share/doc/*' \
     --dpkgopt='path-include=/usr/share/doc/*/copyright' \
-    --essential-hook='chroot "$1" mkdir -p /var/cache/apt/archives /etc/initramfs-tools/conf.d' \
+    --essential-hook='chroot "$1" mkdir -p /var/cache/apt/archives /etc/initramfs-tools/conf.d /etc/flash-kernel /etc/default' \
     --essential-hook='sync-in '"$APT_CACHE"' /var/cache/apt/archives' \
     --essential-hook='copy-in '"$REPO_ROOT"'/shared/includes/etc/initramfs-tools/conf.d/edemint.conf /etc/initramfs-tools/conf.d/' \
+    --essential-hook='copy-in '"$PROFILE_DIR"'/includes/etc/flash-kernel/machine /etc/flash-kernel/' \
+    --essential-hook='copy-in '"$PROFILE_DIR"'/includes/etc/default/flash-kernel /etc/default/' \
     --customize-hook='chroot "$1" mkdir -p /usr/local/share/edemint-hooks' \
     --customize-hook='sync-in '"$REPO_ROOT"'/shared/includes /' \
     --customize-hook='sync-in '"$PROFILE_DIR"'/includes /' \
     --customize-hook='sync-in '"$REPO_ROOT"'/shared/hooks/normal /usr/local/share/edemint-hooks' \
     --customize-hook='copy-in '"$PROFILE_DIR"'/scripts/edemint-run-hooks /usr/local/sbin/' \
     --customize-hook='chroot "$1" sh /usr/local/sbin/edemint-run-hooks' \
-    --customize-hook='chroot "$1" sh -c "systemctl enable edemint-firstboot-growfs.service ssh.service || true"' \
+    --customize-hook='chroot "$1" sh -c "systemctl enable edemint-firstboot-growfs.service edemint-flash-kernel-fixup.service ssh.service || true"' \
     --customize-hook='sync-out /var/cache/apt/archives '"$APT_CACHE" \
     trixie \
     "$ROOTFS_DIR" \

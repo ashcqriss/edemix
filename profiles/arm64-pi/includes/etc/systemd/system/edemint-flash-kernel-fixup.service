@@ -1,0 +1,16 @@
+[Unit]
+Description=Edemint Pi firstboot flash-kernel fixup (correct machine + reflash)
+DefaultDependencies=no
+After=local-fs.target
+Before=basic.target shutdown.target
+Conflicts=shutdown.target
+ConditionPathExists=!/var/lib/edemint/flash-kernel-fixup.done
+ConditionPathIsReadWrite=/
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/edemint-flash-kernel-fixup
+RemainAfterExit=yes
+
+[Install]
+WantedBy=basic.target

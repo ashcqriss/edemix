@@ -1,0 +1,10 @@
+# Edemint Pi flash-kernel defaults.
+#
+# /etc/flash-kernel/machine is pre-populated to "Raspberry Pi 5 Model B
+# Rev 1.0" so the build chroot's flash-kernel postinst hook succeeds
+# without a real /proc/device-tree/model. The edemint-pi-flash-kernel-
+# fixup.service re-detects the actual model at first boot and re-runs
+# flash-kernel so Pi 4 images also boot correctly.
+
+LINUX_KERNEL_CMDLINE="console=tty1 root=LABEL=edemint-root rootfstype=ext4 fsck.repair=yes rootwait quiet splash nowatchdog"
+LINUX_KERNEL_CMDLINE_DEFAULTS=""

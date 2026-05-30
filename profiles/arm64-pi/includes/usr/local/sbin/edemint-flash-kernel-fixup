@@ -1,0 +1,48 @@
+#!/bin/sh
+# Edemint Pi firstboot flash-kernel fixup.
+#
+# Build-time /etc/flash-kernel/machine was hardcoded to "Raspberry Pi 5
+# Model B Rev 1.0" so the chroot's kernel postinst succeeded under qemu.
+# On the real Pi (which might be Pi 4 OR Pi 5), re-detect the actual
+# model from /proc/device-tree/model, write it into
+# /etc/flash-kernel/machine, and rerun flash-kernel so the boot files
+# in /boot/firmware/ match this hardware.
+#
+# Idempotent: a stamp file gates the run. If the detected model already
+# matches what's stored, we exit fast.
+set -eu
+
+STAMP=/var/lib/edemint/flash-kernel-fixup.done
+mkdir -p "$(dirname "$STAMP")"
+
+MODEL_DEV=/proc/device-tree/model
+[ -r "$MODEL_DEV" ] || { echo "edemint-flash-kernel-fixup: no $MODEL_DEV"; exit 0; }
+
+DETECTED="$(tr -d '\0' < "$MODEL_DEV")"
+CURRENT="$(cat /etc/flash-kernel/machine 2>/dev/null || echo "")"
+
+if [ "$DETECTED" = "$CURRENT" ] && [ -e "$STAMP" ]; then
+    echo "edemint-flash-kernel-fixup: model unchanged ($DETECTED)"
+    exit 0
+fi
+
+case "$DETECTED" in
+    "Raspberry Pi "*) : ;;
+    *)
+        echo "edemint-flash-kernel-fixup: not a Pi ($DETECTED) — skipping"
+        touch "$STAMP"
+        exit 0
+        ;;
+esac
+
+echo "edemint-flash-kernel-fixup: setting machine to '$DETECTED'"
+mkdir -p /etc/flash-kernel
+printf '%s\n' "$DETECTED" > /etc/flash-kernel/machine
+
+if command -v flash-kernel >/dev/null 2>&1; then
+    echo "edemint-flash-kernel-fixup: rerunning flash-kernel"
+    flash-kernel || echo "edemint-flash-kernel-fixup: flash-kernel returned non-zero (continuing)"
+fi
+
+touch "$STAMP"
+echo "edemint-flash-kernel-fixup: done"
