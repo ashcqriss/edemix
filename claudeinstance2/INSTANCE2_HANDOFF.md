@@ -16,6 +16,37 @@ Read it cold — it assumes you have not seen the conversation that produced it.
 **Neither instance is more important.** Instance 1 builds features; Instance 2 keeps
 the build green and cleans up behind it. They converge on the same codebase via git.
 
+## Branch model (READ THIS — prevents "failed copies")
+
+Two long-lived branches, both descended from the same base commit `4ac3192`:
+
+| Branch | Owner | Role | Who writes |
+|---|---|---|---|
+| `claude/pensive-pasteur-YEzPq` | Instance 1 | Feature branch — new capabilities | **Instance 1 only** |
+| `claude/nice-volta-bkx1i` | Instance 2 | **Canonical "runs-clean" branch** = pensive-pasteur's core + Instance 2's fixes | **Instance 2 only** |
+
+Rules that keep the project from breaking on a bad copy:
+
+1. **Instance 2 never writes to pensive-pasteur.** Instance 1 never writes to
+   nice-volta. Each instance owns exactly one branch.
+2. **There is no hand-copying.** Both branches share git history from `4ac3192`, so
+   the core is *byte-identical* by construction — not a duplicated copy that can rot.
+   Verify any time with:
+   `git diff --diff-filter=D --name-only origin/claude/pensive-pasteur-YEzPq origin/claude/nice-volta-bkx1i`
+   — it must print **nothing** (zero files missing on nice-volta).
+3. **nice-volta is the branch where everything runs.** CI (`.github/workflows/build.yml`
+   triggers on `claude/**`) runs lint→iso→pi on it automatically; it is the strict
+   superset (full core + fixes), so it is the safe branch to build/release from.
+4. **Keeping them in sync over time:** when Instance 1 pushes features to
+   pensive-pasteur, Instance 2 merges them forward into nice-volta
+   (`git merge origin/claude/pensive-pasteur-YEzPq`) and re-runs `make lint &&
+   make sign-test`. Because they share `4ac3192`, merges are clean (no rebase needed).
+   This is the ONE maintenance action that keeps "nice-volta = pensive-pasteur core +
+   fixes" true. Do it at the start of every Instance-2 session.
+
+As of this writing the two are in sync: pensive-pasteur HEAD is exactly `4ac3192`
+(no features pushed yet), and nice-volta = `4ac3192` + the fix commits below.
+
 ## Session 2 scope (what was done in the first run)
 
 All changes are on branch `claude/nice-volta-bkx1i`. Confirmed green: `make lint &&
