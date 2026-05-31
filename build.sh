@@ -121,16 +121,28 @@ case "$target" in
             #    lb_chroot_includes syncs it into the chroot before
             #    lb_chroot_live-packages runs, so apt refuses to install
             #    live-config-sysvinit even if lb somehow still requests it.
-            if [ -f config/chroot ]; then
-                if grep -q '^LB_INIT_SYSTEM=' config/chroot; then
-                    sed -i 's|^LB_INIT_SYSTEM=.*|LB_INIT_SYSTEM="systemd"|' config/chroot
+            # Force LB_INITSYSTEM=systemd so lb_chroot_live-packages installs
+            # live-config-systemd instead of live-config-sysvinit. The default
+            # for LB_MODE=debian + LB_SYSTEM=live is sysvinit (set in
+            # /usr/share/live/build/functions/defaults.sh); --initsystem systemd
+            # in auto/config sets it, but we also force it here so even an old
+            # lb_config that ignores the flag can't revert it.
+            for cfg in config/common config/chroot; do
+                [ -f "$cfg" ] || continue
+                if grep -q '^LB_INITSYSTEM=' "$cfg"; then
+                    sed -i 's|^LB_INITSYSTEM=.*|LB_INITSYSTEM="systemd"|' "$cfg"
                 else
-                    echo 'LB_INIT_SYSTEM="systemd"' >> config/chroot
+                    echo 'LB_INITSYSTEM="systemd"' >> "$cfg"
                 fi
-                echo ">> forced LB_INIT_SYSTEM=systemd in config/chroot"
-            fi
-            mkdir -p config/includes.chroot/etc/apt/preferences.d
-            cat > config/includes.chroot/etc/apt/preferences.d/50-edemint-no-sysvinit << 'PINEOF'
+            done
+            echo ">> forced LB_INITSYSTEM=systemd (live-config-systemd variant)"
+            # Belt-and-suspenders apt pin: lb_chroot_archives copies
+            # config/archives/*.pref.chroot into the chroot's preferences.d
+            # BEFORE lb_chroot_live-packages runs any apt-get. Priority -1
+            # makes apt refuse to install sysvinit-core even if somehow
+            # requested (it conflicts with systemd-sysv which is in our list).
+            mkdir -p config/archives
+            cat > config/archives/edemint-no-sysvinit.pref.chroot << 'PINEOF'
 Package: live-config-sysvinit
 Pin: release *
 Pin-Priority: -1
@@ -139,7 +151,7 @@ Package: sysvinit-core
 Pin: release *
 Pin-Priority: -1
 PINEOF
-            echo ">> pinned live-config-sysvinit to never-install (conflict with systemd-sysv)"
+            echo ">> apt pin: live-config-sysvinit priority -1 (config/archives/, applied early)"
             # Ensure gnupg + ca-certificates + apt-transport-https are
             # debootstrapped early. Without gnupg in the chroot,
             # lb_chroot_archives' apt-get update fails with

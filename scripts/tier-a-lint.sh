@@ -237,26 +237,39 @@ if ! grep -q 'ROOT_SIZE_MB' profiles/arm64-pi/build.sh; then
     fail=1
 fi
 
-# ISO: LB_INIT_SYSTEM must be forced to systemd. Ubuntu's live-build 3.0~a57
-# defaults to live-config-sysvinit, which depends on sysvinit-core, which
-# conflicts with systemd-sysv installed in the chroot.
-if ! grep -q 'LB_INIT_SYSTEM="systemd"' build.sh; then
-    echo "FAIL: build.sh does not force LB_INIT_SYSTEM=systemd (live-config-sysvinit conflict)"
+# ISO: LB_INITSYSTEM (no underscore between INIT and SYSTEM) must be set to
+# systemd. Ubuntu's live-build defaults to sysvinit when LB_SYSTEM=live, and
+# live-config-sysvinit depends on sysvinit-core which conflicts with
+# systemd-sysv. auto/config uses --initsystem systemd; build.sh forces the
+# variable directly so an old lb_config that ignores the flag can't revert it.
+if ! grep -qE '^\s*--initsystem\s+systemd' profiles/amd64-iso/auto/config; then
+    echo "FAIL: auto/config missing --initsystem systemd (live-config-sysvinit will conflict)"
     fail=1
 fi
-# Belt-and-suspenders: the apt pin that prevents live-config-sysvinit from
-# being selected must also be emitted into config/includes.chroot.
-if ! grep -q '50-edemint-no-sysvinit' build.sh; then
-    echo "FAIL: build.sh doesn't create the apt pin for live-config-sysvinit"
+if ! grep -q 'LB_INITSYSTEM="systemd"' build.sh; then
+    echo "FAIL: build.sh does not force LB_INITSYSTEM=systemd (live-config-sysvinit conflict)"
+    fail=1
+fi
+# Belt-and-suspenders: early apt pin via config/archives/*.pref.chroot.
+# lb_chroot_archives copies this into the chroot BEFORE lb_chroot_live-packages
+# runs any apt-get, so live-config-sysvinit is blocked even if LB_INITSYSTEM
+# somehow gets overridden.
+if ! grep -q 'edemint-no-sysvinit.pref.chroot' build.sh; then
+    echo "FAIL: build.sh doesn't create the early apt pin for live-config-sysvinit"
     fail=1
 fi
 
-# Pi: flash-kernel must be stubbed during mmdebstrap via a /usr/local/sbin
-# wrapper (exits 0, shadows the real binary via PATH). Without this stub,
+# Pi: flash-kernel must be stubbed during mmdebstrap via dpkg-divert +
+# ln -s /bin/true at the ABSOLUTE PATH /usr/sbin/flash-kernel. This is the
+# same technique live-build uses in lb_chroot_dpkg. Without the stub,
 # linux-image-arm64's postinst runs the real flash-kernel on the native arm64
-# CI runner — which is not a Pi — causing it to fail and abort the build.
-if ! grep -q '/usr/local/sbin/flash-kernel' profiles/arm64-pi/build.sh; then
-    echo "FAIL: Pi build.sh doesn't create the /usr/local/sbin/flash-kernel stub"
+# CI runner — not a Pi — which fails and aborts the build (mmdebstrap err 25).
+if ! grep -q 'dpkg-divert.*flash-kernel' profiles/arm64-pi/build.sh; then
+    echo "FAIL: Pi build.sh doesn't stub flash-kernel via dpkg-divert"
+    fail=1
+fi
+if ! grep -q 'ln -s /bin/true.*flash-kernel' profiles/arm64-pi/build.sh; then
+    echo "FAIL: Pi build.sh doesn't create /bin/true symlink for flash-kernel"
     fail=1
 fi
 # seed-boot-firmware must exist and be executable. It populates /boot/firmware

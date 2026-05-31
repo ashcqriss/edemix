@@ -173,7 +173,8 @@ mmdebstrap \
     --essential-hook='copy-in '"$REPO_ROOT"'/shared/includes/etc/initramfs-tools/conf.d/edemint.conf /etc/initramfs-tools/conf.d/' \
     --essential-hook='copy-in '"$PROFILE_DIR"'/includes/etc/flash-kernel/machine /etc/flash-kernel/' \
     --essential-hook='copy-in '"$PROFILE_DIR"'/includes/etc/default/flash-kernel /etc/default/' \
-    --essential-hook='chroot "$1" sh -c "mkdir -p /usr/local/sbin && printf \"#!/bin/sh\\nexit 0\\n\" > /usr/local/sbin/flash-kernel && chmod +x /usr/local/sbin/flash-kernel"' \
+    --essential-hook='chroot "$1" dpkg-divert --rename --quiet --add /usr/sbin/flash-kernel' \
+    --essential-hook='ln -s /bin/true "$1/usr/sbin/flash-kernel"' \
     --customize-hook='chroot "$1" mkdir -p /usr/local/share/edemint-hooks' \
     --customize-hook='sync-in '"$REPO_ROOT"'/shared/includes /' \
     --customize-hook='sync-in '"$PROFILE_DIR"'/includes /' \
@@ -181,7 +182,8 @@ mmdebstrap \
     --customize-hook='copy-in '"$PROFILE_DIR"'/scripts/edemint-run-hooks /usr/local/sbin/' \
     --customize-hook='chroot "$1" sh /usr/local/sbin/edemint-run-hooks' \
     --customize-hook='chroot "$1" sh -c "systemctl enable edemint-firstboot-growfs.service edemint-flash-kernel-fixup.service ssh.service || true"' \
-    --customize-hook='chroot "$1" rm -f /usr/local/sbin/flash-kernel' \
+    --customize-hook='rm -f "$1/usr/sbin/flash-kernel"' \
+    --customize-hook='chroot "$1" dpkg-divert --rename --quiet --remove /usr/sbin/flash-kernel' \
     --customize-hook='copy-in '"$PROFILE_DIR"'/scripts/seed-boot-firmware /usr/local/sbin/' \
     --customize-hook='chroot "$1" sh /usr/local/sbin/seed-boot-firmware' \
     --customize-hook='sync-out /var/cache/apt/archives '"$APT_CACHE" \
