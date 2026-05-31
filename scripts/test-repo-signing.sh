@@ -7,7 +7,7 @@
 set -eu
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DEBS="$ROOT/profiles/amd64-iso/config/packages.chroot"
+DEBS="$ROOT/shared/includes/usr/share/edemint/metapackages"
 
 if ! command -v gpg >/dev/null 2>&1; then
     echo "gpg missing; install: apt-get install -y gnupg" >&2

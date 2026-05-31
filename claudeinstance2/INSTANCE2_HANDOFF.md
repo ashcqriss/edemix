@@ -1,0 +1,133 @@
+# Claude Instance 2 — Error-Fix & Optimization Handoff
+
+This document is written by Claude Instance 2 (the error-fix instance, spawned from
+the original Instance 1 at >800k context) to itself and to Instance 1.
+Read it cold — it assumes you have not seen the conversation that produced it.
+
+## What the two-instance split is
+
+- **Instance 1** (the original session): Holds the full design history, the user's
+  architectural decisions, and the "why" behind every feature. Continues new feature
+  work. Has >800k context — slower, but complete.
+- **Instance 2** (this session, and the one that will continue it): Starts fresh from
+  the codebase + SESSION_HANDOFF.md. Handles build errors, CI failures, and small
+  optimizations quickly because it is not dragging 800k tokens through every call.
+
+**Neither instance is more important.** Instance 1 builds features; Instance 2 keeps
+the build green and cleans up behind it. They converge on the same codebase via git.
+
+## Session 2 scope (what was done in the first run)
+
+All changes are on branch `claude/nice-volta-bkx1i`. Confirmed green: `make lint &&
+make sign-test`. Nothing was committed yet — the user may want to review first.
+
+### Bug 1 — `scripts/test-repo-signing.sh`: wrong `.deb` search path
+
+**Root cause:** Commit `b2d3c1d` ("Stop using config/packages.chroot/") moved the
+metapackage `.deb` output from `profiles/amd64-iso/config/packages.chroot/` to
+`shared/includes/usr/share/edemint/metapackages/`, but the sign-test script still
+pointed at the old path.
+
+**Effect:** `make sign-test` exited 1 ("FAIL: still no .deb in … after build
+attempt") on every run, breaking CI.
+
+**Fix:** `scripts/test-repo-signing.sh` line 10:
+```diff
+-DEBS="$ROOT/profiles/amd64-iso/config/packages.chroot"
++DEBS="$ROOT/shared/includes/usr/share/edemint/metapackages"
+```
+
+### Bug 2 — `.github/workflows/build.yml`: same stale path in publish job
+
+**Root cause:** Same as Bug 1 — the publish step's `cp *.deb` still referenced the
+old path, so publishing would have found no `.deb` files.
+
+**Fix:** `.github/workflows/build.yml` line 161:
+```diff
+-cp profiles/amd64-iso/config/packages.chroot/*.deb repo/pool/main/ || true
++cp shared/includes/usr/share/edemint/metapackages/*.deb repo/pool/main/ || true
+```
+
+### Bug 3 — `profiles/arm64-pi/genimage.cfg` + `build.sh`: FAT partition missing all firmware files
+
+**Root cause:** The genimage.cfg `image boot.vfat {}` block explicitly listed only
+two files (`config.txt`, `cmdline.txt`) via `file {}` entries. All other
+raspi-firmware content (dtbs, start4.elf, fixup4.dat, overlays/, kernel image) was
+missing from the FAT partition. A Pi image built by the old code would not boot.
+
+**Additional sub-bug:** `build.sh` section 3 guarded config.txt/cmdline.txt copies
+with `if [ ! -f ]`. Since `raspi-firmware` always installs its own versions, our
+custom config (with `dtoverlay=vc4-kms-v3d`, Pi 5 tweaks, etc.) was silently
+discarded.
+
+**Fix approach:**
+1. `build.sh`: always `cp -f` our config.txt/cmdline.txt (remove the guards).
+2. `build.sh`: before calling genimage, loop-mount-create a complete `$TMP_DIR/boot.vfat`
+   from `$ROOTFS_DIR/boot/firmware/` (all files via `cp -a`). genimage reads this
+   pre-built image from `--inputpath "$TMP_DIR"` instead of building its own.
+3. `genimage.cfg`: remove the `image boot.vfat { vfat { ... } }` block. genimage
+   finds `boot.vfat` in `--inputpath` (our pre-built one) and uses it as-is.
+4. `genimage.cfg`: add a clear comment explaining the pre-built FAT approach.
+
+**Why loop-mount over mcopy:** mtools `mcopy -s . ::` has quoting/path edge cases
+with recursive copies from a real rootfs. The build already runs as root (required
+for mmdebstrap + genimage loop devices), so `mount -o loop` is reliable.
+
+## How to continue as Instance 2 in the next session
+
+1. Read `SESSION_HANDOFF.md` — that is the primary reference document written by
+   Instance 1 with the full CI debug history and patterns.
+2. Read this file (`claudeinstance2/INSTANCE2_HANDOFF.md`) for what Instance 2 has
+   already done.
+3. Read the git log: `git log --oneline -10`. The most recent commits are on
+   `claude/nice-volta-bkx1i`.
+4. Run `make lint && make sign-test` — must stay green before every push.
+5. Check CI status at `https://github.com/ashcqriss/edemint/actions` (use the GitHub
+   MCP tools if available, since `gh` CLI is absent in the web environment).
+
+## Patterns to know (summarised from SESSION_HANDOFF.md)
+
+| Problem | Fix |
+|---|---|
+| `lb config` rejects a flag | Remove from `auto/config`; force `LB_*` var in `build.sh` |
+| Package missing on arm64 | Move to `profiles/amd64-iso/config/package-lists/amd64-firmware.list.chroot` |
+| Package wrong name / not in Trixie | Move to `0050-extra-desktop.hook.chroot` (best-effort) |
+| `.deb` path changes | Grep for both old + new paths across `scripts/`, `.github/workflows/`, `build.sh` |
+
+## Known latent issues (not in scope for a fix-pass)
+
+These are NOT CI failures right now but may surface:
+
+- **genimage version name mismatch:** `genimage.cfg` hardcodes `edemint-0.1-arm64-rpi.img`;
+  `build.sh` derives `IMG_NAME` from `$EDEMINT_VERSION`. If a tagged release sets
+  `EDEMINT_VERSION=0.2`, `xz` will look for the wrong filename. Fix when the first
+  version tag is cut: either sed-patch genimage.cfg before calling genimage, or use
+  a symlink post-step.
+- **`rootfs.ext4` includes `/boot/firmware/`:** The ext4 rootfs written by genimage
+  will contain firmware files as regular files (because the mountpoint is not
+  excluded). On a real Pi the FAT partition is mounted at `/boot/firmware`, so the
+  ext4 copy is dormant. No /etc/fstab entry for `/boot/firmware` is currently shipped
+  — add one when confirming on real hardware (Tier C).
+- **Pi AI HAT+ / Hailo hook** (`0400-hailo.hook.chroot`): depends on the Raspberry Pi
+  apt component being available. CI can't test this; Tier C only.
+- **XR driver SHA placeholder**: `0200-xr-driver.hook.chroot` has `XR_SHA256=PLACEHOLDER`.
+  The hook gracefully skips — intentional until a real XRLinuxDriver tag is pinned.
+
+## Communication between instances
+
+There is no live channel. Both instances push to the same branch. The coordination
+mechanism is:
+- This file (`claudeinstance2/INSTANCE2_HANDOFF.md`) — updated by Instance 2 after
+  each fix session.
+- `SESSION_HANDOFF.md` — maintained by Instance 1 after feature work.
+- Git commit messages — the project's incident + feature log; always read the last
+  5-10 commits on entry.
+
+**Instance 1 instruction:** Before starting a new feature, run `make lint && make
+sign-test` to confirm Instance 2's fixes landed cleanly. If the lint fails after a
+feature push, that is the error-fix session's first job.
+
+**Instance 2 instruction:** Do not add features. Fix what is broken. Add a Tier A
+invariant for every security-relevant fix so regressions are caught automatically.
+After each fix batch: commit with a detailed message (root cause + fix), push to
+`claude/nice-volta-bkx1i`, and update this file.

@@ -173,17 +173,12 @@ cached_out=$(find "$APT_CACHE" -maxdepth 1 -name '*.deb' 2>/dev/null | wc -l)
 echo ">> apt-cache: $cached_out .debs saved for next run"
 
 # --- 3. Pi firmware boot files -------------------------------------------
-# raspi-firmware lays files under /usr/lib/raspi-firmware; the package
-# itself, if installed in the rootfs, populates /boot/firmware. The hooks
-# above already ran, so /boot/firmware should be set up. Ensure config.txt
-# + cmdline.txt are present.
+# raspi-firmware populates /boot/firmware; our config.txt/cmdline.txt must
+# always take precedence over the package defaults (raspi-firmware ships its
+# own versions, so the old `if [ ! -f ]` guard silently dropped ours).
 mkdir -p "$ROOTFS_DIR/boot/firmware"
-if [ ! -f "$ROOTFS_DIR/boot/firmware/config.txt" ]; then
-    cp "$PROFILE_DIR/boot/config.txt"  "$ROOTFS_DIR/boot/firmware/config.txt"
-fi
-if [ ! -f "$ROOTFS_DIR/boot/firmware/cmdline.txt" ]; then
-    cp "$PROFILE_DIR/boot/cmdline.txt" "$ROOTFS_DIR/boot/firmware/cmdline.txt"
-fi
+cp -f "$PROFILE_DIR/boot/config.txt"  "$ROOTFS_DIR/boot/firmware/config.txt"
+cp -f "$PROFILE_DIR/boot/cmdline.txt" "$ROOTFS_DIR/boot/firmware/cmdline.txt"
 
 # --- 4. genimage: build firmware partition + root partition --------------
 echo ">> assembling image..."
@@ -191,18 +186,27 @@ GENIMAGE_TMP="$TMP_DIR/genimage"
 rm -rf "$GENIMAGE_TMP"
 mkdir -p "$GENIMAGE_TMP"
 
-# Split rootfs into a boot/firmware staging dir + the rest (genimage wants
-# the boot partition contents as a directory).
-BOOT_STAGE="$TMP_DIR/boot-firmware"
-rm -rf "$BOOT_STAGE"
-mkdir -p "$BOOT_STAGE"
-cp -a "$ROOTFS_DIR/boot/firmware/." "$BOOT_STAGE/"
+# Build a complete FAT image with ALL files from /boot/firmware.
+# genimage.cfg has no 'image boot.vfat {}' block so genimage reads
+# this pre-built file from --inputpath instead of building its own
+# (which could only enumerate files statically).
+# Loop-mount is reliable for root builds and avoids mtools quoting issues.
+BOOT_IMG="$TMP_DIR/boot.vfat"
+dd if=/dev/zero of="$BOOT_IMG" bs=1M count=512 status=none
+mkfs.vfat -F 32 -n FIRMWARE "$BOOT_IMG"
+BOOT_MNT="$TMP_DIR/boot-mnt"
+mkdir -p "$BOOT_MNT"
+mount -o loop "$BOOT_IMG" "$BOOT_MNT"
+cp -a "$ROOTFS_DIR/boot/firmware/." "$BOOT_MNT/"
+sync
+umount "$BOOT_MNT"
+echo ">> boot.vfat: $(find "$ROOTFS_DIR/boot/firmware" -type f | wc -l) firmware files"
 
 genimage \
     --config "$PROFILE_DIR/genimage.cfg" \
     --rootpath "$ROOTFS_DIR" \
     --tmppath "$GENIMAGE_TMP" \
-    --inputpath "$BOOT_STAGE" \
+    --inputpath "$TMP_DIR" \
     --outputpath "$IMAGES_DIR"
 
 # --- 5. compress --------------------------------------------------------

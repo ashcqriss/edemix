@@ -158,7 +158,7 @@ jobs:
           # intentionally not hardcoded here — wire it in a follow-up once
           # the repo host is provisioned.
           mkdir -p repo/dists/trixie/main/binary-all repo/pool/main
-          cp profiles/amd64-iso/config/packages.chroot/*.deb repo/pool/main/ || true
+          cp shared/includes/usr/share/edemint/metapackages/*.deb repo/pool/main/ || true
           (
             cd repo
             apt-ftparchive packages pool/main > dists/trixie/main/binary-all/Packages
