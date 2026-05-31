@@ -49,9 +49,9 @@ sudo ./build.sh clean     # remove build artifacts
 
 The Pi build runs ~4x faster on a native arm64 host (it skips qemu
 emulation); on an amd64 host it auto-installs qemu-user-static and
-cross-builds. CI defaults to the free amd64 (`ubuntu-latest`) cross-build;
-set the `PI_RUNNER` repo variable to `ubuntu-24.04-arm` to build natively
-(free for public repos, paid for private).
+cross-builds. CI builds natively on a `ubuntu-24.04-arm` runner (free for
+this public repo); override with the `PI_RUNNER` repo variable (e.g.
+`ubuntu-latest`) if needed.
 
 Write the ISO to a USB stick (`dd if=live-image-amd64.hybrid.iso of=/dev/sdX
 bs=4M status=progress`) or boot it in a VM. Flash the Pi image with
