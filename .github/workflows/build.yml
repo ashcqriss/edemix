@@ -85,7 +85,7 @@ jobs:
       - name: Build deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y mmdebstrap genimage parted dosfstools mtools \
+          sudo apt-get install -y mmdebstrap genimage genext2fs parted dosfstools mtools \
             e2fsprogs zstd equivs debian-archive-keyring gnupg curl
           # qemu + binfmt are only needed when cross-building (amd64 runner);
           # a native arm64 runner builds the rootfs directly.
