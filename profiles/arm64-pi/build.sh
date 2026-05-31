@@ -202,8 +202,28 @@ sync
 umount "$BOOT_MNT"
 echo ">> boot.vfat: $(find "$ROOTFS_DIR/boot/firmware" -type f | wc -l) firmware files"
 
+# Size the ext4 root to the ACTUAL rootfs + 30% headroom (min 4G). The cfg
+# ships a 5G default, but the populated desktop rootfs (firmware-misc-nonfree
+# alone is ~1GB, plus Firefox/GNOME/fonts-noto/ffmpeg/fcitx5-mozc) can exceed
+# that, and genimage's `mke2fs -d` aborts when content overflows a fixed
+# size. firstboot-growfs expands the partition to the card on first boot, so
+# this only needs to hold the shipped content, not the final disk.
+ROOT_KB="$(du -sk "$ROOTFS_DIR" | awk '{print $1}')"
+ROOT_SIZE_MB="$(( ROOT_KB * 130 / 100 / 1024 + 512 ))"
+[ "$ROOT_SIZE_MB" -lt 4096 ] && ROOT_SIZE_MB=4096
+echo ">> rootfs is ${ROOT_KB} KB; sizing ext4 root to ${ROOT_SIZE_MB}M"
+
+# genimage.cfg names its output image edemint-0.1-arm64-rpi.img and sets a
+# placeholder 5G root size. For a versioned build (EDEMINT_VERSION != 0.1)
+# the name must track IMG_NAME, or the xz step below looks for a file
+# genimage never wrote. Template a copy of the cfg with the real name + size.
+GENIMAGE_CFG="$TMP_DIR/genimage.cfg"
+sed -e "s|edemint-0\.1-arm64-rpi\.img|$IMG_NAME|g" \
+    -e "s|size = 5G|size = ${ROOT_SIZE_MB}M|" \
+    "$PROFILE_DIR/genimage.cfg" > "$GENIMAGE_CFG"
+
 genimage \
-    --config "$PROFILE_DIR/genimage.cfg" \
+    --config "$GENIMAGE_CFG" \
     --rootpath "$ROOTFS_DIR" \
     --tmppath "$GENIMAGE_TMP" \
     --inputpath "$TMP_DIR" \

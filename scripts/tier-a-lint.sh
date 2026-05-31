@@ -199,6 +199,42 @@ if ! grep -q 'LB_DEBIAN_INSTALLER="none"' build.sh; then
     fail=1
 fi
 
+# Pi genimage: boot.vfat must be PRE-BUILT in build.sh (mkfs.vfat over the
+# WHOLE /boot/firmware) and must NOT also be declared as an image block in
+# genimage.cfg. The old cfg listed only config.txt + cmdline.txt via static
+# `file {}` entries, producing a FAT partition with no kernel/dtbs/overlays
+# — a non-booting Pi image.
+if ! grep -q 'mkfs.vfat' profiles/arm64-pi/build.sh; then
+    echo "FAIL: Pi build.sh no longer pre-builds boot.vfat (mkfs.vfat missing)"
+    fail=1
+fi
+if grep -qE 'image[[:space:]]+boot\.vfat' profiles/arm64-pi/genimage.cfg; then
+    echo "FAIL: genimage.cfg re-declares boot.vfat — conflicts with the"
+    echo "      pre-built FAT and can ship an incomplete firmware partition."
+    fail=1
+fi
+
+# Pi genimage: the ext4 root size must be computed from the real rootfs.
+# A fixed 5G overflows the full desktop set (firmware-misc-nonfree alone is
+# ~1GB) and genimage's `mke2fs -d` aborts on overflow. Assert build.sh
+# templates the size instead of using the cfg placeholder verbatim.
+if ! grep -q 'ROOT_SIZE_MB' profiles/arm64-pi/build.sh; then
+    echo "FAIL: Pi build.sh doesn't dynamically size the ext4 root"
+    fail=1
+fi
+
+# sign-test + publish read metapackage .debs from the includes path
+# (b2d3c1d moved them off config/packages.chroot/). A stale path makes
+# `make sign-test` and the release job find zero .debs.
+if grep -q 'config/packages.chroot' scripts/test-repo-signing.sh; then
+    echo "FAIL: test-repo-signing.sh still points at config/packages.chroot"
+    fail=1
+fi
+if grep -q 'config/packages.chroot' .github/workflows/build.yml; then
+    echo "FAIL: workflow publish still copies from config/packages.chroot"
+    fail=1
+fi
+
 echo "(invariant checks done)"
 
 if [ $fail -eq 0 ]; then

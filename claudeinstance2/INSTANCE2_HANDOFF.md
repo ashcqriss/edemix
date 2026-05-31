@@ -73,6 +73,36 @@ discarded.
 with recursive copies from a real rootfs. The build already runs as root (required
 for mmdebstrap + genimage loop devices), so `mount -o loop` is reliable.
 
+### Bug 4 — `profiles/arm64-pi/`: fixed 5G ext4 root overflows the desktop set
+
+**Root cause:** `genimage.cfg` sized the root partition at a fixed `size = 5G`. The
+populated rootfs (firmware-misc-nonfree ~1GB + Firefox + GNOME apps + fonts-noto +
+ffmpeg/gstreamer + fcitx5-mozc + the full Hyprland userland) can exceed 5G, and
+genimage's `mke2fs -d` aborts when the content overflows a fixed filesystem size.
+This stage had **never run** — the Pi build historically died one `mkdir` before
+genimage — so the limit was untested.
+
+**Fix:** `build.sh` now `du -sk`s the real rootfs and templates the cfg to
+`size = (rootfs × 1.30 + 512MiB, min 4G)` before calling genimage. `firstboot-growfs`
+expands the partition to the card on first boot, so the shipped size only needs to
+hold the content. The cfg keeps `size = 5G` as a self-documented placeholder.
+
+### Bug 5 — `profiles/arm64-pi/`: genimage output name didn't track EDEMINT_VERSION
+
+**Root cause:** `genimage.cfg` hardcoded `edemint-0.1-arm64-rpi.img`; `build.sh`
+derives `IMG_NAME` from `$EDEMINT_VERSION` and `xz`-es that name. A versioned build
+(`EDEMINT_VERSION=0.2`) would have genimage write `…0.1…` while `xz` looked for
+`…0.2…` → fail. (No effect on the default 0.1 build, but it would break the first
+tagged release.)
+
+**Fix:** the same `sed` that injects the ext4 size also rewrites the image name to
+`$IMG_NAME` (a no-op substitution at 0.1).
+
+Both fixes are locked in by new Tier A invariants (see `scripts/tier-a-lint.sh`):
+build.sh must pre-build boot.vfat (`mkfs.vfat`) and dynamically size the root
+(`ROOT_SIZE_MB`); genimage.cfg must not re-declare `boot.vfat`; neither the
+sign-test nor the workflow may reference the dead `config/packages.chroot` path.
+
 ## How to continue as Instance 2 in the next session
 
 1. Read `SESSION_HANDOFF.md` — that is the primary reference document written by
@@ -98,16 +128,12 @@ for mmdebstrap + genimage loop devices), so `mount -o loop` is reliable.
 
 These are NOT CI failures right now but may surface:
 
-- **genimage version name mismatch:** `genimage.cfg` hardcodes `edemint-0.1-arm64-rpi.img`;
-  `build.sh` derives `IMG_NAME` from `$EDEMINT_VERSION`. If a tagged release sets
-  `EDEMINT_VERSION=0.2`, `xz` will look for the wrong filename. Fix when the first
-  version tag is cut: either sed-patch genimage.cfg before calling genimage, or use
-  a symlink post-step.
-- **`rootfs.ext4` includes `/boot/firmware/`:** The ext4 rootfs written by genimage
-  will contain firmware files as regular files (because the mountpoint is not
-  excluded). On a real Pi the FAT partition is mounted at `/boot/firmware`, so the
-  ext4 copy is dormant. No /etc/fstab entry for `/boot/firmware` is currently shipped
-  — add one when confirming on real hardware (Tier C).
+- **`/etc/fstab` has no `/boot/firmware` entry:** the ext4 rootfs written by genimage
+  also contains the firmware files as regular files (the mountpoint isn't excluded).
+  On a real Pi the FAT partition is what's mounted at `/boot/firmware`, so the ext4
+  copy is dormant — but no fstab entry mounts the FAT partition there yet. Add one
+  when confirming on real hardware (Tier C); flash-kernel writes to `/boot/firmware`
+  on updates and needs the real partition mounted.
 - **Pi AI HAT+ / Hailo hook** (`0400-hailo.hook.chroot`): depends on the Raspberry Pi
   apt component being available. CI can't test this; Tier C only.
 - **XR driver SHA placeholder**: `0200-xr-driver.hook.chroot` has `XR_SHA256=PLACEHOLDER`.
