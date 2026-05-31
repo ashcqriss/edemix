@@ -48,6 +48,7 @@ htop
 pciutils
 usbutils
 xz-utils
+zstd
 
 # --- audio (pipewire — lighter and more capable than pulseaudio) --------
 pipewire
