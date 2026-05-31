@@ -1,0 +1,48 @@
+#!/bin/sh
+# Seed /boot/firmware with the kernel, initrd, and Device Tree blobs.
+#
+# flash-kernel is stubbed out during the mmdebstrap build phase (a
+# /usr/local/sbin/flash-kernel wrapper exits 0, shadowing the real binary via
+# PATH) to prevent failures on non-Pi CI runners. This script does what
+# flash-kernel would have done so genimage finds the right files when
+# assembling the FAT boot partition. edemint-flash-kernel-fixup.service
+# re-runs the real flash-kernel at first boot to apply board-specific
+# corrections.
+set -e
+
+KVER="$(find /boot -maxdepth 1 -name 'vmlinuz-*' 2>/dev/null | sort -V | tail -1 | sed 's|.*/vmlinuz-||')"
+if [ -z "$KVER" ]; then
+    echo "seed-boot-firmware: no kernel in /boot — skipping"
+    exit 0
+fi
+echo "seed-boot-firmware: seeding /boot/firmware for kernel $KVER"
+
+mkdir -p /boot/firmware/overlays
+
+# Pi 4 64-bit uses kernel8.img; Pi 5 uses kernel_2712.img. Copy the same
+# image to both names so the image boots on either board without flash-kernel
+# having run yet. edemint-flash-kernel-fixup.service corrects this at first
+# boot once the actual model is known.
+cp -f "/boot/vmlinuz-$KVER" /boot/firmware/kernel8.img
+cp -f "/boot/vmlinuz-$KVER" /boot/firmware/kernel_2712.img
+
+if [ -f "/boot/initrd.img-$KVER" ]; then
+    cp -f "/boot/initrd.img-$KVER" /boot/firmware/initrd.img
+else
+    echo "seed-boot-firmware: warning — /boot/initrd.img-$KVER not found"
+fi
+
+# DTBs from the linux-image package. Debian Trixie places them under
+# /usr/lib/linux-image-<ver>/broadcom/ for Pi boards.
+fwdir="/usr/lib/linux-image-$KVER"
+if [ -d "$fwdir/broadcom" ]; then
+    find "$fwdir/broadcom" -name '*.dtb' -exec cp -f {} /boot/firmware/ \;
+fi
+# Belt-and-suspenders: copy any Pi DTBs from the top-level dir too
+find "$fwdir" -maxdepth 1 -name 'bcm27*.dtb' \
+    -exec cp -f {} /boot/firmware/ \; 2>/dev/null || true
+if [ -d "$fwdir/overlays" ]; then
+    find "$fwdir/overlays" -name '*.dtb*' -exec cp -f {} /boot/firmware/overlays/ \;
+fi
+
+echo "seed-boot-firmware: done — $(find /boot/firmware -maxdepth 1 | wc -l) items in /boot/firmware"

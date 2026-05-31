@@ -237,6 +237,35 @@ if ! grep -q 'ROOT_SIZE_MB' profiles/arm64-pi/build.sh; then
     fail=1
 fi
 
+# ISO: LB_INIT_SYSTEM must be forced to systemd. Ubuntu's live-build 3.0~a57
+# defaults to live-config-sysvinit, which depends on sysvinit-core, which
+# conflicts with systemd-sysv installed in the chroot.
+if ! grep -q 'LB_INIT_SYSTEM="systemd"' build.sh; then
+    echo "FAIL: build.sh does not force LB_INIT_SYSTEM=systemd (live-config-sysvinit conflict)"
+    fail=1
+fi
+# Belt-and-suspenders: the apt pin that prevents live-config-sysvinit from
+# being selected must also be emitted into config/includes.chroot.
+if ! grep -q '50-edemint-no-sysvinit' build.sh; then
+    echo "FAIL: build.sh doesn't create the apt pin for live-config-sysvinit"
+    fail=1
+fi
+
+# Pi: flash-kernel must be stubbed during mmdebstrap via a /usr/local/sbin
+# wrapper (exits 0, shadows the real binary via PATH). Without this stub,
+# linux-image-arm64's postinst runs the real flash-kernel on the native arm64
+# CI runner — which is not a Pi — causing it to fail and abort the build.
+if ! grep -q '/usr/local/sbin/flash-kernel' profiles/arm64-pi/build.sh; then
+    echo "FAIL: Pi build.sh doesn't create the /usr/local/sbin/flash-kernel stub"
+    fail=1
+fi
+# seed-boot-firmware must exist and be executable. It populates /boot/firmware
+# with the kernel, initrd, and DTBs that the stubbed flash-kernel skipped.
+if [ ! -x profiles/arm64-pi/scripts/seed-boot-firmware ]; then
+    echo "FAIL: profiles/arm64-pi/scripts/seed-boot-firmware not executable"
+    fail=1
+fi
+
 # sign-test + publish read metapackage .debs from the includes path
 # (b2d3c1d moved them off config/packages.chroot/). A stale path makes
 # `make sign-test` and the release job find zero .debs.

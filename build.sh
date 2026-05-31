@@ -112,6 +112,34 @@ case "$target" in
                 done
             done
             echo ">> forced LB_FIRMWARE_CHROOT/BINARY=false (skip broken Contents fetch)"
+            # Force systemd live-config variant. Ubuntu's live-build 3.0~a57
+            # defaults to live-config-sysvinit, which depends on sysvinit-core,
+            # which conflicts with systemd-sysv. Two-pronged fix:
+            # 1. Set LB_INIT_SYSTEM so lb_chroot_live-packages picks the right
+            #    package directly.
+            # 2. Drop an apt preferences pin into includes.chroot — live-build's
+            #    lb_chroot_includes syncs it into the chroot before
+            #    lb_chroot_live-packages runs, so apt refuses to install
+            #    live-config-sysvinit even if lb somehow still requests it.
+            if [ -f config/chroot ]; then
+                if grep -q '^LB_INIT_SYSTEM=' config/chroot; then
+                    sed -i 's|^LB_INIT_SYSTEM=.*|LB_INIT_SYSTEM="systemd"|' config/chroot
+                else
+                    echo 'LB_INIT_SYSTEM="systemd"' >> config/chroot
+                fi
+                echo ">> forced LB_INIT_SYSTEM=systemd in config/chroot"
+            fi
+            mkdir -p config/includes.chroot/etc/apt/preferences.d
+            cat > config/includes.chroot/etc/apt/preferences.d/50-edemint-no-sysvinit << 'PINEOF'
+Package: live-config-sysvinit
+Pin: release *
+Pin-Priority: -1
+
+Package: sysvinit-core
+Pin: release *
+Pin-Priority: -1
+PINEOF
+            echo ">> pinned live-config-sysvinit to never-install (conflict with systemd-sysv)"
             # Ensure gnupg + ca-certificates + apt-transport-https are
             # debootstrapped early. Without gnupg in the chroot,
             # lb_chroot_archives' apt-get update fails with
