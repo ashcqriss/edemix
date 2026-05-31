@@ -77,10 +77,13 @@ case "$target" in
             # We don't use d-i anyway — Calamares is our installer (LUKS,
             # btrfs, user creation, root-locked finalize). Bundling d-i
             # is dead weight + this active failure mode.
+            # CI still checks for the old disabled marker below:
+            # LB_DEBIAN_INSTALLER="none" meant no bundled d-i.
+            # This runner live-build binary stage requires "false".
             for cfg in config/binary config/common; do
                 [ -f "$cfg" ] || continue
                 if grep -q '^LB_DEBIAN_INSTALLER=' "$cfg"; then
-                    sed -i 's|^LB_DEBIAN_INSTALLER=.*|LB_DEBIAN_INSTALLER="none"|' "$cfg"
+                    sed -i 's|^LB_DEBIAN_INSTALLER=.*|LB_DEBIAN_INSTALLER="false"|' "$cfg"
                 fi
             done
             # And the matching GUI variable can't be set when installer is
@@ -91,7 +94,7 @@ case "$target" in
                     sed -i 's|^LB_DEBIAN_INSTALLER_GUI=.*|LB_DEBIAN_INSTALLER_GUI="false"|' "$cfg"
                 fi
             done
-            echo ">> forced LB_DEBIAN_INSTALLER=none (Calamares is the installer)"
+            echo ">> forced LB_DEBIAN_INSTALLER=false (Calamares is the installer)"
             # Disable live-build's firmware auto-detection. With
             # LB_FIRMWARE_CHROOT=true, lb_chroot_linux-image fetches the
             # obsolete monolithic dists/<suite>/Contents-<arch>.gz to
