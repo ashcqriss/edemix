@@ -6,12 +6,14 @@
 # + linux-image-arm64 → run shared/hooks/normal/* → genimage assembles a
 # FAT firmware partition + ext4 root → xz-compress.
 #
-# Requirements: amd64 Linux host with root + loop devices (mmdebstrap +
-# genimage), and: mmdebstrap, qemu-user-static, binfmt-support, genimage,
-# parted, mtools, e2fsprogs, dosfstools, xz-utils, equivs (for metapackages).
+# Requirements: a Linux host with root + loop devices (mmdebstrap +
+# genimage), and: mmdebstrap, genimage, parted, mtools, e2fsprogs,
+# dosfstools, zstd, equivs (for metapackages). On a non-arm64 host add
+# qemu-user-static + binfmt-support (the script installs them automatically);
+# on a native arm64 host they are not needed and the build is ~4x faster.
 #
 # Usage:
-#   sudo ./profiles/arm64-pi/build.sh           # full build → *.img.xz
+#   sudo ./profiles/arm64-pi/build.sh           # full build → *.img.zst
 #   sudo ./profiles/arm64-pi/build.sh clean     # remove build/ dir
 
 set -e
@@ -38,23 +40,39 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 # --- 0. install host build deps if missing -------------------------------
+# A native arm64 host (e.g. a GitHub `ubuntu-24.04-arm` runner) runs the
+# arm64 chroot WITHOUT qemu — package postinst scripts execute natively
+# instead of under slow TCG emulation. That emulation is the single biggest
+# Pi-build cost, so the native path is roughly 4x faster end to end. We only
+# pull qemu-user-static when actually cross-building from a non-arm64 host;
+# mmdebstrap's `--arch=arm64` is correct either way.
+HOST_ARCH="$(dpkg --print-architecture 2>/dev/null || echo unknown)"
+if [ "$HOST_ARCH" = "arm64" ]; then
+    echo ">> native arm64 host — building without qemu (fast path)"
+else
+    echo ">> cross-building arm64 on '$HOST_ARCH' — using qemu-user-static (slow path)"
+fi
+
 need_pkgs=""
-for cmd in mmdebstrap qemu-aarch64-static genimage parted mkfs.vfat mkfs.ext4 xz equivs-build gpg curl; do
+for cmd in mmdebstrap genimage parted mkfs.vfat mkfs.ext4 zstd equivs-build gpg curl; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
         case "$cmd" in
             mmdebstrap)       need_pkgs="$need_pkgs mmdebstrap" ;;
-            qemu-aarch64-static) need_pkgs="$need_pkgs qemu-user-static binfmt-support" ;;
             genimage)         need_pkgs="$need_pkgs genimage" ;;
             parted)           need_pkgs="$need_pkgs parted" ;;
             mkfs.vfat)        need_pkgs="$need_pkgs dosfstools mtools" ;;
             mkfs.ext4)        need_pkgs="$need_pkgs e2fsprogs" ;;
-            xz)               need_pkgs="$need_pkgs xz-utils" ;;
+            zstd)             need_pkgs="$need_pkgs zstd" ;;
             equivs-build)     need_pkgs="$need_pkgs equivs" ;;
             gpg)              need_pkgs="$need_pkgs gnupg" ;;
             curl)             need_pkgs="$need_pkgs curl" ;;
         esac
     fi
 done
+# Cross-build only: the qemu-aarch64 binfmt handler must be registered.
+if [ "$HOST_ARCH" != "arm64" ] && ! command -v qemu-aarch64-static >/dev/null 2>&1; then
+    need_pkgs="$need_pkgs qemu-user-static binfmt-support"
+fi
 if [ -n "$need_pkgs" ]; then
     echo ">> installing host build deps:$need_pkgs"
     apt-get update
@@ -230,10 +248,12 @@ genimage \
     --outputpath "$IMAGES_DIR"
 
 # --- 5. compress --------------------------------------------------------
-# xz -3 over -9e: ~5-10x faster compression for ~20% larger output. Pi
-# images are network/SD-transferred once, so a few extra MB matter much
-# less than the time saved on every CI run.
-echo ">> compressing..."
-xz -T0 -3 -f "$IMAGES_DIR/$IMG_NAME"
-ls -lh "$IMAGES_DIR/$IMG_NAME.xz"
-echo ">> done: $IMAGES_DIR/$IMG_NAME.xz"
+# zstd -T0 over xz: multithreaded zstd at -12 packs a multi-GB image in
+# tens of seconds (xz -3 took minutes) at a comparable ratio. The level is
+# the speed/size knob — raise toward -19 for smaller downloads, lower for a
+# faster build. .img.zst flashes with `zstd -dc img.zst | dd ...` and via
+# current Raspberry Pi Imager / balenaEtcher builds.
+echo ">> compressing (zstd -12, multithreaded)..."
+zstd -T0 -12 -f --rm "$IMAGES_DIR/$IMG_NAME"
+ls -lh "$IMAGES_DIR/$IMG_NAME.zst"
+echo ">> done: $IMAGES_DIR/$IMG_NAME.zst"

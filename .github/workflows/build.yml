@@ -72,16 +72,29 @@ jobs:
   pi:
     name: arm64 Raspberry Pi image
     needs: lint
-    runs-on: ubuntu-latest
+    # Runner is configurable via the PI_RUNNER repo/org variable.
+    #   - Default `ubuntu-latest` (amd64): cross-builds under qemu. ALWAYS
+    #     works, including on a Free plan, but ~50 min (TCG emulation of every
+    #     arm64 postinst is the dominant cost).
+    #   - Set PI_RUNNER=ubuntu-24.04-arm to build NATIVELY on an arm64 runner:
+    #     no qemu, ~12-15 min. arm64 hosted runners are free for PUBLIC repos;
+    #     on a PRIVATE repo they need a paid plan and bill Actions minutes.
+    # The Build-deps step and build.sh both detect the host arch, so the same
+    # workflow works on either runner with no further changes.
+    runs-on: ${{ vars.PI_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v5
       - name: Build deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y mmdebstrap qemu-user-static binfmt-support \
-            genimage parted dosfstools mtools e2fsprogs xz-utils equivs \
-            debian-archive-keyring gnupg curl
-          sudo update-binfmts --enable qemu-aarch64 || true
+          sudo apt-get install -y mmdebstrap genimage parted dosfstools mtools \
+            e2fsprogs zstd equivs debian-archive-keyring gnupg curl
+          # qemu + binfmt are only needed when cross-building (amd64 runner);
+          # a native arm64 runner builds the rootfs directly.
+          if [ "$(dpkg --print-architecture)" != "arm64" ]; then
+            sudo apt-get install -y qemu-user-static binfmt-support
+            sudo update-binfmts --enable qemu-aarch64 || true
+          fi
       # Cache the downloaded arm64 .debs between runs. Key includes the
       # package-list hash so the cache invalidates when the lists change.
       # On a cache hit, mmdebstrap skips most of the download phase
@@ -121,12 +134,12 @@ jobs:
           retention-days: 7
       - name: Collect artifacts
         run: |
-          find profiles/arm64-pi/build/images -maxdepth 1 -name '*.img.xz' -exec cp {} artifacts/ \;
+          find profiles/arm64-pi/build/images -maxdepth 1 -name '*.img.zst' -exec cp {} artifacts/ \;
           ls -lh artifacts/
       - uses: actions/upload-artifact@v4
         with:
           name: edemint-arm64-rpi-img
-          path: artifacts/*.img.xz
+          path: artifacts/*.img.zst
           if-no-files-found: error
           retention-days: 14
 
@@ -173,6 +186,6 @@ jobs:
         with:
           files: |
             dist/edemint-amd64-iso/*.iso
-            dist/edemint-arm64-rpi-img/*.img.xz
+            dist/edemint-arm64-rpi-img/*.img.zst
             edemint-apt-repo.tar.gz
           generate_release_notes: true

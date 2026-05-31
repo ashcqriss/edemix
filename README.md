@@ -43,12 +43,20 @@ with root, ~10GB free disk, and network:
 
 ```sh
 sudo ./build.sh amd64     # -> profiles/amd64-iso/live-image-amd64.hybrid.iso
-sudo ./build.sh pi        # -> profiles/arm64-pi/edemint-*-arm64-rpi.img.xz
+sudo ./build.sh pi        # -> profiles/arm64-pi/edemint-*-arm64-rpi.img.zst
 sudo ./build.sh clean     # remove build artifacts
 ```
 
+The Pi build runs ~4x faster on a native arm64 host (it skips qemu
+emulation); on an amd64 host it auto-installs qemu-user-static and
+cross-builds. CI defaults to the free amd64 (`ubuntu-latest`) cross-build;
+set the `PI_RUNNER` repo variable to `ubuntu-24.04-arm` to build natively
+(free for public repos, paid for private).
+
 Write the ISO to a USB stick (`dd if=live-image-amd64.hybrid.iso of=/dev/sdX
-bs=4M status=progress`) or boot it in a VM.
+bs=4M status=progress`) or boot it in a VM. Flash the Pi image with
+`zstd -dc edemint-*-arm64-rpi.img.zst | sudo dd of=/dev/sdX bs=4M status=progress`
+(or point Raspberry Pi Imager at the `.img.zst`).
 
 ## Default keybinds
 

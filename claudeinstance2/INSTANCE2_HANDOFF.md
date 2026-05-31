@@ -146,6 +146,32 @@ sign-test nor the workflow may reference the dead `config/packages.chroot` path.
 5. Check CI status at `https://github.com/ashcqriss/edemint/actions` (use the GitHub
    MCP tools if available, since `gh` CLI is absent in the web environment).
 
+## Pi build speed (the qemu bottleneck)
+
+The ~50-min Pi CI build is dominated by **qemu TCG emulation**: on an amd64
+runner, every arm64 package postinst executes under emulation. The fixes:
+
+- **`profiles/arm64-pi/build.sh` is arch-aware.** `HOST_ARCH=$(dpkg --print-architecture)`;
+  on a native arm64 host it skips qemu-user-static entirely (mmdebstrap runs the
+  arm64 chroot natively, ~4x faster). On amd64 it auto-installs qemu and cross-builds.
+- **The workflow runner is configurable:** `runs-on: ${{ vars.PI_RUNNER || 'ubuntu-latest' }}`.
+  Default = free amd64 cross-build (always works). Set repo variable
+  `PI_RUNNER=ubuntu-24.04-arm` for the native fast path.
+- **IMPORTANT — the repo is PRIVATE.** arm64 hosted runners are free only for *public*
+  repos; on a private repo they need a **paid plan** and bill Actions minutes. That's
+  why the default stays on the free amd64 runner rather than hardcoding arm64. To get
+  the 4x win for free, the alternative is making the repo public.
+- **Compression is now `zstd -T0 -12`** (was `xz -3`): the image is `*.img.zst`, packed
+  in tens of seconds instead of minutes. Flash with `zstd -dc img.zst | dd …`.
+
+**Next free speedup (needs Instance 1 sign-off — it's a design change, not a fix):**
+the AR build toolchain (`build-essential`, `cmake`, `pkg-config`, the `lib*-dev` set
+in `shared/package-lists/ar.list.chroot`) is installed on every image but the XR-driver
+hook is skipped today (placeholder SHA), so those packages' postinsts are pure dead
+weight under qemu AND ~250MB of image bloat. Moving the XR-driver build to first-boot
+/ on-demand (so the toolchain isn't in the base image) would cut both build time and
+image size — but it changes WHEN the AR driver compiles, which is Instance 1's call.
+
 ## Patterns to know (summarised from SESSION_HANDOFF.md)
 
 | Problem | Fix |

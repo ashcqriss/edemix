@@ -7,7 +7,7 @@
 #
 # Usage:
 #   sudo ./build.sh amd64       # live-build -> live-image-amd64.hybrid.iso
-#   sudo ./build.sh pi          # mmdebstrap+genimage -> edemint-*-arm64-rpi.img.xz
+#   sudo ./build.sh pi          # mmdebstrap+genimage -> edemint-*-arm64-rpi.img.zst
 #   sudo ./build.sh clean       # clean all profiles' build state
 #   sudo ./build.sh clean amd64 # clean only that profile
 
