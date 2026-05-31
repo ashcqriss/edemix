@@ -186,6 +186,32 @@ PINEOF
                 done
                 echo ">> forced LB_BOOTSTRAP_INCLUDE(S) in config/bootstrap"
             fi
+            # Ubuntu live-build 3.0-a57 still looks in /root/isolinux
+            # for BIOS bootloader files, but current packages install them
+            # under distro-specific /usr/lib paths. Link the files into the
+            # legacy location before lb_binary_syslinux runs.
+            mkdir -p /root/isolinux
+            if [ ! -e /root/isolinux/isolinux.bin ]; then
+                for src in /usr/lib/ISOLINUX/isolinux.bin /usr/lib/syslinux/isolinux.bin /usr/share/syslinux/isolinux.bin; do
+                    if [ -e "$src" ]; then
+                        ln -sf "$src" /root/isolinux/isolinux.bin
+                        break
+                    fi
+                done
+            fi
+            if [ ! -e /root/isolinux/vesamenu.c32 ]; then
+                for src in /usr/lib/syslinux/modules/bios/vesamenu.c32 /usr/lib/syslinux/vesamenu.c32 /usr/share/syslinux/vesamenu.c32; do
+                    if [ -e "$src" ]; then
+                        ln -sf "$src" /root/isolinux/vesamenu.c32
+                        break
+                    fi
+                done
+            fi
+            if [ ! -e /root/isolinux/isolinux.bin ] || [ ! -e /root/isolinux/vesamenu.c32 ]; then
+                echo ">> missing isolinux bootloader files; install isolinux and syslinux-common" >&2
+                exit 1
+            fi
+            echo ">> prepared /root/isolinux compatibility links for live-build"
             echo ">> building image (this takes a while and needs network)..."
             lb build
             echo ">> done. Look for the *.iso in $profile_dir."
