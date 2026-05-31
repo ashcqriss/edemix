@@ -2,7 +2,7 @@ name: build
 
 on:
   push:
-    branches: [main, "claude/**"]
+    branches: [main, "claude/**", fix]
     tags: ["v*"]
   pull_request:
     branches: [main]
@@ -60,7 +60,7 @@ jobs:
           retention-days: 7
       - name: Collect artifacts
         run: |
-          find profiles/amd64-iso -maxdepth 1 -name '*.iso' -exec cp {} artifacts/ \;
+          find profiles/amd64-iso -maxdepth 1 -name '*.iso' -exec mv {} artifacts/ \;
           ls -lh artifacts/
       - uses: actions/upload-artifact@v4
         with:
@@ -92,17 +92,6 @@ jobs:
             sudo apt-get install -y qemu-user-static binfmt-support
             sudo update-binfmts --enable qemu-aarch64 || true
           fi
-      # Cache the downloaded arm64 .debs between runs. Key includes the
-      # package-list hash so the cache invalidates when the lists change.
-      # On a cache hit, mmdebstrap skips most of the download phase
-      # (~10-15 minutes off the second+ run).
-      - name: Restore apt-archives cache
-        uses: actions/cache@v4
-        with:
-          path: profiles/arm64-pi/build/apt-cache
-          key: pi-apt-cache-${{ hashFiles('shared/package-lists/**', 'profiles/arm64-pi/package-lists/**') }}
-          restore-keys: |
-            pi-apt-cache-
       - name: Build Pi image
         # Tee the full build log to a file and ALSO let it stream live
         # so the Actions UI still shows everything in real time.
@@ -131,7 +120,7 @@ jobs:
           retention-days: 7
       - name: Collect artifacts
         run: |
-          find profiles/arm64-pi/build/images -maxdepth 1 -name '*.img.zst' -exec cp {} artifacts/ \;
+          find profiles/arm64-pi/build/images -maxdepth 1 -name '*.img.zst' -exec mv {} artifacts/ \;
           ls -lh artifacts/
       - uses: actions/upload-artifact@v4
         with:
