@@ -92,6 +92,26 @@ case "$target" in
                 fi
             done
             echo ">> forced LB_DEBIAN_INSTALLER=none (Calamares is the installer)"
+            # Disable live-build's firmware auto-detection. With
+            # LB_FIRMWARE_CHROOT=true, lb_chroot_linux-image fetches the
+            # obsolete monolithic dists/<suite>/Contents-<arch>.gz to
+            # enumerate firmware packages — but that path 404s on Trixie
+            # (Contents files moved under each component, e.g.
+            # dists/trixie/main/Contents-amd64.gz), and the failed wget
+            # aborts the whole build. We install firmware EXPLICITLY via
+            # base.list.chroot (firmware-misc-nonfree, -iwlwifi, -realtek,
+            # etc.), so the auto-detection is both redundant and broken.
+            # auto/config already passes --firmware-chroot false; force the
+            # underlying vars too, since Ubuntu's old lb_config can ignore it.
+            for cfg in config/common config/chroot config/binary; do
+                [ -f "$cfg" ] || continue
+                for var in LB_FIRMWARE_CHROOT LB_FIRMWARE_BINARY; do
+                    if grep -q "^$var=" "$cfg"; then
+                        sed -i "s|^$var=.*|$var=\"false\"|" "$cfg"
+                    fi
+                done
+            done
+            echo ">> forced LB_FIRMWARE_CHROOT/BINARY=false (skip broken Contents fetch)"
             # Ensure gnupg + ca-certificates + apt-transport-https are
             # debootstrapped early. Without gnupg in the chroot,
             # lb_chroot_archives' apt-get update fails with

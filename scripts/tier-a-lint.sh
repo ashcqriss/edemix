@@ -199,6 +199,20 @@ if ! grep -q 'LB_DEBIAN_INSTALLER="none"' build.sh; then
     fail=1
 fi
 
+# live-build firmware auto-detection MUST be off. With LB_FIRMWARE_CHROOT=true,
+# lb_chroot_linux-image fetches the obsolete monolithic dists/<suite>/Contents-
+# <arch>.gz to enumerate firmware; that path 404s on Trixie (Contents moved
+# under each component) and aborts the ISO build. Firmware is installed
+# explicitly via base.list.chroot instead.
+if ! grep -qE '^\s*--firmware-chroot\s+false' profiles/amd64-iso/auto/config; then
+    echo "FAIL: auto/config must pass --firmware-chroot false (broken Contents fetch)"
+    fail=1
+fi
+if ! grep -q 'LB_FIRMWARE_CHROOT' build.sh; then
+    echo "FAIL: build.sh does not force LB_FIRMWARE_CHROOT=false"
+    fail=1
+fi
+
 # Pi genimage: boot.vfat must be PRE-BUILT in build.sh (mkfs.vfat over the
 # WHOLE /boot/firmware) and must NOT also be declared as an image block in
 # genimage.cfg. The old cfg listed only config.txt + cmdline.txt via static

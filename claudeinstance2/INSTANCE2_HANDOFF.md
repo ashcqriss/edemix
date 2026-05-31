@@ -172,6 +172,38 @@ weight under qemu AND ~250MB of image bloat. Moving the XR-driver build to first
 / on-demand (so the toolchain isn't in the base image) would cut both build time and
 image size — but it changes WHEN the AR driver compiles, which is Instance 1's call.
 
+## ISO build (live-build on Ubuntu)
+
+CI progress milestones: the gpg-127 bootstrap failure is **fixed** (the ISO now
+debootstraps the base system cleanly). The next failure was in
+`lb_chroot_linux-image`:
+
+```
+wget .../dists/trixie/Contents-amd64.gz  ->  404 Not Found  ->  build aborts
+```
+
+**Root cause:** with `LB_FIRMWARE_CHROOT=true`, live-build auto-discovers firmware
+packages by downloading the **monolithic `dists/<suite>/Contents-<arch>.gz`** — a
+path that no longer exists in Trixie (Contents moved under each component:
+`dists/trixie/main/Contents-amd64.gz`). The failed `wget` kills the build.
+
+**Fix:** `--firmware-chroot false` + `--firmware-binary false` in `auto/config`,
+forced via `LB_FIRMWARE_CHROOT/BINARY="false"` in `build.sh` (Ubuntu's old
+`lb_config` can ignore the flag). We install firmware **explicitly** in
+`base.list.chroot` (firmware-misc-nonfree, -iwlwifi, -realtek, -atheros,
+-amd-graphics, -brcm80211), so the auto-detection was redundant anyway. Locked in
+with a Tier A invariant.
+
+**Reusable technique — read live-build's actual code instead of guessing:**
+```sh
+cd /tmp && apt-get download live-build
+dpkg-deb -x live-build_*.deb root
+grep -rn "Contents-\|FIRMWARE\|wget" root/usr/lib/live/build/lb_chroot_linux-image
+```
+Ubuntu ships live-build `3.0~a57` (ancient Debian alpha). When a stage fails,
+extract the `.deb` and read `/usr/lib/live/build/lb_<stage>` — the bug is almost
+always an obsolete archive-path assumption you can pin to one `wget`/`grep` line.
+
 ## Patterns to know (summarised from SESSION_HANDOFF.md)
 
 | Problem | Fix |
