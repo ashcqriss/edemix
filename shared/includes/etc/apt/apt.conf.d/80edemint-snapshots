@@ -5,11 +5,12 @@
 #
 # Cleanly no-ops on non-btrfs roots or when snapper isn't initialized.
 #
-# Each Pre-/Post-Invoke string is a SINGLE quoted command — apt's
+# Each Pre-/Post-Invoke string is a SINGLE quoted command. Apt's
 # config grammar does NOT honour backslash-newline as a line
 # continuation inside "...". Multiline here breaks parsing with
-# "Malformed tag".
+# "Malformed tag". Avoid nested escaped quotes too: apt passes these
+# strings through another shell layer during live-build.
 
 DPkg::Pre-Invoke { "if findmnt -no FSTYPE / 2>/dev/null | grep -qx btrfs && snapper -c root list >/dev/null 2>&1; then snapper -c root create -t pre -c number --print-number -d 'apt invocation' > /run/edemint-snapper-pre 2>/dev/null || true; fi"; };
 
-DPkg::Post-Invoke { "if [ -s /run/edemint-snapper-pre ] && snapper -c root list >/dev/null 2>&1; then snapper -c root create -t post -c number --pre-number=\"$(cat /run/edemint-snapper-pre)\" -d 'apt invocation' >/dev/null 2>&1 || true; rm -f /run/edemint-snapper-pre; fi"; };
+DPkg::Post-Invoke { "if [ -s /run/edemint-snapper-pre ] && snapper -c root list >/dev/null 2>&1; then pre=$(cat /run/edemint-snapper-pre 2>/dev/null || true); case $pre in ''|*[!0-9]*) ;; *) snapper -c root create -t post -c number --pre-number=$pre -d 'apt invocation' >/dev/null 2>&1 || true ;; esac; rm -f /run/edemint-snapper-pre; fi"; };
