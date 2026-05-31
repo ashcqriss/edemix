@@ -94,11 +94,19 @@ rm -rf "$ROOTFS_DIR"
 mkdir -p "$ROOTFS_DIR" "$IMAGES_DIR" "$TMP_DIR"
 
 # Combine the shared base list (no installer.list — ISO-only) with the
-# Pi-specific list. Strip comments/blank lines, join with spaces.
+# Pi-specific list. Parse files as records instead of concatenating with cat;
+# otherwise a missing trailing newline can glue one package to the next file's
+# first comment and make apt try to install words from the comment.
 PKG_LIST="$(
-    cat "$REPO_ROOT"/shared/package-lists/*.list.chroot \
-        "$PROFILE_DIR"/package-lists/*.list.chroot \
-    | grep -vE '^\s*(#|$)' \
+    awk '
+        {
+            sub(/[[:space:]]*#.*/, "")
+            if ($0 ~ /[^[:space:]]/) {
+                print $1
+            }
+        }
+    ' "$REPO_ROOT"/shared/package-lists/*.list.chroot \
+      "$PROFILE_DIR"/package-lists/*.list.chroot \
     | tr '\n' ' '
 )"
 
