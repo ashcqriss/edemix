@@ -4,7 +4,7 @@
 # Pipeline: mmdebstrap (rootless-capable) under qemu-user-static + binfmt →
 # in-chroot install of edemint-base/-desktop metapackages + raspi-firmware
 # + linux-image-arm64 → run shared/hooks/normal/* → genimage assembles a
-# FAT firmware partition + ext4 root → xz-compress.
+# FAT firmware partition + ext4 root → zstd-compress.
 #
 # Requirements: a Linux host with root + loop devices (mmdebstrap +
 # genimage), and: mmdebstrap, genimage, parted, mtools, e2fsprogs,
@@ -139,11 +139,10 @@ fi
 [ -s "$DEBIAN_KEYRING" ] || { echo "no usable Debian keyring"; exit 1; }
 
 # apt-archives cache. mmdebstrap downloads .debs into /var/cache/apt/
-# archives inside the chroot; we save them to the host so the 2nd+ CI
-# run skips most of the apt download phase. APT::Keep-Downloaded-
-# Packages keeps the .debs around (mmdebstrap's default cleans them).
-# essential-hook seeds the chroot from cache before "installing
-# remaining packages"; the trailing customize-hook copies back out.
+# archives inside the chroot; optionally save them to the host so later
+# CI runs skip most downloads. The default removes them after bootstrap,
+# because keeping a multi-GB apt cache beside rootfs.ext4 and the final
+# disk image can prevent the image artifact from being emitted.
 APT_CACHE="$BUILD_DIR/apt-cache"
 mkdir -p "$APT_CACHE"
 cached_in=$(find "$APT_CACHE" -maxdepth 1 -name '*.deb' 2>/dev/null | wc -l)
@@ -191,10 +190,17 @@ mmdebstrap \
     "$ROOTFS_DIR" \
     'http://deb.debian.org/debian'
 
-# sync-out may have brought back the partial/ subdir; drop it.
+# sync-out may have brought back the partial/ subdir; drop it. Keep the
+# cache only when explicitly requested; CI's limiting factor is disk space
+# during image assembly/compression, not download speed.
 rm -rf "$APT_CACHE/partial" 2>/dev/null || true
 cached_out=$(find "$APT_CACHE" -maxdepth 1 -name '*.deb' 2>/dev/null | wc -l)
-echo ">> apt-cache: $cached_out .debs saved for next run"
+if [ "${EDEMINT_KEEP_APT_CACHE:-0}" = "1" ]; then
+    echo ">> apt-cache: $cached_out .debs saved for next run"
+else
+    rm -rf "$APT_CACHE"
+    echo ">> apt-cache: removed $cached_out cached .debs to reduce CI disk pressure"
+fi
 
 # --- 3. Pi firmware boot files -------------------------------------------
 # raspi-firmware populates /boot/firmware; our config.txt/cmdline.txt must
@@ -239,7 +245,7 @@ echo ">> rootfs is ${ROOT_KB} KB; sizing ext4 root to ${ROOT_SIZE_MB}M"
 
 # genimage.cfg names its output image edemint-0.1-arm64-rpi.img and sets a
 # placeholder 5G root size. For a versioned build (EDEMINT_VERSION != 0.1)
-# the name must track IMG_NAME, or the xz step below looks for a file
+# the name must track IMG_NAME, or the zstd step below looks for a file
 # genimage never wrote. Template a copy of the cfg with the real name + size.
 GENIMAGE_CFG="$TMP_DIR/genimage.cfg"
 sed -e "s|edemint-0\.1-arm64-rpi\.img|$IMG_NAME|g" \
@@ -252,6 +258,13 @@ genimage \
     --tmppath "$GENIMAGE_TMP" \
     --inputpath "$TMP_DIR" \
     --outputpath "$IMAGES_DIR"
+
+# genimage has already copied rootfs content into rootfs.ext4 and then into
+# the final disk image. Delete the chroot and temporary FAT/genimage files
+# before zstd creates its output, otherwise CI can run out of disk space at
+# the final artifact-emission step.
+echo ">> freeing build scratch before compression..."
+rm -rf "$ROOTFS_DIR" "$TMP_DIR"
 
 # --- 5. compress --------------------------------------------------------
 # zstd -T0 over xz: multithreaded zstd at -12 packs a multi-GB image in
