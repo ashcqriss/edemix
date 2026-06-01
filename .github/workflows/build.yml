@@ -73,13 +73,11 @@ jobs:
   pi:
     name: arm64 Raspberry Pi image
     needs: lint
-    # Native arm64 runner — the arm64 chroot's package postinsts run natively
-    # instead of under qemu TCG emulation (the dominant cost), cutting the build
-    # from ~50 min to ~12-15 min. arm64 hosted runners are free for this PUBLIC
-    # repo. Override via the PI_RUNNER repo variable (e.g. set it to
-    # `ubuntu-latest` to force the amd64 qemu cross-build). The Build-deps step
-    # and build.sh both detect the host arch, so either runner works unchanged.
-    runs-on: ${{ vars.PI_RUNNER || 'ubuntu-24.04-arm' }}
+    # Default to the standard Ubuntu runner. The hosted arm64 runner has been
+    # shutting down mid-apt on this workflow, while build.sh already supports
+    # qemu/binfmt cross-building on amd64. Set PI_RUNNER to ubuntu-24.04-arm
+    # only when the native arm64 runner is stable enough to use again.
+    runs-on: ${{ vars.PI_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v5
       - name: Build deps
