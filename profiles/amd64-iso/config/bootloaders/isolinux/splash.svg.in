@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480" viewBox="0 0 640 480">
+  <rect width="640" height="480" fill="#000000"/>
+  <text x="320" y="244" fill="#ffffff" font-family="DejaVu Sans, sans-serif" font-size="34" font-weight="700" text-anchor="middle">Edemint</text>
+</svg>
