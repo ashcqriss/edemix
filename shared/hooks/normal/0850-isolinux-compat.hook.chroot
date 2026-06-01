@@ -1,35 +1,40 @@
 #!/bin/sh
 # live-build's Ubuntu 3.0~a57 lb_binary_syslinux copies BIOS
 # bootloader files from /root/isolinux inside the chroot. Current
-# Debian packages keep them under /usr/lib, so provide the legacy paths
-# before the binary syslinux stage runs.
+# Debian packages keep them under /usr/lib, while Ubuntu live-build also
+# ships template copies under /usr/share/live/build/bootloaders.
 set -e
 
 mkdir -p /root/isolinux
 
-link_first() {
+copy_first() {
     dst="$1"
     shift
-    fallback="$1"
 
     for src in "$@"; do
         if [ -e "$src" ]; then
-            ln -sf "$src" "$dst"
+            rm -f "$dst"
+            cp -Lf "$src" "$dst"
             return 0
         fi
     done
 
-    ln -sf "$fallback" "$dst"
+    if [ -s "$dst" ]; then
+        return 0
+    fi
+
+    echo "0850-isolinux-compat: missing $dst" >&2
+    exit 1
 }
 
-link_first /root/isolinux/isolinux.bin \
+copy_first /root/isolinux/isolinux.bin \
     /usr/lib/ISOLINUX/isolinux.bin \
     /usr/lib/syslinux/isolinux.bin \
     /usr/share/syslinux/isolinux.bin
 
-link_first /root/isolinux/vesamenu.c32 \
+copy_first /root/isolinux/vesamenu.c32 \
     /usr/lib/syslinux/modules/bios/vesamenu.c32 \
     /usr/lib/syslinux/vesamenu.c32 \
     /usr/share/syslinux/vesamenu.c32
 
-echo "0850-isolinux-compat: prepared /root/isolinux legacy links"
+echo "0850-isolinux-compat: prepared /root/isolinux legacy files"

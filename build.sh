@@ -187,31 +187,40 @@ PINEOF
                 echo ">> forced LB_BOOTSTRAP_INCLUDE(S) in config/bootstrap"
             fi
             # Ubuntu live-build 3.0-a57 still looks in /root/isolinux
-            # for BIOS bootloader files, but current packages install them
-            # under distro-specific /usr/lib paths. Link the files into the
-            # legacy location before lb_binary_syslinux runs.
-            mkdir -p /root/isolinux
-            if [ ! -e /root/isolinux/isolinux.bin ]; then
-                for src in /usr/lib/ISOLINUX/isolinux.bin /usr/lib/syslinux/isolinux.bin /usr/share/syslinux/isolinux.bin; do
+            # for BIOS bootloader files. Seed real files, not symlinks: the
+            # binary syslinux stage runs inside the live-build chroot, where
+            # host-side links can become dangling.
+            copy_bootloader_file() {
+                dst="$1"
+                shift
+                for src in "$@"; do
                     if [ -e "$src" ]; then
-                        ln -sf "$src" /root/isolinux/isolinux.bin
-                        break
+                        rm -f "$dst"
+                        cp -Lf "$src" "$dst"
+                        return 0
                     fi
                 done
-            fi
-            if [ ! -e /root/isolinux/vesamenu.c32 ]; then
-                for src in /usr/lib/syslinux/modules/bios/vesamenu.c32 /usr/lib/syslinux/vesamenu.c32 /usr/share/syslinux/vesamenu.c32; do
-                    if [ -e "$src" ]; then
-                        ln -sf "$src" /root/isolinux/vesamenu.c32
-                        break
-                    fi
-                done
-            fi
-            if [ ! -e /root/isolinux/isolinux.bin ] || [ ! -e /root/isolinux/vesamenu.c32 ]; then
-                echo ">> missing isolinux bootloader files; install isolinux and syslinux-common" >&2
+                if [ -s "$dst" ]; then
+                    return 0
+                fi
+                echo ">> missing bootloader source for $dst" >&2
                 exit 1
-            fi
-            echo ">> prepared /root/isolinux compatibility links for live-build"
+            }
+
+            for dst_dir in /root/isolinux config/includes.chroot/root/isolinux; do
+                mkdir -p "$dst_dir"
+                copy_bootloader_file "$dst_dir/isolinux.bin" \
+                    /usr/share/live/build/bootloaders/isolinux/isolinux.bin \
+                    /usr/lib/ISOLINUX/isolinux.bin \
+                    /usr/lib/syslinux/isolinux.bin \
+                    /usr/share/syslinux/isolinux.bin
+                copy_bootloader_file "$dst_dir/vesamenu.c32" \
+                    /usr/share/live/build/bootloaders/syslinux_common/vesamenu.c32 \
+                    /usr/lib/syslinux/modules/bios/vesamenu.c32 \
+                    /usr/lib/syslinux/vesamenu.c32 \
+                    /usr/share/syslinux/vesamenu.c32
+            done
+            echo ">> seeded isolinux bootloader files for live-build"
             echo ">> building image (this takes a while and needs network)..."
             lb build
             echo ">> done. Look for the *.iso in $profile_dir."
