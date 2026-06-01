@@ -15,6 +15,7 @@ lb config noauto \
 	--security false \
 	--bootappend-live "boot=live components quiet splash hostname=edemint username=edemint mitigations=auto,nosmt amd_pstate=guided intel_pstate=active pcie_aspm=force nowatchdog" \
 	--memtest none \
+	--win32-loader false \
 	--apt-recommends false \
 	--firmware-chroot false \
 	--firmware-binary false \
