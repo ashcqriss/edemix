@@ -16,3 +16,7 @@ linux-image-amd64
 live-boot
 live-config
 live-config-systemd
+
+# BIOS ISO bootloader files used by Ubuntu live-build's lb_binary_syslinux
+isolinux
+syslinux-common
