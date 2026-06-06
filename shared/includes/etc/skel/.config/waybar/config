@@ -1,37 +1,48 @@
 {
+    "name": "edemint-status",
     "layer": "top",
     "position": "top",
-    "height": 28,
-    "modules-left":   ["hyprland/workspaces", "custom/ai-privacy", "custom/cam-mic"],
-    "modules-center": ["clock"],
-    "modules-right":  ["custom/updates", "tray", "pulseaudio", "network", "cpu", "memory", "battery"],
+    "height": 36,
+    "spacing": 6,
+    "margin-top": 12,
+    "margin-right": 14,
+    "modules-left": [],
+    "modules-center": [],
+    "modules-right": [
+        "clock",
+        "custom/ai-privacy",
+        "custom/cam-mic",
+        "custom/updates",
+        "tray",
+        "pulseaudio",
+        "network",
+        "cpu",
+        "memory",
+        "battery"
+    ],
 
-    "hyprland/workspaces": {
-        "format": "{id}"
-    },
     "clock": {
         "format": "{:%a %d %b  %H:%M}",
         "tooltip-format": "<big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>"
     },
     "cpu": {
-        "format": "  {usage}%"
+        "format": "CPU {usage}%"
     },
     "memory": {
-        "format": "  {}%"
+        "format": "RAM {}%"
     },
     "battery": {
-        "format": "{capacity}% {icon}",
-        "format-icons": ["", "", "", "", ""]
+        "format": "BAT {capacity}%",
+        "format-charging": "BAT +{capacity}%"
     },
     "network": {
-        "format-wifi": "  {essid}",
-        "format-ethernet": "  wired",
-        "format-disconnected": "  off"
+        "format-wifi": "NET {essid}",
+        "format-ethernet": "NET wired",
+        "format-disconnected": "NET off"
     },
     "pulseaudio": {
-        "format": "{volume}% {icon}",
-        "format-muted": "muted",
-        "format-icons": {"default": ["", "", ""]},
+        "format": "VOL {volume}%",
+        "format-muted": "VOL muted",
         "on-click": "pavucontrol"
     },
     "tray": {
@@ -39,23 +50,23 @@
         "icon-size": 16
     },
     "custom/ai-privacy": {
-        "exec":       "edemint-ai-privacy",
+        "exec": "edemint-ai-privacy",
         "return-type": "json",
-        "interval":    1,
-        "on-click":    "foot -T 'Edemint AI' -e edemint-ai status",
-        "tooltip":     true
+        "interval": 1,
+        "on-click": "foot -T 'Edemint AI' -e edemint-ai status",
+        "tooltip": true
     },
     "custom/cam-mic": {
-        "exec":       "edemint-privacy-status",
+        "exec": "edemint-privacy-status",
         "return-type": "json",
-        "interval":    2,
-        "tooltip":     true
+        "interval": 2,
+        "tooltip": true
     },
     "custom/updates": {
-        "exec":       "edemint-updates-status",
+        "exec": "edemint-updates-status",
         "return-type": "json",
-        "interval":    300,
-        "on-click":    "edemint-updates-click",
-        "tooltip":     true
+        "interval": 300,
+        "on-click": "edemint-updates-click",
+        "tooltip": true
     }
 }
