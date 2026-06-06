@@ -1,0 +1,59 @@
+/* Edemint power surface, derived from on_off2 and panelv prototypes. */
+* {
+    font-family: "Noto Sans", sans-serif;
+    background-image: none;
+}
+
+window {
+    background-color: rgba(22, 45, 19, 0.92);
+}
+
+button {
+    min-width: 150px;
+    min-height: 120px;
+    margin: 12px;
+    padding: 20px;
+    border: 4px solid #3f136a;
+    border-radius: 32px;
+    color: #162d13;
+    background-color: #f4d956;
+    font-size: 20px;
+    font-weight: 700;
+    transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+button:hover,
+button:focus {
+    color: #ffffff;
+    background-color: #2001ff;
+    border-color: #74fbea;
+    outline: none;
+}
+
+#lock {
+    background-color: #88d0a8;
+}
+
+#logout {
+    background-color: #45e289;
+}
+
+#suspend {
+    background-color: #f4d956;
+}
+
+#reboot {
+    background-color: #b67e29;
+}
+
+#shutdown {
+    color: #ffffff;
+    background-color: #e31515;
+    border-color: #750303;
+}
+
+#shutdown:hover,
+#shutdown:focus {
+    background-color: #b32b2b;
+    border-color: #74fbea;
+}
