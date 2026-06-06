@@ -1,0 +1,63 @@
+* {
+    font-family: "JetBrains Mono", sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    min-height: 0;
+    border: none;
+}
+
+window#waybar.edemint-dock {
+    background: rgba(22, 45, 19, 0.92);
+    color: #ffffff;
+    border: 1px solid rgba(116, 251, 234, 0.28);
+    border-radius: 28px;
+}
+
+#custom-home,
+#custom-browser,
+#custom-files,
+#custom-terminal,
+#custom-ai,
+#custom-power {
+    min-width: 52px;
+    min-height: 52px;
+    margin: 4px 10px;
+    padding: 0;
+    border-radius: 18px;
+    background: #253c22;
+    color: #ffffff;
+}
+
+#custom-home:hover,
+#custom-browser:hover,
+#custom-files:hover,
+#custom-terminal:hover,
+#custom-ai:hover,
+#custom-power:hover {
+    background: #2c5126;
+    color: #74fbea;
+}
+
+#custom-ai {
+    background: #261b67;
+    color: #74fbea;
+}
+
+#custom-apps {
+    min-width: 52px;
+    min-height: 34px;
+    margin: 8px 10px;
+    padding: 0;
+    border-radius: 18px;
+    background: #04a89d;
+    color: #ffffff;
+}
+
+#custom-apps:hover {
+    background: #1ee5ce;
+    color: #162d13;
+}
+
+#custom-power {
+    color: #f4d956;
+}
