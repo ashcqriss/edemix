@@ -6,10 +6,11 @@
     border: none;
 }
 
+/* Text remains temporary until the production icon theme exists. */
 window#waybar.edemint-dock {
-    background: rgba(22, 45, 19, 0.92);
+    background: rgba(32, 1, 255, 0.92);
     color: #ffffff;
-    border: 1px solid rgba(116, 251, 234, 0.28);
+    border: 1px solid rgba(116, 251, 234, 0.34);
     border-radius: 28px;
 }
 
@@ -24,7 +25,7 @@ window#waybar.edemint-dock {
     margin: 4px 10px;
     padding: 0;
     border-radius: 18px;
-    background: #253c22;
+    background: #002c89;
     color: #ffffff;
 }
 
@@ -34,13 +35,13 @@ window#waybar.edemint-dock {
 #custom-terminal:hover,
 #custom-ai:hover,
 #custom-power:hover {
-    background: #2c5126;
-    color: #74fbea;
+    background: #0080ff;
+    color: #ffffff;
 }
 
 #custom-ai {
-    background: #261b67;
-    color: #74fbea;
+    background: #6d58ff;
+    color: #ffffff;
 }
 
 #custom-apps {
@@ -49,13 +50,13 @@ window#waybar.edemint-dock {
     margin: 8px 10px;
     padding: 0;
     border-radius: 18px;
-    background: #04a89d;
-    color: #ffffff;
+    background: #45e289;
+    color: #171e54;
 }
 
 #custom-apps:hover {
-    background: #1ee5ce;
-    color: #162d13;
+    background: #74fbea;
+    color: #171e54;
 }
 
 #custom-power {
