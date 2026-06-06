@@ -1,12 +1,19 @@
 # Edemint palette
 
-This file records colors measured from the original JPEG design references supplied on 2026-06-06. JPEG compression creates small edge variations; the values below are sampled from the centers of the solid source blocks.
+This file records colors measured from the original JPEG reference supplied on
+2026-06-06. JPEG compression creates small edge variations; values are sampled
+from the centers of solid source blocks.
 
-The palette image is the color authority. Yellow, pink, gold, and red blocks in the layout mockups remain functional placeholders unless explicitly listed as semantic exceptions.
+The palette image and the hierarchy in `DESIGN.md` are authoritative. An app or
+component uses an appropriate subset; the entire palette is never required on
+one surface.
 
-## Primary families
+## Diagram order
 
-### C1 - ultramarine
+The original description names two complexes as "8th". `C8a` means the last
+azure/ultramarine complex; `C8b` means the second-from-left dark-blue complex.
+
+### C1 - first: ultramarine core
 
 | Token | Hex |
 |---|---|
@@ -14,16 +21,20 @@ The palette image is the color authority. Yellow, pink, gold, and red blocks in 
 | `ultramarine-400` | `#6D58FF` |
 | `ultramarine-200` | `#AEA3FF` |
 
-### C2 / C8b - deep indigo
+C1 is a level-1 family for the main dock, homescreens, system surfaces, and the
+overall design language.
 
-The unlabelled source image makes the C2 versus C8b naming ambiguous. Keep these together until the final palette review.
+### C8b - second: rare dark blue / deep indigo
 
 | Token | Hex |
 |---|---|
 | `indigo-900` | `#261B67` |
 | `indigo-800` | `#2C2656` |
 
-### C3 - eco green
+Despite its position near the start of the diagram, C8b belongs to the last
+importance level. It is not a general shell background or common anchor.
+
+### C3 - third: bright eco green
 
 | Token | Hex |
 |---|---|
@@ -31,26 +42,41 @@ The unlabelled source image makes the C2 versus C8b naming ambiguous. Keep these
 | `eco-300` | `#88D0A8` |
 | `eco-200` | `#819C8D` |
 
-### C4 / C5 - forest and dark green
+C3 provides secondary component accents and bright blue-to-green transitions.
+It may be visually prominent without appearing on every OS layer.
+
+### C4 - fourth: dark plant green
 
 | Token | Hex |
 |---|---|
-| `forest-950` | `#093A02` |
-| `forest-900` | `#0D6300` |
-| `forest-700` | `#21920F` |
+| `plant-700` | `#21920F` |
+| `plant-900` | `#0D6300` |
+| `plant-950` | `#093A02` |
+
+C4 is anchored secondary support and is structurally more important than the
+bright-green component family.
+
+### C5 - fifth: darkest green
+
+| Token | Hex |
+|---|---|
 | `forest-ink` | `#162D13` |
 | `forest-charcoal` | `#242E23` |
 | `forest-deep` | `#253C22` |
 | `forest-muted` | `#2C5126` |
 
-### C6 - navy
+C5 is rare and application-specific. It must not dominate the default shell.
+
+### C6 - sixth: navy anchor
 
 | Token | Hex |
 |---|---|
 | `navy-700` | `#002C89` |
 | `navy-950` | `#171E54` |
 
-### C7 - turquoise
+C6 is the smallest complex and a level-2 anchored support family.
+
+### C7 - seventh: turquoise support
 
 | Token | Hex |
 |---|---|
@@ -59,16 +85,21 @@ The unlabelled source image makes the C2 versus C8b naming ambiguous. Keep these
 | `turquoise-500` | `#04A89D` |
 | `turquoise-700` | `#007C76` |
 
-### C8a - azure
+C7 is a level-3 supporter for selected components and transitions.
+
+### C8a - last: azure and ultramarine core
 
 | Token | Hex |
 |---|---|
 | `electric-blue` | `#0007FF` |
 | `azure-500` | `#0080FF` |
 
+C8a is a level-1 family directly integrated into the UI and design language.
+
 ## Secondary reference colors
 
-These appear in supporting mockups and should be used sparingly.
+These are level-5 or special-purpose colors unless a component explicitly
+assigns them a semantic role.
 
 | Token | Hex | Intended role |
 |---|---|---|
@@ -77,11 +108,11 @@ These appear in supporting mockups and should be used sparingly.
 | `maroon` | `#750303` | Warm dark surface |
 | `warm-red` | `#B32B2B` | Warm secondary surface |
 | `dusty-rose` | `#A45455` | Warm muted surface |
-| `teal` | `#00816D` | Mobile surface reference |
+| `teal` | `#00816D` | Selected mobile/component reference |
 
 ## Confirmed semantic exceptions
 
-The `panelv` prototype defines window controls independently of the main palette:
+`panelv` defines its controls independently of the general hierarchy:
 
 | Action | Hex |
 |---|---|
@@ -89,16 +120,18 @@ The `panelv` prototype defines window controls independently of the main palette
 | Hide / minimize | `#E9DE51` |
 | Close | `#E31515` |
 
-The `on_off2` prototype uses `#F4D956` with `#3F136A`. These are motif references, not general UI defaults.
+`on_off2` uses `#F4D956` with `#3F136A` as a power-control motif. These are not
+general shell defaults.
 
-## Provisional UI tokens
+## Provisional first-build UI tokens
 
-These map the measured palette into implementation roles. They must pass WCAG contrast checks before becoming final.
+These tokens express the blue-led hierarchy while keeping the first UI readable
+before final icons, wallpapers, and component artwork exist.
 
 ```css
---ed-background: #162D13;
---ed-surface: #253C22;
---ed-surface-raised: #2C5126;
+--ed-background: #171E54;
+--ed-surface: #002C89;
+--ed-surface-raised: #2001FF;
 --ed-primary: #2001FF;
 --ed-primary-soft: #6D58FF;
 --ed-accent: #45E289;
@@ -110,11 +143,17 @@ These map the measured palette into implementation roles. They must pass WCAG co
 --ed-danger: #E31515;
 ```
 
+These are implementation defaults, not a declaration that every app must use
+the same blue surface. Final component combinations still require contrast and
+visual testing.
+
 ## Rules
 
-- Match adjacent surfaces by both hue and lightness.
-- Prefer L1 colors: ultramarine, eco green, and azure.
-- Use turquoise as supporting emphasis.
-- Use warm colors rarely and deliberately.
-- Do not treat the yellow, pink, and gold placeholder blocks in layout mockups as default product colors.
-- Never encode state by color alone; controls need shape, icon, or text reinforcement.
+- Lead with C1 and C8a for the system, dock, and homescreens.
+- Use C6 navy as a common anchor and C4 plant green as secondary support.
+- Use C3 and C7 selectively for components, accents, and controlled gradients.
+- Reserve C5, C8b, and warm colors for rare/application-specific uses.
+- Match neighboring colors by hue and lightness whenever possible.
+- Do not treat yellow, pink, gold, red, or green prototype blocks as defaults
+  unless their component description explicitly assigns that meaning.
+- Never encode state by color alone; retain shape, symbol, or text.
