@@ -38,7 +38,7 @@ window#waybar.edemint-status {
 
 #network,
 #pulseaudio {
-    background: rgba(0, 128, 255, 0.94);
+    background: rgba(109, 88, 255, 0.96);
 }
 
 #battery.warning {
