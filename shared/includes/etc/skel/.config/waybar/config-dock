@@ -1,0 +1,54 @@
+{
+    "name": "edemint-dock",
+    "layer": "top",
+    "position": "left",
+    "width": 76,
+    "spacing": 8,
+    "margin-top": 16,
+    "margin-bottom": 16,
+    "margin-left": 12,
+    "modules-left": [
+        "custom/home",
+        "custom/browser",
+        "custom/files",
+        "custom/terminal",
+        "custom/ai"
+    ],
+    "modules-right": ["custom/apps", "custom/power"],
+
+    "custom/home": {
+        "format": "Home",
+        "tooltip": false,
+        "on-click": "hyprctl dispatch workspace 1"
+    },
+    "custom/browser": {
+        "format": "Web",
+        "tooltip": "Firefox",
+        "on-click": "firefox-esr"
+    },
+    "custom/files": {
+        "format": "Files",
+        "tooltip": "File manager",
+        "on-click": "thunar"
+    },
+    "custom/terminal": {
+        "format": ">_",
+        "tooltip": "Terminal",
+        "on-click": "foot"
+    },
+    "custom/ai": {
+        "format": "AI",
+        "tooltip": "Edemint AI",
+        "on-click": "foot -T 'Edemint AI' -e edemint-ai chat"
+    },
+    "custom/apps": {
+        "format": "Apps",
+        "tooltip": "All applications",
+        "on-click": "wofi --show drun"
+    },
+    "custom/power": {
+        "format": "Power",
+        "tooltip": "Session and power",
+        "on-click": "wlogout"
+    }
+}
