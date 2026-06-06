@@ -1,22 +1,14 @@
 * {
-    font-family: "JetBrains Mono", "Font Awesome 6 Free";
-    font-size: 12px;
+    font-family: "JetBrains Mono", sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    min-height: 0;
     border: none;
-    border-radius: 0;
 }
 
-window#waybar {
-    background: rgba(20, 22, 28, 0.85);
-    color: #e6e6e6;
-}
-
-#workspaces button {
-    padding: 0 8px;
-    color: #888;
-}
-
-#workspaces button.active {
-    color: #33ccff;
+window#waybar.edemint-status {
+    background: transparent;
+    color: #ffffff;
 }
 
 #clock,
@@ -24,31 +16,80 @@ window#waybar {
 #memory,
 #battery,
 #network,
+#pulseaudio,
+#tray,
+#custom-ai-privacy,
+#custom-cam-mic,
+#custom-updates {
+    min-height: 32px;
+    margin: 0 2px;
+    padding: 0 11px;
+    border-radius: 16px;
+    background: rgba(22, 45, 19, 0.92);
+    color: #ffffff;
+    border: 1px solid rgba(116, 251, 234, 0.22);
+}
+
+#clock {
+    padding: 0 16px;
+    background: rgba(38, 27, 103, 0.94);
+    color: #74fbea;
+}
+
+#network,
 #pulseaudio {
-    padding: 0 10px;
+    background: rgba(37, 60, 34, 0.94);
 }
 
-#battery.warning { color: #ffcc00; }
-#battery.critical { color: #ff4444; }
-
-/* AI privacy meter (custom/ai-privacy). The colors are the trust signal,
-   not decoration — keep distinct hues even in the design pass. */
-#custom-ai-privacy {
-    padding: 0 10px;
-    font-size: 14px;
+#battery.warning {
+    color: #e9de51;
 }
-#custom-ai-privacy.disabled    { color: #555; }       /* AI off entirely */
-#custom-ai-privacy.local       { color: #00ff99; }    /* local-only (ollama/hailo) */
-#custom-ai-privacy.cloud-idle  { color: #ffcc00; }    /* cloud-capable, idle */
-#custom-ai-privacy.cloud-active{ color: #ff4444; background: rgba(255,68,68,0.12); }  /* call in flight */
 
-/* Camera/mic in-use indicator (custom/cam-mic). */
-#custom-cam-mic { padding: 0 8px; }
-#custom-cam-mic.camera { color: #ff4444; }
-#custom-cam-mic.mic    { color: #ff8844; }
-#custom-cam-mic.both   { color: #ff4444; background: rgba(255,68,68,0.12); }
+#battery.critical {
+    color: #ffffff;
+    background: #e31515;
+}
 
-/* Updates indicator (custom/updates). */
-#custom-updates { padding: 0 8px; }
-#custom-updates.available { color: #33ccff; }
-#custom-updates.reboot    { color: #ffcc00; background: rgba(255,204,0,0.10); }
+/* Privacy colors are operational signals, not decoration. */
+#custom-ai-privacy.disabled {
+    color: #819c8d;
+}
+
+#custom-ai-privacy.local {
+    color: #45e289;
+}
+
+#custom-ai-privacy.cloud-idle {
+    color: #e9de51;
+}
+
+#custom-ai-privacy.cloud-active {
+    color: #ffffff;
+    background: #e31515;
+    border-color: #e31515;
+}
+
+#custom-cam-mic.camera,
+#custom-cam-mic.mic,
+#custom-cam-mic.both {
+    color: #ffffff;
+    background: #e31515;
+    border-color: #e31515;
+}
+
+#custom-updates.available {
+    color: #74fbea;
+}
+
+#custom-updates.reboot {
+    color: #162d13;
+    background: #e9de51;
+    border-color: #e9de51;
+}
+
+tooltip {
+    background: #162d13;
+    color: #ffffff;
+    border: 1px solid #04a89d;
+    border-radius: 12px;
+}
