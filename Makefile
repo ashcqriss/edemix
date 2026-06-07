@@ -1,4 +1,4 @@
-# Edemint top-level Makefile — convenience wrapper around build.sh.
+# Edemint top-level Makefile - convenience wrapper around build.sh.
 # Real builds happen in CI on a privileged runner (live-build / mmdebstrap
 # need root + loop devices). Local builds work on a Linux box with sudo.
 
@@ -12,7 +12,7 @@ help:
 	@echo "  make iso           amd64 live ISO (sudo)"
 	@echo "  make pi            arm64 Raspberry Pi image (sudo)"
 	@echo "  make metapackages  build the equivs .debs only"
-	@echo "  make lint          Tier A static checks (no root needed)"
+	@echo "  make lint          static and production contract checks"
 	@echo "  make sign-test     apt repo sign + tamper-reject self-test"
 	@echo "  make clean         remove build artifacts"
 
@@ -32,6 +32,7 @@ clean:
 
 lint:
 	$(REPO)scripts/tier-a-lint.sh
+	sh $(REPO)scripts/validate-production-contracts.sh
 
 sign-test: metapackages
 	$(REPO)scripts/test-repo-signing.sh
