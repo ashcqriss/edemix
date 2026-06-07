@@ -55,8 +55,24 @@ while IFS='|' read -r package capability profile status; do
     fi
 
     query="${package}:${ARCH}"
+    resolved_arch="$ARCH"
     policy=$(apt-cache policy "$query" 2>/dev/null || true)
     version=$(printf '%s\n' "$policy" | awk '/Candidate:/ { print $2; exit }')
+    metadata=$(apt-cache show --no-all-versions "$query" 2>/dev/null || true)
+
+    # Architecture-independent packages do not always resolve with an explicit
+    # :arm64 qualifier. Accept the unqualified record only when it is truly
+    # Architecture: all; this must not hide a package available only on amd64.
+    if [ -z "$version" ] || [ "$version" = "(none)" ]; then
+        all_metadata=$(apt-cache show --no-all-versions "$package" 2>/dev/null || true)
+        package_arch=$(printf '%s\n' "$all_metadata" | awk '/^Architecture:/ { print $2; exit }')
+        if [ "$package_arch" = "all" ]; then
+            all_policy=$(apt-cache policy "$package" 2>/dev/null || true)
+            version=$(printf '%s\n' "$all_policy" | awk '/Candidate:/ { print $2; exit }')
+            metadata=$all_metadata
+            resolved_arch=all
+        fi
+    fi
 
     if [ -z "$version" ] || [ "$version" = "(none)" ]; then
         printf '%s\t%s\t%s\t%s\t-\t-\tMISSING\n' \
@@ -65,12 +81,11 @@ while IFS='|' read -r package capability profile status; do
         continue
     fi
 
-    metadata=$(apt-cache show --no-all-versions "$query" 2>/dev/null || true)
     installed_size=$(printf '%s\n' "$metadata" | awk '/^Installed-Size:/ { print $2; exit }')
     [ -n "$installed_size" ] || installed_size='unknown'
 
     printf '%s\t%s\t%s\t%s\t%s\t%s\tAVAILABLE\n' \
-        "$package" "$capability" "$profile" "$ARCH" "$version" "$installed_size"
+        "$package" "$capability" "$profile" "$resolved_arch" "$version" "$installed_size"
 done < "$CANDIDATES"
 
 if [ "$failures" -ne 0 ]; then
