@@ -2,37 +2,63 @@ name: build
 
 on:
   push:
-    branches: [main, "claude/**", fix]
+    branches: [main, "claude/**", fix, "codex/**"]
     tags: ["v*"]
   pull_request:
     branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: write   # needed for the release-attachment job on tag pushes
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
   lint:
-    name: Tier A static checks
+    name: Static and production contract checks
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
-      - name: Install lint deps
+      - name: Install lint dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y make shellcheck nftables equivs gnupg apt-utils
-      - name: Run Tier A lint
+      - name: Run lint and production contracts
         run: make lint
       - name: Run signed-repo tamper test
         run: make sign-test
+
+  packages:
+    name: Edemint Debian packages
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build metapackages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y equivs
+          ./packaging/build-metapackages.sh
+          test "$(find shared/includes/usr/share/edemint/metapackages -maxdepth 1 -name '*.deb' | wc -l)" -eq 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edemint-metapackages
+          path: shared/includes/usr/share/edemint/metapackages/*.deb
+          if-no-files-found: error
+          retention-days: 14
 
   iso:
     name: amd64 live ISO
     needs: lint
     runs-on: ubuntu-latest
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v5
-      - name: Build deps
+      - name: Build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y live-build equivs xorriso isolinux syslinux-utils \
@@ -48,7 +74,6 @@ jobs:
           mkdir -p artifacts
           if [ -f artifacts/iso-build-full.log ]; then
             tail -300 artifacts/iso-build-full.log > artifacts/iso-build-tail.log
-            echo "=== last 300 lines of the ISO build log ==="
             cat artifacts/iso-build-tail.log
           fi
       - uses: actions/upload-artifact@v4
@@ -58,11 +83,11 @@ jobs:
           path: artifacts/iso-build-*.log
           if-no-files-found: warn
           retention-days: 7
-      - name: Collect artifacts
+      - name: Collect ISO
         run: |
           sudo find profiles/amd64-iso -maxdepth 1 -name '*.iso' -exec mv {} artifacts/ \;
           sudo chown -R "$(id -u):$(id -g)" artifacts
-          ls -lh artifacts/
+          test "$(find artifacts -maxdepth 1 -name '*.iso' | wc -l)" -eq 1
       - uses: actions/upload-artifact@v4
         with:
           name: edemint-amd64-iso
@@ -70,44 +95,58 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  inspect-iso:
+    name: Inspect amd64 ISO contract
+    needs: iso
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: edemint-amd64-iso
+          path: artifact
+      - name: Verify boot and package contents
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xorriso
+          iso="$(find artifact -maxdepth 1 -name '*.iso' -print -quit)"
+          test -n "$iso"
+          xorriso -indev "$iso" -find / -type f -print > iso-files.txt
+          grep -qx '/live/filesystem.squashfs' iso-files.txt
+          grep -qx '/live/filesystem.packages' iso-files.txt
+          grep -Eiq '^/EFI/BOOT/BOOTX64\.EFI$' iso-files.txt
+          xorriso -osirrox on -indev "$iso" -extract /live/filesystem.packages filesystem.packages
+          grep -Eq '^hyprland[[:space:]]' filesystem.packages
+          grep -Eq '^hyprlock[[:space:]]' filesystem.packages
+          grep -Eq '^xdg-desktop-portal-hyprland[[:space:]]' filesystem.packages
+
   pi:
     name: arm64 Raspberry Pi image
     needs: lint
-    # Default to the standard Ubuntu runner. The hosted arm64 runner has been
-    # shutting down mid-apt on this workflow, while build.sh already supports
-    # qemu/binfmt cross-building on amd64. Set PI_RUNNER to ubuntu-24.04-arm
-    # only when the native arm64 runner is stable enough to use again.
     runs-on: ${{ vars.PI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@v5
-      - name: Build deps
+      - name: Build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y mmdebstrap genimage genext2fs parted dosfstools mtools \
             e2fsprogs zstd equivs debian-archive-keyring gnupg curl
-          # qemu + binfmt are only needed when cross-building (amd64 runner);
-          # a native arm64 runner builds the rootfs directly.
           if [ "$(dpkg --print-architecture)" != "arm64" ]; then
             sudo apt-get install -y qemu-user-static binfmt-support
             sudo update-binfmts --enable qemu-aarch64 || true
           fi
       - name: Build Pi image
-        # Tee the full build log to a file and ALSO let it stream live
-        # so the Actions UI still shows everything in real time.
         run: |
           set -o pipefail
           mkdir -p artifacts
           sudo ./build.sh pi 2>&1 | tee artifacts/pi-build-full.log
-      # When the build fails, surface JUST the tail (last 300 lines) as a
-      # tiny separate artifact you can download in one click. No more
-      # scrolling 7000+ lines to find the actual error.
       - name: Extract failing tail
         if: failure()
         run: |
           mkdir -p artifacts
           if [ -f artifacts/pi-build-full.log ]; then
             tail -300 artifacts/pi-build-full.log > artifacts/pi-build-tail.log
-            echo "=== last 300 lines of the Pi build log ==="
             cat artifacts/pi-build-tail.log
           fi
       - uses: actions/upload-artifact@v4
@@ -117,11 +156,11 @@ jobs:
           path: artifacts/pi-build-*.log
           if-no-files-found: warn
           retention-days: 7
-      - name: Collect artifacts
+      - name: Collect Pi image
         run: |
           sudo find profiles/arm64-pi/build/images -maxdepth 1 -name '*.img.zst' -exec mv {} artifacts/ \;
           sudo chown -R "$(id -u):$(id -g)" artifacts
-          ls -lh artifacts/
+          test "$(find artifacts -maxdepth 1 -name '*.img.zst' | wc -l)" -eq 1
       - uses: actions/upload-artifact@v4
         with:
           name: edemint-arm64-rpi-img
@@ -129,49 +168,84 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  inspect-pi:
+    name: Inspect Raspberry Pi archive contract
+    needs: pi
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: edemint-arm64-rpi-img
+          path: artifact
+      - name: Verify compressed image and partition table
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zstd parted
+          archive="$(find artifact -maxdepth 1 -name '*.img.zst' -print -quit)"
+          test -n "$archive"
+          zstd -t "$archive"
+          zstd -dc "$archive" > edemint-rpi.img
+          parted -s edemint-rpi.img unit MiB print > partition-table.txt
+          grep -Eq 'fat32|FIRMWARE' partition-table.txt
+          grep -Eq 'ext4|edemint-root' partition-table.txt
+
   publish:
-    name: Release + sign apt repo
-    needs: [iso, pi]
+    name: Signed release bundle
+    needs: [packages, inspect-iso, inspect-pi]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
         with:
           path: dist
-      - name: Sign apt-repo Release (real key)
+      - name: Build and sign apt repository
         env:
           EDEMINT_APT_PRIVATE_KEY: ${{ secrets.EDEMINT_APT_PRIVATE_KEY }}
         run: |
-          if [ -z "${EDEMINT_APT_PRIVATE_KEY:-}" ]; then
-            echo "EDEMINT_APT_PRIVATE_KEY secret not set; skipping signed-repo publish."
-            exit 0
-          fi
+          set -eu
+          test -n "${EDEMINT_APT_PRIVATE_KEY:-}" || {
+            echo "EDEMINT_APT_PRIVATE_KEY is required for tagged releases" >&2
+            exit 1
+          }
           sudo apt-get update
           sudo apt-get install -y gnupg apt-utils
           export GNUPGHOME="$(mktemp -d)"
           chmod 700 "$GNUPGHOME"
           printf '%s' "$EDEMINT_APT_PRIVATE_KEY" | gpg --batch --import
-          # Build the Edemint apt repo over the published metapackages and
-          # sign the Release. The repo upload target (rsync/scp/s3) is
-          # intentionally not hardcoded here — wire it in a follow-up once
-          # the repo host is provisioned.
           mkdir -p repo/dists/trixie/main/binary-all repo/pool/main
-          cp shared/includes/usr/share/edemint/metapackages/*.deb repo/pool/main/ || true
+          cp dist/edemint-metapackages/*.deb repo/pool/main/
+          test "$(find repo/pool/main -maxdepth 1 -name '*.deb' | wc -l)" -eq 3
           (
             cd repo
             apt-ftparchive packages pool/main > dists/trixie/main/binary-all/Packages
             gzip -kf dists/trixie/main/binary-all/Packages
             apt-ftparchive release dists/trixie > dists/trixie/Release
             gpg --batch --yes --detach-sign --armor -o dists/trixie/Release.gpg dists/trixie/Release
-            gpg --batch --yes --clearsign      -o dists/trixie/InRelease    dists/trixie/Release
+            gpg --batch --yes --clearsign -o dists/trixie/InRelease dists/trixie/Release
           )
           tar -C repo -czf edemint-apt-repo.tar.gz .
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            dist/edemint-amd64-iso/*.iso
-            dist/edemint-arm64-rpi-img/*.img.zst
-            edemint-apt-repo.tar.gz
-          generate_release_notes: true
+      - name: Assemble checksummed release assets
+        run: |
+          set -eu
+          mkdir release-assets
+          find dist -type f \( -name '*.iso' -o -name '*.img.zst' \) -exec cp {} release-assets/ \;
+          cp edemint-apt-repo.tar.gz release-assets/
+          test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 3
+          (
+            cd release-assets
+            sha256sum * > SHA256SUMS
+            sha512sum * > SHA512SUMS
+          )
+      - name: Create GitHub release from tested artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release-assets/* \
+            --verify-tag \
+            --generate-notes \
+            --title "Edemint $GITHUB_REF_NAME"
