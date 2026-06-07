@@ -111,7 +111,7 @@ jobs:
           sudo apt-get install -y xorriso
           iso="$(find artifact -maxdepth 1 -name '*.iso' -print -quit)"
           test -n "$iso"
-          xorriso -indev "$iso" -find / -type f -print > iso-files.txt
+          xorriso -indev "$iso" -find / -type f -exec echo -- > iso-files.txt
           grep -qx '/live/filesystem.squashfs' iso-files.txt
           grep -qx '/live/filesystem.packages' iso-files.txt
           grep -Eiq '^/EFI/BOOT/BOOTX64\.EFI$' iso-files.txt
