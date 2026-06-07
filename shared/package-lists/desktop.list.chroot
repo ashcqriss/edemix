@@ -76,6 +76,23 @@ baobab
 deja-dup
 thunar
 
+# --- Edemint application foundations ------------------------------------
+# These are maintained upstream applications/services used while native
+# Edemint products are built. The launchers disclose their upstream engines.
+# Every entry is verified in Trixie for amd64 and arm64 by the isolated app
+# package contract; Firefox remains available as a recovery browser.
+epiphany-browser
+gnome-calendar
+gnome-text-editor
+font-manager
+system-config-printer
+gnome-color-manager
+colord
+bubblewrap
+xdg-dbus-proxy
+cheese
+goldendict-ng
+
 # --- Flatpak (Flathub remote registered in 0300-flatpak-flathub.hook) ---
 flatpak
 gnome-software
