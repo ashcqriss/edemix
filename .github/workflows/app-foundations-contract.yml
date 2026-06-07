@@ -1,0 +1,39 @@
+name: App foundations package contract
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-foundations-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package-contract:
+    name: Package contract (${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    container: debian:trixie-slim
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - amd64
+          - arm64
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Refresh Debian package metadata
+        shell: sh
+        run: |
+          if [ "${{ matrix.arch }}" != "$(dpkg --print-architecture)" ]; then
+            dpkg --add-architecture "${{ matrix.arch }}"
+          fi
+          apt-get update -o Acquire::Languages=none
+
+      - name: Verify candidate availability
+        shell: sh
+        run: sh scripts/verify-app-foundations.sh "${{ matrix.arch }}"
