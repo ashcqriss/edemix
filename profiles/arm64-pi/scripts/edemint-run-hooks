@@ -1,7 +1,7 @@
 #!/bin/sh
-# Edemint Pi-image hook runner. It installs the release-critical desktop
-# contract before running shared hooks. Any required-package or hook failure
-# aborts the image build instead of producing a successful but unusable image.
+# Edemint Pi-image hook runner. Shared hooks are release-critical: a hook
+# failure must abort the build rather than produce a successful but unusable
+# image. The shared 0050 hook installs and verifies the required desktop stack.
 set -eu
 
 HOOK_DIR=/usr/local/share/edemint-hooks
@@ -11,60 +11,6 @@ MANIFEST=/usr/share/edemint/required-desktop.packages
     echo "edemint-run-hooks: missing required desktop manifest: $MANIFEST" >&2
     exit 1
 }
-
-cat > /etc/apt/sources.list.d/debian-backports.sources <<'EOF'
-Types: deb
-URIs: http://deb.debian.org/debian
-Suites: trixie-backports
-Components: main
-Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
-EOF
-
-cat > /etc/apt/preferences.d/90-edemint-backports <<'EOF'
-Package: *
-Pin: release n=trixie-backports
-Pin-Priority: 100
-EOF
-
-apt-get update
-
-install_suite() {
-    suite="$1"
-    packages="$(awk -v suite="$suite" '
-        /^[[:space:]]*(#|$)/ { next }
-        $2 == suite { print $1 }
-    ' "$MANIFEST" | tr '\n' ' ')"
-    [ -z "$packages" ] || {
-        echo "edemint-run-hooks: installing required packages from $suite:$packages"
-        # Package splitting is intentional.
-        # shellcheck disable=SC2086
-        apt-get install -y --no-install-recommends -t "$suite" $packages
-    }
-}
-
-install_suite trixie-backports
-install_suite trixie
-
-missing=0
-while read -r package suite extra; do
-    case "$package" in ''|'#'*) continue ;; esac
-    if [ -n "${extra:-}" ] || [ -z "${suite:-}" ]; then
-        echo "edemint-run-hooks: malformed manifest entry: $package ${suite:-} ${extra:-}" >&2
-        missing=1
-    elif ! dpkg-query -W -f='${db:Status-Status}\n' "$package" 2>/dev/null | grep -qx installed; then
-        echo "edemint-run-hooks: required package missing: $package" >&2
-        missing=1
-    fi
-done < "$MANIFEST"
-[ "$missing" -eq 0 ] || exit 1
-
-for command in Hyprland hyprlock hypridle wlogout swayosd-server cliphist wf-recorder jq; do
-    command -v "$command" >/dev/null 2>&1 || {
-        echo "edemint-run-hooks: required command missing: $command" >&2
-        exit 1
-    }
-done
-
 [ -d "$HOOK_DIR" ] || {
     echo "edemint-run-hooks: no $HOOK_DIR" >&2
     exit 1
