@@ -1,0 +1,16 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Adventurer
+GenericName=Web Browser
+Comment=Browse the web with Edemint's WebKitGTK foundation
+Exec=epiphany %U
+Icon=org.gnome.Epiphany
+Terminal=false
+Categories=Network;WebBrowser;
+MimeType=text/html;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+StartupNotify=true
+StartupWMClass=org.gnome.Epiphany
+Keywords=web;browser;internet;adventurer;
+X-Edemint-Foundation=true
+X-Edemint-Upstream=org.gnome.Epiphany
