@@ -1,0 +1,24 @@
+# Candidate application foundations for Debian 13 (Trixie).
+#
+# This file is documentation/input for scripts/verify-app-foundations.sh.
+# It is intentionally NOT a live-build *.list.chroot file and therefore does
+# not install anything into an Edemint image.
+#
+# Format: package|capability|profile|status
+# Status remains "candidate" until architecture, dependency, license, launch
+# and installed-size gates in docs/APPLICATIONS_ROADMAP.md have passed.
+
+epiphany-browser|WebKitGTK browser foundation|desktop|candidate
+gnome-calendar|Calendar|desktop|candidate
+gnome-maps|Maps|desktop|candidate
+geary|Mail|desktop|candidate
+gnome-text-editor|Noterer text-editor foundation|desktop|candidate
+font-manager|Font management|desktop|candidate
+system-config-printer|Print control frontend|desktop|candidate
+gnome-color-manager|Color control frontend|desktop|candidate
+colord|Color management service|desktop|candidate
+bubblewrap|Inspector process sandbox|core|candidate
+xdg-dbus-proxy|Inspector D-Bus boundary|core|candidate
+cheese|Standard camera foundation|desktop|candidate
+webcamoid|Optional Camera Studio foundation|optional|candidate
+gnome-dictionary|Dictionary foundation|desktop|candidate
