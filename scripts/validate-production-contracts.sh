@@ -56,7 +56,7 @@ grep -q 'dpkg-query' "$SHARED_HOOK" || {
     echo "FAIL: shared desktop hook does not verify installed packages" >&2
     exit 1
 }
-grep -q 'if ! sh "$hook"' "$PI_RUNNER" || {
+grep -Fq "if ! sh \"\$hook\"" "$PI_RUNNER" || {
     echo "FAIL: Pi hook runner does not propagate hook failures" >&2
     exit 1
 }
