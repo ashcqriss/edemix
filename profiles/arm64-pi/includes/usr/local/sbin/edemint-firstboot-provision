@@ -169,13 +169,18 @@ else
     passwd --lock "$USERNAME"
 fi
 
-GROUPS=
+SUPPLEMENTARY_GROUPS=
 for group in sudo audio video render input plugdev netdev bluetooth edemint-ar; do
     if getent group "$group" >/dev/null; then
-        if [ -z "$GROUPS" ]; then GROUPS=$group; else GROUPS=$GROUPS,$group; fi
+        if [ -z "$SUPPLEMENTARY_GROUPS" ]; then
+            SUPPLEMENTARY_GROUPS=$group
+        else
+            SUPPLEMENTARY_GROUPS=$SUPPLEMENTARY_GROUPS,$group
+        fi
     fi
 done
-[ -z "$GROUPS" ] || usermod --append --groups "$GROUPS" "$USERNAME"
+[ -z "$SUPPLEMENTARY_GROUPS" ] || \
+    usermod --append --groups "$SUPPLEMENTARY_GROUPS" "$USERNAME"
 
 if [ -n "$SSH_PUBLIC_KEY" ]; then
     HOME_DIR="$(getent passwd "$USERNAME" | cut -d: -f6)"
