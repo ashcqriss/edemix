@@ -1,0 +1,203 @@
+#!/bin/sh
+# Create the owner account on the first Raspberry Pi boot.
+#
+# Provisioning is either interactive on tty1 or driven by
+# /boot/firmware/edemint-firstboot.conf. The preseed is parsed as data and is
+# never sourced. Plaintext passwords are rejected.
+set -eu
+
+STATE_DIR=/var/lib/edemint
+STAMP=$STATE_DIR/provisioned
+SSH_MARKER=$STATE_DIR/ssh-enabled
+PRESEED=/boot/firmware/edemint-firstboot.conf
+
+mkdir -p "$STATE_DIR"
+[ -e "$STAMP" ] && exit 0
+
+USERNAME=
+PASSWORD_HASH=
+SSH_PUBLIC_KEY=
+ENABLE_SSH=0
+HOSTNAME=edemint
+TIMEZONE=UTC
+LOCALE=en_US.UTF-8
+KEYMAP=us
+INTERACTIVE=0
+
+fail() {
+    echo "edemint-firstboot: $*" >&2
+    exit 1
+}
+
+valid_username() {
+    printf '%s\n' "$1" | grep -Eq '^[a-z_][a-z0-9_-]{0,31}$'
+}
+
+valid_hostname() {
+    printf '%s\n' "$1" | grep -Eq '^[a-zA-Z0-9]([a-zA-Z0-9.-]{0,61}[a-zA-Z0-9])?$'
+}
+
+read_preseed() {
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="$(printf '%s' "$line" | tr -d '\r')"
+        case "$line" in ''|'#'*) continue ;; esac
+        case "$line" in
+            *=*) key=${line%%=*}; value=${line#*=} ;;
+            *) fail "malformed preseed line" ;;
+        esac
+        case "$key" in
+            USERNAME) USERNAME=$value ;;
+            PASSWORD_HASH) PASSWORD_HASH=$value ;;
+            SSH_PUBLIC_KEY) SSH_PUBLIC_KEY=$value ;;
+            ENABLE_SSH) ENABLE_SSH=$value ;;
+            HOSTNAME) HOSTNAME=$value ;;
+            TIMEZONE) TIMEZONE=$value ;;
+            LOCALE) LOCALE=$value ;;
+            KEYMAP) KEYMAP=$value ;;
+            PASSWORD|PLAINTEXT_PASSWORD)
+                fail "plaintext passwords are forbidden; use PASSWORD_HASH"
+                ;;
+            *) fail "unsupported preseed key: $key" ;;
+        esac
+    done < "$PRESEED"
+}
+
+prompt_interactive() {
+    INTERACTIVE=1
+    echo
+    echo "Edemint first-boot setup"
+    echo "Create the owner account before the graphical session starts."
+    echo
+
+    while :; do
+        printf 'Username: '
+        IFS= read -r USERNAME
+        valid_username "$USERNAME" && ! getent passwd "$USERNAME" >/dev/null && break
+        echo "Use 1-32 lowercase letters, digits, underscores or hyphens."
+    done
+
+    while :; do
+        printf 'Password: '
+        stty -echo
+        IFS= read -r password_one
+        stty echo
+        echo
+        printf 'Confirm password: '
+        stty -echo
+        IFS= read -r password_two
+        stty echo
+        echo
+        [ -n "$password_one" ] || { echo "The password cannot be empty."; continue; }
+        [ "$password_one" = "$password_two" ] && break
+        echo "Passwords did not match."
+    done
+}
+
+if [ -s "$PRESEED" ]; then
+    echo "edemint-firstboot: using firmware preseed"
+    read_preseed
+else
+    [ -c /dev/tty1 ] || fail "tty1 unavailable and no firmware preseed was supplied"
+    prompt_interactive
+fi
+
+valid_username "$USERNAME" || fail "invalid USERNAME"
+getent passwd "$USERNAME" >/dev/null && fail "USERNAME already exists"
+valid_hostname "$HOSTNAME" || fail "invalid HOSTNAME"
+printf '%s\n' "$KEYMAP" | grep -Eq '^[A-Za-z0-9_+-]+$' || fail "invalid KEYMAP"
+case "$ENABLE_SSH" in 0|1) ;; *) fail "ENABLE_SSH must be 0 or 1" ;; esac
+
+if [ "$INTERACTIVE" -eq 0 ]; then
+    if [ -n "$PASSWORD_HASH" ]; then
+        case "$PASSWORD_HASH" in
+            \$*) ;;
+            *) fail "PASSWORD_HASH must be a crypt(3) hash beginning with dollar" ;;
+        esac
+    elif [ -z "$SSH_PUBLIC_KEY" ]; then
+        fail "preseed must provide PASSWORD_HASH or SSH_PUBLIC_KEY"
+    fi
+    if [ "$ENABLE_SSH" -eq 1 ] && [ -z "$SSH_PUBLIC_KEY" ]; then
+        fail "ENABLE_SSH=1 requires SSH_PUBLIC_KEY"
+    fi
+fi
+
+useradd --create-home --skel /etc/skel --shell /bin/bash "$USERNAME"
+
+if [ "$INTERACTIVE" -eq 1 ]; then
+    printf '%s:%s\n' "$USERNAME" "$password_one" | chpasswd
+    unset password_one password_two
+elif [ -n "$PASSWORD_HASH" ]; then
+    usermod --password "$PASSWORD_HASH" "$USERNAME"
+else
+    passwd --lock "$USERNAME"
+fi
+
+GROUPS=
+for group in sudo audio video render input plugdev netdev bluetooth edemint-ar; do
+    if getent group "$group" >/dev/null; then
+        if [ -z "$GROUPS" ]; then GROUPS=$group; else GROUPS=$GROUPS,$group; fi
+    fi
+done
+[ -z "$GROUPS" ] || usermod --append --groups "$GROUPS" "$USERNAME"
+
+if [ -n "$SSH_PUBLIC_KEY" ]; then
+    case "$SSH_PUBLIC_KEY" in
+        ssh-ed25519\ *|ssh-rsa\ *|ecdsa-sha2-nistp256\ *|sk-ssh-ed25519@openssh.com\ *) ;;
+        *) fail "SSH_PUBLIC_KEY has an unsupported format" ;;
+    esac
+    HOME_DIR="$(getent passwd "$USERNAME" | cut -d: -f6)"
+    install -d -m 0700 -o "$USERNAME" -g "$USERNAME" "$HOME_DIR/.ssh"
+    printf '%s\n' "$SSH_PUBLIC_KEY" > "$HOME_DIR/.ssh/authorized_keys"
+    chown "$USERNAME:$USERNAME" "$HOME_DIR/.ssh/authorized_keys"
+    chmod 0600 "$HOME_DIR/.ssh/authorized_keys"
+fi
+
+passwd --lock root
+
+if [ -e "/usr/share/zoneinfo/$TIMEZONE" ]; then
+    ln -sf "/usr/share/zoneinfo/$TIMEZONE" /etc/localtime
+    printf '%s\n' "$TIMEZONE" > /etc/timezone
+else
+    fail "unknown TIMEZONE"
+fi
+
+if grep -Fqx "$LOCALE UTF-8" /usr/share/i18n/SUPPORTED; then
+    sed -i "s/^# *$LOCALE UTF-8/$LOCALE UTF-8/" /etc/locale.gen
+    locale-gen "$LOCALE"
+    update-locale LANG="$LOCALE"
+else
+    fail "unsupported LOCALE"
+fi
+
+cat > /etc/default/keyboard <<EOF
+XKBMODEL="pc105"
+XKBLAYOUT="$KEYMAP"
+XKBVARIANT=""
+XKBOPTIONS=""
+BACKSPACE="guess"
+EOF
+
+printf '%s\n' "$HOSTNAME" > /etc/hostname
+if grep -q '^127\.0\.1\.1[[:space:]]' /etc/hosts; then
+    sed -i "s/^127\.0\.1\.1.*/127.0.1.1\t$HOSTNAME/" /etc/hosts
+else
+    printf '127.0.1.1\t%s\n' "$HOSTNAME" >> /etc/hosts
+fi
+
+if [ "$ENABLE_SSH" -eq 1 ]; then
+    touch "$SSH_MARKER"
+else
+    rm -f "$SSH_MARKER"
+fi
+
+# FAT filesystems do not provide reliable secure erasure. Remove the one-shot
+# preseed immediately, sync the partition, and never copy it into the rootfs.
+if [ -e "$PRESEED" ]; then
+    rm -f "$PRESEED"
+    sync /boot/firmware 2>/dev/null || sync
+fi
+
+touch "$STAMP"
+sync "$STATE_DIR" 2>/dev/null || sync
+
+echo "edemint-firstboot: owner account created; graphical login may start"
