@@ -57,7 +57,7 @@ grep -q 'dpkg-query' "$SHARED_HOOK" || {
     echo "FAIL: shared desktop hook does not verify installed packages" >&2
     exit 1
 }
-grep -Fq 'if [ "$arch" != "amd64" ]' "$ISO_COMPAT_HOOK" || {
+grep -Fq "if [ \"\$arch\" != \"amd64\" ]" "$ISO_COMPAT_HOOK" || {
     echo "FAIL: isolinux compatibility hook is not scoped to amd64 images" >&2
     exit 1
 }
