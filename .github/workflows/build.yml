@@ -115,9 +115,8 @@ jobs:
           sudo apt-get install -y xorriso
           iso="$(find artifact -maxdepth 1 -name '*.iso' -print -quit)"
           test -n "$iso"
-          xorriso -indev "$iso" -find / -type f -exec echo -- > iso-files.txt
-          grep -qx '/live/filesystem.squashfs' iso-files.txt
-          grep -qx '/live/filesystem.packages' iso-files.txt
+          xorriso -indev "$iso" -lsdl /live/filesystem.squashfs --
+          xorriso -indev "$iso" -lsdl /live/filesystem.packages --
           xorriso -indev "$iso" -report_el_torito plain > el-torito.txt 2>&1
           cat el-torito.txt
           grep -Eq 'El Torito boot img.*UEFI' el-torito.txt
@@ -128,7 +127,7 @@ jobs:
 
   pi:
     name: arm64 Raspberry Pi image
-    needs: lint
+    needs: [lint, inspect-iso]
     runs-on: ${{ vars.PI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 240
     steps:
