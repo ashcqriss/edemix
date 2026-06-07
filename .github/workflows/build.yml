@@ -2,7 +2,7 @@ name: build
 
 on:
   push:
-    branches: [main, "claude/**", fix, "codex/**"]
+    branches: [main, "claude/**", fix]
     tags: ["v*"]
   pull_request:
     branches: [main]
@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: build-${{ github.workflow }}-${{ github.ref }}
+  group: build-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
@@ -118,7 +118,9 @@ jobs:
           xorriso -indev "$iso" -find / -type f -exec echo -- > iso-files.txt
           grep -qx '/live/filesystem.squashfs' iso-files.txt
           grep -qx '/live/filesystem.packages' iso-files.txt
-          grep -Eiq '^/EFI/BOOT/BOOTX64\.EFI$' iso-files.txt
+          xorriso -indev "$iso" -report_el_torito plain > el-torito.txt 2>&1
+          cat el-torito.txt
+          grep -Eq 'El Torito boot img.*UEFI' el-torito.txt
           xorriso -osirrox on -indev "$iso" -extract /live/filesystem.packages filesystem.packages
           grep -Eq '^hyprland[[:space:]]' filesystem.packages
           grep -Eq '^hyprlock[[:space:]]' filesystem.packages
