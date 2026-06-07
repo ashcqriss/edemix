@@ -1,0 +1,19 @@
+[Unit]
+Description=Provision the Edemint owner account
+After=local-fs.target edemint-firstboot-growfs.service
+Before=greetd.service ssh.service getty@tty1.service
+Conflicts=getty@tty1.service
+ConditionPathExists=!/var/lib/edemint/provisioned
+RequiresMountsFor=/boot/firmware /var/lib/edemint
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh /usr/local/sbin/edemint-firstboot-provision
+StandardInput=tty-force
+StandardOutput=journal+console
+StandardError=journal+console
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+RemainAfterExit=yes
+TimeoutStartSec=0

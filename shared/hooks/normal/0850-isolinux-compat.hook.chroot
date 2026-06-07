@@ -3,7 +3,13 @@
 # bootloader files from /root/isolinux inside the chroot. Current
 # Debian packages keep them under /usr/lib, while Ubuntu live-build also
 # ships template copies under /usr/share/live/build/bootloaders.
-set -e
+set -eu
+
+arch="$(dpkg --print-architecture 2>/dev/null || echo unknown)"
+if [ "$arch" != "amd64" ]; then
+    echo "0850-isolinux-compat: skipping ISO-only hook on $arch"
+    exit 0
+fi
 
 mkdir -p /root/isolinux
 

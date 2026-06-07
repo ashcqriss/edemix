@@ -1,24 +1,35 @@
 #!/bin/sh
-# Edemint Pi-image hook runner. Invoked inside the chroot via mmdebstrap's
-# customize-hook, AFTER metapackages and shared/hooks/normal/* have been
-# synced into /usr/local/share/edemint-hooks/. Runs each *.hook.chroot in
-# alphabetical order, swallowing per-hook failures so one bad hook doesn't
-# tank the whole image.
-#
-# Living as a script file (rather than inline `chroot "$1" sh -c "..."`)
-# avoids the nested-quoting bug where the outer mmdebstrap wrapper shell
-# eats $h before the inner shell can iterate.
-set -u
+# Edemint Pi-image hook runner. Shared hooks are release-critical: a hook
+# failure must abort the build rather than produce a successful but unusable
+# image. The shared 0050 hook installs and verifies the required desktop stack.
+set -eu
 
 HOOK_DIR=/usr/local/share/edemint-hooks
-[ -d "$HOOK_DIR" ] || { echo "edemint-run-hooks: no $HOOK_DIR"; exit 0; }
+MANIFEST=/usr/share/edemint/required-desktop.packages
+
+[ -s "$MANIFEST" ] || {
+    echo "edemint-run-hooks: missing required desktop manifest: $MANIFEST" >&2
+    exit 1
+}
+[ -d "$HOOK_DIR" ] || {
+    echo "edemint-run-hooks: no $HOOK_DIR" >&2
+    exit 1
+}
 
 found=0
-for h in "$HOOK_DIR"/*.hook.chroot; do
-    [ -f "$h" ] || continue
+failed=0
+for hook in "$HOOK_DIR"/*.hook.chroot; do
+    [ -f "$hook" ] || continue
     found=1
-    echo "edemint-run-hooks: $h"
-    sh "$h" || echo "edemint-run-hooks: $h FAILED (continuing)"
+    echo "edemint-run-hooks: $hook"
+    if ! sh "$hook"; then
+        echo "edemint-run-hooks: $hook FAILED" >&2
+        failed=1
+    fi
 done
 
-[ "$found" -eq 1 ] || echo "edemint-run-hooks: nothing matched $HOOK_DIR/*.hook.chroot"
+[ "$found" -eq 1 ] || {
+    echo "edemint-run-hooks: nothing matched $HOOK_DIR/*.hook.chroot" >&2
+    exit 1
+}
+[ "$failed" -eq 0 ] || exit 1
