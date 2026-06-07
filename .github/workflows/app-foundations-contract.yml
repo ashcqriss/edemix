@@ -9,6 +9,10 @@ on:
       - .github/workflows/app-foundations-contract.yml
       - scripts/verify-app-foundations.sh
       - shared/package-lists/app-foundations.candidates
+      - shared/package-lists/desktop.list.chroot
+      - profiles/amd64-iso/config/package-lists/apps-desktop-extra.list.chroot
+      - shared/includes/usr/share/applications/edemint-*.desktop
+      - shared/includes/etc/xdg/mimeapps.list
 
 permissions:
   contents: read
@@ -44,3 +48,20 @@ jobs:
       - name: Verify candidate availability
         shell: sh
         run: sh scripts/verify-app-foundations.sh "${{ matrix.arch }}"
+
+      - name: Install metadata validator
+        if: matrix.arch == 'amd64'
+        shell: sh
+        run: apt-get install -y --no-install-recommends desktop-file-utils
+
+      - name: Validate Edemint launchers and defaults
+        if: matrix.arch == 'amd64'
+        shell: sh
+        run: |
+          desktop-file-validate shared/includes/usr/share/applications/edemint-*.desktop
+          for desktop in $(grep -o 'edemint-[A-Za-z0-9._-]*\.desktop' shared/includes/etc/xdg/mimeapps.list | sort -u); do
+            test -f "shared/includes/usr/share/applications/$desktop" || {
+              echo "missing launcher referenced by mimeapps.list: $desktop" >&2
+              exit 1
+            }
+          done
