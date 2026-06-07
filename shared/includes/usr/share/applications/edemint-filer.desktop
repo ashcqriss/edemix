@@ -1,0 +1,16 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Filer
+GenericName=File Manager
+Comment=Browse files, folders, devices and network locations
+Exec=thunar %F
+Icon=org.xfce.thunar
+Terminal=false
+Categories=System;FileTools;FileManager;
+MimeType=inode/directory;
+StartupNotify=true
+StartupWMClass=Thunar
+Keywords=files;folders;storage;filer;
+X-Edemint-Foundation=true
+X-Edemint-Upstream=thunar
