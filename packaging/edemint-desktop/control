@@ -4,16 +4,12 @@ Standards-Version: 4.6.2
 Package: edemint-desktop
 Version: 0.1
 Maintainer: Edemint <noreply@github.com>
-Homepage: https://github.com/ashcqriss/edemint
+Homepage: https://github.com/ashcqriss/edemix
 Architecture: all
-Depends: edemint-base, @DEPS@
-Description: Edemint desktop metapackage — Hyprland Wayland session
- The Edemint desktop metapackage pulls the Hyprland (wlroots) compositor
- and the full userland that makes it feel like a normal general-purpose
- Wayland desktop: portals, XWayland, Qt5/6 Wayland, the Hyprland UX layer
- (hyprlock/hypridle/wlogout/swayosd/cliphist/hyprshot/swappy/hyprpicker/
- kanshi), tray GUIs (nm-applet, blueman, pavucontrol), the polkit agent,
- fcitx5 (input method), baseline apps (firefox-esr, viewers, calc, disk
- utility), Flatpak, VA-API, codecs, broad font set, snapper + grub-btrfs,
- NM VPN plugins, AT-SPI + Orca. Pairs with the system services enabled by
- the Edemint branding hook.
+Depends: edemint-base, hyprland, hyprlock, hypridle, xdg-desktop-portal-hyprland, wlogout, swayosd, cliphist, wf-recorder, jq, @DEPS@
+Description: Edemint desktop metapackage - Hyprland Wayland session
+ The Edemint desktop metapackage pulls the release-critical Hyprland
+ compositor, portal, lock and idle services, power menu, OSD, clipboard,
+ recording utilities, and the complete general-purpose desktop userland.
+ Missing session components are build failures; optional conveniences are not
+ represented as dependencies of this package.
