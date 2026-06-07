@@ -55,19 +55,24 @@ jobs:
     name: amd64 live ISO
     needs: lint
     runs-on: ubuntu-latest
+    container:
+      image: debian:trixie
+      options: --privileged
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@v5
       - name: Build dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt-get update
-          sudo apt-get install -y live-build equivs xorriso isolinux syslinux-utils \
-            debian-archive-keyring
+          apt-get update
+          apt-get install -y live-build equivs xorriso isolinux syslinux-utils \
+            debian-archive-keyring ca-certificates
       - name: Build ISO
         run: |
           set -o pipefail
           mkdir -p artifacts
-          sudo ./build.sh amd64 2>&1 | tee artifacts/iso-build-full.log
+          ./build.sh amd64 2>&1 | tee artifacts/iso-build-full.log
       - name: Extract failing tail
         if: failure()
         run: |
@@ -85,8 +90,7 @@ jobs:
           retention-days: 7
       - name: Collect ISO
         run: |
-          sudo find profiles/amd64-iso -maxdepth 1 -name '*.iso' -exec mv {} artifacts/ \;
-          sudo chown -R "$(id -u):$(id -g)" artifacts
+          find profiles/amd64-iso -maxdepth 1 -name '*.iso' -exec mv {} artifacts/ \;
           test "$(find artifacts -maxdepth 1 -name '*.iso' | wc -l)" -eq 1
       - uses: actions/upload-artifact@v4
         with:
