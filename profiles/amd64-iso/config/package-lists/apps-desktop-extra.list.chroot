@@ -1,0 +1,9 @@
+# Edemint amd64 desktop application foundations.
+#
+# These applications are kept out of the shared list because the Raspberry Pi
+# image has tighter storage and memory budgets. They remain installable on Pi
+# through the future certified store after device testing.
+
+gnome-maps
+geary
+webcamoid
