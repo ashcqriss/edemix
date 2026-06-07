@@ -5,21 +5,20 @@ arm_64bit=1
 arm_boost=1
 enable_uart=0
 
-# Modern GPU stack — required for Hyprland on Pi 4/5.
+# Modern GPU stack - required for Hyprland on Pi 4/5.
 dtoverlay=vc4-kms-v3d
 disable_overscan=1
 gpu_mem=128
 
-# Auto-detect kernel + dtb from /boot/firmware
+# seed-boot-firmware writes kernel8.img for Pi 4 and kernel_2712.img for Pi 5.
+# Do not override kernel= here: the firmware must select the board-specific
+# default name. The initrd has one common, explicitly configured filename.
 auto_initramfs=1
-kernel=vmlinuz
 initramfs initrd.img followkernel
 
-# Pi 5 specific knobs (no-op on Pi 4)
 [pi5]
 arm_boost=1
-dtparam=pciex1_gen=3
-# Active Cooler / fan HAT auto control — silent at idle, ramps under load.
+# Active Cooler / fan HAT automatic control.
 dtparam=cooling_fan=on
 
 [all]
