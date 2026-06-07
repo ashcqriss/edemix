@@ -2,6 +2,13 @@ name: App foundations package contract
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - codex/app-foundations-roadmap
+    paths:
+      - .github/workflows/app-foundations-contract.yml
+      - scripts/verify-app-foundations.sh
+      - shared/package-lists/app-foundations.candidates
 
 permissions:
   contents: read
