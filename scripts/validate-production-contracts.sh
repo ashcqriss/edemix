@@ -6,6 +6,7 @@ cd "$ROOT"
 
 MANIFEST=shared/includes/usr/share/edemint/required-desktop.packages
 SHARED_HOOK=shared/hooks/normal/0050-extra-desktop.hook.chroot
+ISO_COMPAT_HOOK=shared/hooks/normal/0850-isolinux-compat.hook.chroot
 AMD64_HOOK=profiles/amd64-iso/config/hooks/normal/0050-extra-desktop.hook.chroot
 PI_RUNNER=profiles/arm64-pi/scripts/edemint-run-hooks
 PI_CONFIG=profiles/arm64-pi/boot/config.txt
@@ -16,7 +17,7 @@ GREETD_DROPIN=profiles/arm64-pi/includes/etc/systemd/system/greetd.service.d/10-
 SSH_DROPIN=profiles/arm64-pi/includes/etc/systemd/system/ssh.service.d/10-edemint-provisioning.conf
 SSH_CONFIG=profiles/arm64-pi/includes/etc/ssh/sshd_config.d/90-edemint-firstboot.conf
 
-for file in "$MANIFEST" "$SHARED_HOOK" "$AMD64_HOOK" "$PI_RUNNER" "$PI_CONFIG" \
+for file in "$MANIFEST" "$SHARED_HOOK" "$ISO_COMPAT_HOOK" "$AMD64_HOOK" "$PI_RUNNER" "$PI_CONFIG" \
     "$PI_SEED" "$PROVISION" "$PROVISION_UNIT" "$GREETD_DROPIN" \
     "$SSH_DROPIN" "$SSH_CONFIG"; do
     [ -s "$file" ] || { echo "FAIL: missing $file" >&2; exit 1; }
@@ -56,6 +57,10 @@ grep -q 'dpkg-query' "$SHARED_HOOK" || {
     echo "FAIL: shared desktop hook does not verify installed packages" >&2
     exit 1
 }
+grep -Fq 'if [ "$arch" != "amd64" ]' "$ISO_COMPAT_HOOK" || {
+    echo "FAIL: isolinux compatibility hook is not scoped to amd64 images" >&2
+    exit 1
+}
 grep -Fq "if ! sh \"\$hook\"" "$PI_RUNNER" || {
     echo "FAIL: Pi hook runner does not propagate hook failures" >&2
     exit 1
@@ -77,6 +82,7 @@ for kernel in kernel8.img kernel_2712.img; do
 done
 
 sh -n "$SHARED_HOOK"
+sh -n "$ISO_COMPAT_HOOK"
 sh -n "$PI_RUNNER"
 sh -n "$PROVISION"
 
@@ -93,7 +99,7 @@ if grep -Eq '(^|[[:space:]])(source|eval)[[:space:]].*PRESEED' "$PROVISION"; the
 fi
 
 if command -v shellcheck >/dev/null 2>&1; then
-    shellcheck "$SHARED_HOOK" "$PI_RUNNER" "$PROVISION" "$0"
+    shellcheck "$SHARED_HOOK" "$ISO_COMPAT_HOOK" "$PI_RUNNER" "$PROVISION" "$0"
 fi
 
 echo "Production contracts: PASS"
