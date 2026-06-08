@@ -51,9 +51,35 @@ def main() -> int:
         ),
     )
     require(
+        "shared/includes/usr/libexec/edemint-activity-monitor-app",
+        (
+            'Path("/proc/stat")',
+            'Path("/proc/diskstats")',
+            "process_snapshot",
+            "signal.SIGTERM",
+            "os.setpriority",
+            "gpu_snapshot",
+            "temperature_snapshot",
+            "Exported JSON and CSV history",
+        ),
+    )
+    require(
+        "shared/includes/usr/libexec/edemint-console-app",
+        (
+            '"journalctl", "--user"',
+            '"--output=json"',
+            "Previous boot",
+            "Bookmark",
+            "Support Bundle",
+            "redact(",
+            "timeout=8",
+        ),
+    )
+    require(
         "scripts/smoke-hyprland-session.sh",
         (
-            "WLR_BACKENDS=headless",
+            "weston --backend=headless-backend.so",
+            "WAYLAND_DISPLAY=edemint-ci",
             "Hyprland --config",
             "hyprctl -j monitors",
             "edemint-session-smoke",

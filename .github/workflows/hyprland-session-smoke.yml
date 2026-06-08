@@ -56,7 +56,7 @@ jobs:
           apt-get install -y --no-install-recommends \
             -t trixie-backports hyprland
           apt-get install -y --no-install-recommends \
-            dbus-x11 foot jq procps
+            dbus-x11 foot jq procps weston
 
       - name: Start and inspect Hyprland session
         shell: sh

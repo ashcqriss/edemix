@@ -1,2 +1,2 @@
 #!/bin/sh
-exec /usr/libexec/edemint-app console "$@"
+exec python3 /usr/libexec/edemint-console-app "$@"

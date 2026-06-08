@@ -19,6 +19,8 @@ on:
       - profiles/amd64-iso/config/package-lists/app-suite.list.chroot
       - profiles/amd64-iso/config/package-lists/apps-desktop-extra.list.chroot
       - shared/includes/usr/libexec/edemint-app
+      - shared/includes/usr/libexec/edemint-activity-monitor-app
+      - shared/includes/usr/libexec/edemint-console-app
       - shared/includes/usr/libexec/edemint-library-tools
       - shared/includes/usr/libexec/edemint-messenger
       - shared/includes/usr/libexec/edemint-inspector
@@ -48,6 +50,8 @@ on:
       - profiles/amd64-iso/config/package-lists/app-suite.list.chroot
       - profiles/amd64-iso/config/package-lists/apps-desktop-extra.list.chroot
       - shared/includes/usr/libexec/edemint-app
+      - shared/includes/usr/libexec/edemint-activity-monitor-app
+      - shared/includes/usr/libexec/edemint-console-app
       - shared/includes/usr/libexec/edemint-library-tools
       - shared/includes/usr/libexec/edemint-messenger
       - shared/includes/usr/libexec/edemint-inspector
@@ -107,6 +111,8 @@ jobs:
         run: |
           python3 -m py_compile \
             shared/includes/usr/libexec/edemint-app \
+            shared/includes/usr/libexec/edemint-activity-monitor-app \
+            shared/includes/usr/libexec/edemint-console-app \
             shared/includes/usr/libexec/edemint-library-tools \
             shared/includes/usr/libexec/edemint-messenger \
             shared/includes/usr/libexec/edemint-inspector \
