@@ -1,2 +1,2 @@
 #!/bin/sh
-exec /usr/libexec/edemint-inspector "$@"
+exec python3 /usr/libexec/edemint-inspector "$@"
