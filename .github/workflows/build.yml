@@ -128,6 +128,7 @@ jobs:
   pi:
     name: arm64 Raspberry Pi image
     needs: [lint, inspect-iso]
+    if: github.event_name != 'pull_request'
     runs-on: ${{ vars.PI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 240
     steps:
@@ -176,6 +177,7 @@ jobs:
   inspect-pi:
     name: Inspect Raspberry Pi archive contract
     needs: pi
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
