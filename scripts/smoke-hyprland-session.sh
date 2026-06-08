@@ -65,7 +65,7 @@ done
 [ -n "$signature" ] || { cat "$LOG" >&2; exit 1; }
 export HYPRLAND_INSTANCE_SIGNATURE="$signature"
 
-hyprctl -j version | jq -e '.hash != null or .tag != null' >/dev/null
+hyprctl version | grep -q 'Hyprland'
 hyprctl -j monitors | jq -e 'length >= 1' >/dev/null
 
 for _attempt in $(seq 1 30); do
