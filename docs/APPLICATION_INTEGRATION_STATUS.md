@@ -12,7 +12,8 @@ that every production roadmap requirement is complete.
 | --- | --- | --- |
 | Settings | Launches NetworkManager, Blueman, PipeWire, display, color, print, disk and power tools from one Edemint window | Native pages, polkit helpers, complete display/power/privacy controls |
 | Activity Monitor | Live memory, load, network totals and DRM GPU discovery; links to process and storage tools | Per-process charts, disk throughput, driver-specific GPU telemetry |
-| App Library | Discovers, searches and launches installed desktop applications | Categories, recent apps, mobile layout and incremental cache |
+| App Library | Discovers, searches and launches installed desktop applications; adds application entries to Shortcuts | Categories, recent apps, mobile layout and incremental cache |
+| Shortcuts | Creates, lists, runs and removes application, web and folder shortcuts using atomic local storage | Categories, drag ordering, global key bindings and synchronization |
 | Inspector | Read-only metadata and bounded text/hex preview for an explicitly selected readable file | Bubblewrap viewer profiles for PDF, media, images and archives |
 | Console | Read-only user journal viewer | Structured filtering, export and authorized system-log access |
 | Mission Control | Lists Hyprland workspaces and windows | Interactive overview, drag, focus, touch and multi-monitor controls |
@@ -53,7 +54,7 @@ not represented as original Edemint implementations.
 
 ## Image profiles
 
-- The full 28-app catalog is wired into both the amd64 desktop image and the
+- The full 29-app catalog is wired into both the amd64 desktop image and the
   Raspberry Pi arm64 image.
 - The shared package contract verifies every Debian foundation on both
   architectures before either expensive image job is started.

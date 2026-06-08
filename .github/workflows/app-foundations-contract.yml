@@ -16,6 +16,7 @@ on:
       - profiles/amd64-iso/config/package-lists/app-suite.list.chroot
       - profiles/amd64-iso/config/package-lists/apps-desktop-extra.list.chroot
       - shared/includes/usr/libexec/edemint-app
+      - shared/includes/usr/libexec/edemint-library-tools
       - shared/includes/usr/local/bin/edemint-*
       - shared/includes/usr/share/applications/edemint-*.desktop
       - shared/includes/etc/xdg/Thunar/uca.xml
@@ -69,6 +70,7 @@ jobs:
         run: |
           python3 -m py_compile \
             shared/includes/usr/libexec/edemint-app \
+            shared/includes/usr/libexec/edemint-library-tools \
             scripts/validate-app-catalog.py
           python3 scripts/validate-app-catalog.py apps/catalog.json .
           for wrapper in shared/includes/usr/local/bin/edemint-*; do
@@ -81,4 +83,3 @@ jobs:
               exit 1
             }
           done
-

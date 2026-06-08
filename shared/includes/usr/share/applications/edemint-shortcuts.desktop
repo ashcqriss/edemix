@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Shortcuts
+GenericName=Quick Actions
+Comment=Create and run safe shortcuts for applications, links and folders
+Exec=edemint-shortcuts
+Icon=system-run
+Terminal=false
+Categories=Utility;
+StartupNotify=true
+Keywords=shortcuts;quick;actions;launcher;automation;
+X-Edemint-Native=true
+X-Edemint-Maturity=mvp

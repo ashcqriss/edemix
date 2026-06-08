@@ -1,2 +1,2 @@
 #!/bin/sh
-exec /usr/libexec/edemint-app app-library "$@"
+exec /usr/libexec/edemint-library-tools library "$@"

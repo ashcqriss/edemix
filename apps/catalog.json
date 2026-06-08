@@ -10,6 +10,7 @@
     {"id":"calendar","name":"Calendar","kind":"foundation","status":"integrated","exec":"gnome-calendar","package":"gnome-calendar","profile":"shared"},
     {"id":"maps","name":"Maps","kind":"foundation","status":"integrated","exec":"gnome-maps","package":"gnome-maps","profile":"shared"},
     {"id":"app-library","name":"App Library","kind":"native","status":"mvp","exec":"edemint-app-library","package":"edemint-app-suite","profile":"shared"},
+    {"id":"shortcuts","name":"Shortcuts","kind":"native","status":"mvp","exec":"edemint-shortcuts","package":"edemint-app-suite","profile":"shared"},
     {"id":"inspector","name":"Inspector","kind":"native","status":"mvp","exec":"edemint-inspector","package":"edemint-app-suite","profile":"shared"},
     {"id":"mail","name":"Mail","kind":"foundation","status":"integrated","exec":"geary","package":"geary","profile":"shared"},
     {"id":"noterer","name":"Noterer","kind":"foundation","status":"integrated","exec":"gnome-text-editor","package":"gnome-text-editor","profile":"shared"},

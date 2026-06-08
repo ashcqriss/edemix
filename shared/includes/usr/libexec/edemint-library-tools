@@ -1,0 +1,384 @@
+#!/usr/bin/python3
+"""Edemint App Library and Shortcuts MVP runtime."""
+
+from __future__ import annotations
+
+import configparser
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import time
+from urllib.parse import urlparse
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+
+
+MODES = {
+    "library": ("App Library", "org.edemint.AppLibrary"),
+    "shortcuts": ("Shortcuts", "org.edemint.Shortcuts"),
+}
+SHORTCUT_KINDS = ("application", "web", "folder")
+
+
+def data_dir() -> Path:
+    root = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share"))
+    path = root / "edemint" / "shortcuts"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def body_label(text: str) -> Gtk.Label:
+    label = Gtk.Label(label=text, xalign=0)
+    label.set_wrap(True)
+    label.set_selectable(True)
+    return label
+
+
+def scrolled(child: Gtk.Widget) -> Gtk.ScrolledWindow:
+    view = Gtk.ScrolledWindow()
+    view.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+    view.set_vexpand(True)
+    view.set_child(child)
+    return view
+
+
+def desktop_apps() -> list[tuple[str, str]]:
+    found: dict[str, tuple[str, str]] = {}
+    roots = [
+        Path.home() / ".local/share/applications",
+        Path("/usr/local/share/applications"),
+        Path("/usr/share/applications"),
+    ]
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for path in root.glob("*.desktop"):
+            parser = configparser.ConfigParser(interpolation=None, strict=False)
+            try:
+                parser.read(path, encoding="utf-8")
+                entry = parser["Desktop Entry"]
+            except (OSError, KeyError, configparser.Error):
+                continue
+            if entry.get("NoDisplay", "false").lower() == "true":
+                continue
+            if entry.get("Type", "Application") != "Application":
+                continue
+            found[path.name] = (entry.get("Name", path.stem), path.stem)
+    return sorted(found.values(), key=lambda item: item[0].casefold())
+
+
+def shortcut_path() -> Path:
+    return data_dir() / "shortcuts.json"
+
+
+def load_shortcuts() -> list[dict[str, str]]:
+    try:
+        payload = json.loads(shortcut_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return []
+    if not isinstance(payload, list):
+        return []
+    valid = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        if (
+            isinstance(item.get("id"), str)
+            and 0 < len(item["id"]) <= 240
+            and isinstance(item.get("name"), str)
+            and 0 < len(item["name"].strip()) <= 120
+            and item.get("kind") in SHORTCUT_KINDS
+            and isinstance(item.get("target"), str)
+            and 0 < len(item["target"].strip()) <= 2048
+        ):
+            valid.append({
+                "id": item["id"],
+                "name": item["name"].strip(),
+                "kind": item["kind"],
+                "target": item["target"].strip(),
+            })
+    return valid
+
+
+def save_shortcuts(shortcuts: list[dict[str, str]]) -> None:
+    path = shortcut_path()
+    temporary = path.with_suffix(".tmp")
+    with temporary.open("w", encoding="utf-8") as handle:
+        json.dump(shortcuts, handle, ensure_ascii=True, indent=2)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    temporary.chmod(0o600)
+    temporary.replace(path)
+
+
+def validate_shortcut(item: dict[str, str]) -> tuple[bool, str]:
+    kind = item["kind"]
+    target = item["target"].strip()
+    if kind == "application":
+        available = {desktop_id for _, desktop_id in desktop_apps()}
+        if target not in available:
+            return False, f"The application shortcut is unavailable: {target}"
+        return True, ""
+    if kind == "web":
+        parsed = urlparse(target)
+        if parsed.scheme in {"http", "https"} and parsed.netloc:
+            return True, ""
+        if parsed.scheme in {"mailto", "tel"} and parsed.path:
+            return True, ""
+        return False, "Use a complete HTTP, HTTPS, mail, or telephone link."
+    if kind == "folder":
+        folder = Path(target).expanduser()
+        if not folder.is_dir():
+            return False, f"The shortcut folder is unavailable: {folder}"
+        return True, ""
+    return False, "Unsupported shortcut type."
+
+
+def run_shortcut(item: dict[str, str]) -> tuple[bool, str]:
+    ok, error = validate_shortcut(item)
+    if not ok:
+        return ok, error
+    target = item["target"].strip()
+    try:
+        if item["kind"] == "application":
+            if not shutil.which("gtk-launch"):
+                return False, "gtk-launch is not installed."
+            subprocess.Popen(["gtk-launch", target], start_new_session=True)
+        elif item["kind"] == "web":
+            Gio.AppInfo.launch_default_for_uri(target, None)
+        else:
+            folder = Path(target).expanduser().resolve()
+            Gio.AppInfo.launch_default_for_uri(folder.as_uri(), None)
+        return True, ""
+    except (OSError, GLib.Error) as exc:
+        return False, str(exc)
+
+
+class LibraryToolsApp(Adw.Application):
+    def __init__(self, mode: str) -> None:
+        title, app_id = MODES[mode]
+        super().__init__(application_id=app_id)
+        self.mode = mode
+        self.title = title
+        self.window: Adw.ApplicationWindow | None = None
+
+    def do_activate(self) -> None:
+        if self.window:
+            self.window.present()
+            return
+        self.window = Adw.ApplicationWindow(application=self)
+        self.window.set_title(self.title)
+        self.window.set_default_size(920, 640)
+        toolbar = Adw.ToolbarView()
+        header = Adw.HeaderBar()
+        header.set_title_widget(Gtk.Label(label=self.title))
+        toolbar.add_top_bar(header)
+        toolbar.set_content(
+            self.build_library() if self.mode == "library"
+            else self.build_shortcuts()
+        )
+        self.window.set_content(toolbar)
+        self.window.present()
+
+    def notice(self, message: str) -> None:
+        if self.window:
+            dialog = Adw.AlertDialog(heading="Edemint", body=message)
+            dialog.add_response("ok", "OK")
+            dialog.present(self.window)
+
+    def add_application_shortcut(self, name: str, desktop_id: str) -> None:
+        shortcuts = load_shortcuts()
+        if any(
+            item["kind"] == "application" and item["target"] == desktop_id
+            for item in shortcuts
+        ):
+            self.notice(f"{name} already has a shortcut.")
+            return
+        shortcuts.append({
+            "id": f"app-{desktop_id}-{time.time_ns()}",
+            "name": name,
+            "kind": "application",
+            "target": desktop_id,
+        })
+        save_shortcuts(shortcuts)
+        self.notice(f"Added {name} to Shortcuts.")
+
+    def build_library(self) -> Gtk.Widget:
+        outer = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL, spacing=12,
+            margin_top=18, margin_bottom=18, margin_start=18, margin_end=18,
+        )
+        outer.append(body_label(
+            "Search installed applications, open them, or save them to "
+            "Edemint Shortcuts."
+        ))
+        search = Gtk.SearchEntry(placeholder_text="Search applications")
+        apps_box = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        apps = desktop_apps()
+
+        def populate(query: str = "") -> None:
+            while child := apps_box.get_first_child():
+                apps_box.remove(child)
+            lowered = query.casefold()
+            for name, desktop_id in apps:
+                if lowered and lowered not in name.casefold():
+                    continue
+                row = Adw.ActionRow(title=name)
+                shortcut_button = Gtk.Button(
+                    label="Shortcut", valign=Gtk.Align.CENTER
+                )
+                shortcut_button.connect(
+                    "clicked",
+                    lambda _button, app_name=name, item=desktop_id:
+                        self.add_application_shortcut(app_name, item),
+                )
+                open_button = Gtk.Button(label="Open", valign=Gtk.Align.CENTER)
+                open_button.connect(
+                    "clicked",
+                    lambda _button, item=desktop_id:
+                        self.run_and_report({
+                            "kind": "application",
+                            "target": item,
+                        }),
+                )
+                row.add_suffix(shortcut_button)
+                row.add_suffix(open_button)
+                row.set_activatable_widget(open_button)
+                apps_box.append(row)
+
+        search.connect("search-changed", lambda entry: populate(entry.get_text()))
+        populate()
+        outer.append(search)
+        outer.append(scrolled(apps_box))
+        return outer
+
+    def run_and_report(self, item: dict[str, str]) -> None:
+        ok, error = run_shortcut(item)
+        if not ok:
+            self.notice(error)
+
+    def build_shortcuts(self) -> Gtk.Widget:
+        outer = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL, spacing=12,
+            margin_top=18, margin_bottom=18, margin_start=18, margin_end=18,
+        )
+        outer.append(body_label(
+            "Create quick actions for installed applications, trusted web "
+            "addresses, and folders. Shortcuts never execute shell commands."
+        ))
+        name_entry = Gtk.Entry(placeholder_text="Shortcut name")
+        kind_menu = Gtk.DropDown.new_from_strings(
+            ["Application", "Web address", "Folder"]
+        )
+        target_entry = Gtk.Entry(
+            placeholder_text="Desktop ID, URL, or folder path"
+        )
+        form = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        name_entry.set_hexpand(True)
+        target_entry.set_hexpand(True)
+        form.append(name_entry)
+        form.append(kind_menu)
+        form.append(target_entry)
+        add_button = Gtk.Button(label="Add")
+        form.append(add_button)
+        outer.append(form)
+        shortcuts_box = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+
+        def refresh() -> None:
+            while child := shortcuts_box.get_first_child():
+                shortcuts_box.remove(child)
+            shortcuts = load_shortcuts()
+            if not shortcuts:
+                shortcuts_box.append(Adw.ActionRow(
+                    title="No shortcuts yet",
+                    subtitle="Add applications from App Library or create one above.",
+                ))
+                return
+            labels = {
+                "application": "Application",
+                "web": "Web address",
+                "folder": "Folder",
+            }
+            for item in shortcuts:
+                row = Adw.ActionRow(
+                    title=item["name"],
+                    subtitle=f"{labels[item['kind']]} - {item['target']}",
+                )
+                remove_button = Gtk.Button(
+                    label="Remove", valign=Gtk.Align.CENTER
+                )
+                remove_button.add_css_class("destructive-action")
+                remove_button.connect(
+                    "clicked",
+                    lambda _button, shortcut_id=item["id"]:
+                        remove(shortcut_id),
+                )
+                run_button = Gtk.Button(label="Run", valign=Gtk.Align.CENTER)
+                run_button.connect(
+                    "clicked",
+                    lambda _button, shortcut=item:
+                        self.run_and_report(shortcut),
+                )
+                row.add_suffix(remove_button)
+                row.add_suffix(run_button)
+                row.set_activatable_widget(run_button)
+                shortcuts_box.append(row)
+
+        def remove(shortcut_id: str) -> None:
+            save_shortcuts([
+                item for item in load_shortcuts()
+                if item["id"] != shortcut_id
+            ])
+            refresh()
+
+        def create(_button: Gtk.Button) -> None:
+            name = name_entry.get_text().strip()
+            target = target_entry.get_text().strip()
+            shortcut_kind = SHORTCUT_KINDS[kind_menu.get_selected()]
+            if not name or not target:
+                self.notice("Enter both a shortcut name and destination.")
+                return
+            if len(name) > 120 or len(target) > 2048:
+                self.notice("The shortcut name or destination is too long.")
+                return
+            candidate = {
+                "id": f"user-{time.time_ns()}",
+                "name": name,
+                "kind": shortcut_kind,
+                "target": target.removesuffix(".desktop")
+                    if shortcut_kind == "application" else target,
+            }
+            ok, error = validate_shortcut(candidate)
+            if not ok:
+                self.notice(error)
+                return
+            shortcuts = load_shortcuts()
+            shortcuts.append(candidate)
+            save_shortcuts(shortcuts)
+            name_entry.set_text("")
+            target_entry.set_text("")
+            refresh()
+
+        add_button.connect("clicked", create)
+        outer.append(scrolled(shortcuts_box))
+        refresh()
+        return outer
+
+
+def main() -> int:
+    if len(sys.argv) != 2 or sys.argv[1] not in MODES:
+        print(f"Usage: {Path(sys.argv[0]).name} <library|shortcuts>")
+        return 2
+    return LibraryToolsApp(sys.argv[1]).run([sys.argv[0]])
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

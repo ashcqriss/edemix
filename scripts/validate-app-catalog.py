@@ -53,7 +53,8 @@ def main() -> int:
 
     required = {
         "adventurer", "settings", "activity-monitor", "filer", "messenger",
-        "app-store", "calendar", "maps", "app-library", "inspector", "mail",
+        "app-store", "calendar", "maps", "app-library", "shortcuts",
+        "inspector", "mail",
         "noterer", "bluetooth", "dictionary", "console", "font-manager",
         "terminal", "mission-control", "sticky-notes", "color-control",
         "print-control", "camera", "camera-studio", "automator", "calculator",
@@ -69,6 +70,15 @@ def main() -> int:
         stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
     ):
         raise SystemExit(f"native runtime is not executable: {runtime}")
+    library_runtime = root / "shared/includes/usr/libexec/edemint-library-tools"
+    if not library_runtime.is_file():
+        raise SystemExit(f"missing App Library runtime: {library_runtime}")
+    if not library_runtime.stat().st_mode & (
+        stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+    ):
+        raise SystemExit(
+            f"App Library runtime is not executable: {library_runtime}"
+        )
     print(f"catalog valid: {len(apps)} applications")
     return 0
 
