@@ -1,2 +1,2 @@
 #!/bin/sh
-exec /usr/libexec/edemint-app inspector "$@"
+exec /usr/libexec/edemint-inspector "$@"
