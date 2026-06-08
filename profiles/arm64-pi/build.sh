@@ -8,13 +8,12 @@
 #
 # Requirements: a Linux host with root + loop devices (mmdebstrap +
 # genimage), and: mmdebstrap, genimage, parted, mtools, e2fsprogs,
-# dosfstools, zstd, equivs (for metapackages). On a non-arm64 host add
-# qemu-user-static + binfmt-support (the script installs them automatically);
-# on a native arm64 host they are not needed and the build is ~4x faster.
+# dosfstools, zstd, equivs, and debian-archive-keyring. On a non-arm64 host
+# add qemu-user-static + binfmt-support.
 #
 # Usage:
-#   sudo ./profiles/arm64-pi/build.sh           # full build → *.img.zst
-#   sudo ./profiles/arm64-pi/build.sh clean     # remove build/ dir
+#   sudo ./profiles/arm64-pi/build.sh
+#   sudo ./profiles/arm64-pi/build.sh clean
 
 set -e
 
@@ -40,51 +39,59 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 # --- 0. install host build deps if missing -------------------------------
-# A native arm64 host (e.g. a GitHub `ubuntu-24.04-arm` runner) runs the
-# arm64 chroot WITHOUT qemu — package postinst scripts execute natively
-# instead of under slow TCG emulation. That emulation is the single biggest
-# Pi-build cost, so the native path is roughly 4x faster end to end. We only
-# pull qemu-user-static when actually cross-building from a non-arm64 host;
-# mmdebstrap's `--arch=arm64` is correct either way.
 HOST_ARCH="$(dpkg --print-architecture 2>/dev/null || echo unknown)"
 if [ "$HOST_ARCH" = "arm64" ]; then
     echo ">> native arm64 host — building without qemu (fast path)"
 else
-    echo ">> cross-building arm64 on '$HOST_ARCH' — using qemu-user-static (slow path)"
+    echo ">> cross-building arm64 on '$HOST_ARCH' — using qemu-user-static"
 fi
 
 need_pkgs=""
-for cmd in mmdebstrap genimage parted mkfs.vfat mkfs.ext4 zstd equivs-build gpg curl; do
+for cmd in mmdebstrap genimage parted mkfs.vfat mkfs.ext4 zstd equivs-build; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
         case "$cmd" in
-            mmdebstrap)       need_pkgs="$need_pkgs mmdebstrap" ;;
-            genimage)         need_pkgs="$need_pkgs genimage" ;;
-            parted)           need_pkgs="$need_pkgs parted" ;;
-            mkfs.vfat)        need_pkgs="$need_pkgs dosfstools mtools" ;;
-            mkfs.ext4)        need_pkgs="$need_pkgs e2fsprogs" ;;
-            zstd)             need_pkgs="$need_pkgs zstd" ;;
-            equivs-build)     need_pkgs="$need_pkgs equivs" ;;
-            gpg)              need_pkgs="$need_pkgs gnupg" ;;
-            curl)             need_pkgs="$need_pkgs curl" ;;
+            mmdebstrap)   need_pkgs="$need_pkgs mmdebstrap" ;;
+            genimage)     need_pkgs="$need_pkgs genimage" ;;
+            parted)       need_pkgs="$need_pkgs parted" ;;
+            mkfs.vfat)    need_pkgs="$need_pkgs dosfstools mtools" ;;
+            mkfs.ext4)    need_pkgs="$need_pkgs e2fsprogs" ;;
+            zstd)         need_pkgs="$need_pkgs zstd" ;;
+            equivs-build) need_pkgs="$need_pkgs equivs" ;;
         esac
     fi
 done
-# Cross-build only: the qemu-aarch64 binfmt handler must be registered.
+if [ ! -s /usr/share/keyrings/debian-archive-keyring.gpg ]; then
+    need_pkgs="$need_pkgs debian-archive-keyring"
+fi
 if [ "$HOST_ARCH" != "arm64" ] && ! command -v qemu-aarch64-static >/dev/null 2>&1; then
     need_pkgs="$need_pkgs qemu-user-static binfmt-support"
 fi
 if [ -n "$need_pkgs" ]; then
     echo ">> installing host build deps:$need_pkgs"
     apt-get update
-    # shellcheck disable=SC2086  # word splitting is intentional here
+    # shellcheck disable=SC2086
     apt-get install -y $need_pkgs
 fi
 
+# The archive trust root must come from the host distribution package. Do not
+# fetch loose release keys during a build: that makes the trust input mutable
+# and bypasses package-manager provenance. CI installs debian-archive-keyring
+# before invoking this script; custom builders may override the path only with
+# an existing local keyring file.
+DEBIAN_KEYRING="${EDEMINT_DEBIAN_KEYRING:-/usr/share/keyrings/debian-archive-keyring.gpg}"
+[ -s "$DEBIAN_KEYRING" ] || {
+    echo "missing packaged Debian archive keyring: $DEBIAN_KEYRING" >&2
+    echo "install debian-archive-keyring or set EDEMINT_DEBIAN_KEYRING" >&2
+    exit 1
+}
+echo ">> Debian archive keyring: $DEBIAN_KEYRING"
+if command -v dpkg-query >/dev/null 2>&1; then
+    dpkg-query -W -f='>> debian-archive-keyring package: ${Version}\n' \
+        debian-archive-keyring 2>/dev/null || true
+fi
+sha256sum "$DEBIAN_KEYRING"
+
 # --- 1. build the equivs metapackages -----------------------------------
-# The script drops .debs under shared/includes/usr/share/edemint/
-# metapackages/, which the sync-in shared/includes hook below carries
-# into the chroot. The 0900-install-metapackages hook then dpkg -i's
-# them. No more per-target packages.chroot/ copy.
 echo ">> building edemint metapackages..."
 "$REPO_ROOT/packaging/build-metapackages.sh"
 
@@ -93,10 +100,6 @@ echo ">> bootstrapping arm64 Trixie rootfs (this fetches packages)..."
 rm -rf "$ROOTFS_DIR"
 mkdir -p "$ROOTFS_DIR" "$IMAGES_DIR" "$TMP_DIR"
 
-# Combine the shared base list (no installer.list — ISO-only) with the
-# Pi-specific list. Parse files as records instead of concatenating with cat;
-# otherwise a missing trailing newline can glue one package to the next file's
-# first comment and make apt try to install words from the comment.
 PKG_LIST="$(
     awk '
         {
@@ -110,47 +113,6 @@ PKG_LIST="$(
     | tr '\n' ' '
 )"
 
-# mmdebstrap evaluates $1 inside the chroot hook; keep those bits
-# single-quoted so the host shell doesn't expand them.
-# `sync-in` copies the contents of the host path INTO the named chroot
-# directory (rsync-like), which is what we want for both includes and
-# hooks. copy-in's semantics are subtly different — sync-in is correct.
-#
-# Keyring: mmdebstrap is strict and aborts if it can't verify Trixie's
-# InRelease signature (NO_PUBKEY 6ED0E7B8... etc). Ubuntu hosts (GitHub
-# Actions ubuntu-latest) ship a debian-archive-keyring that PREDATES
-# Debian 13's 2025 archive keys, so the packaged keyring is useless here.
-# Fetch the authoritative Debian 13 keys straight from ftp-master over
-# HTTPS and dearmor them into a binary keyring mmdebstrap/gpgv can use.
-DEBIAN_KEYRING="$BUILD_DIR/debian-trixie-keyring.gpg"
-build_trixie_keyring() {
-    keydir="$BUILD_DIR/keys"
-    mkdir -p "$keydir"
-    : > "$keydir/all.asc"
-    got=0
-    for k in archive-key-13.asc archive-key-13-security.asc release-13.asc; do
-        if curl -fsSL "https://ftp-master.debian.org/keys/$k" >> "$keydir/all.asc" 2>/dev/null; then
-            got=1
-        fi
-    done
-    [ "$got" -eq 1 ] || return 1
-    gpg --dearmor < "$keydir/all.asc" > "$DEBIAN_KEYRING" 2>/dev/null || return 1
-    [ -s "$DEBIAN_KEYRING" ]
-}
-echo ">> assembling Debian 13 archive keyring from ftp-master.debian.org..."
-if ! build_trixie_keyring; then
-    echo ">> ftp-master fetch failed; falling back to host debian-archive-keyring."
-    command -v gpg >/dev/null 2>&1 || apt-get install -y gnupg
-    apt-get install -y debian-archive-keyring 2>/dev/null || true
-    DEBIAN_KEYRING=/usr/share/keyrings/debian-archive-keyring.gpg
-fi
-[ -s "$DEBIAN_KEYRING" ] || { echo "no usable Debian keyring"; exit 1; }
-
-# apt-archives cache. mmdebstrap downloads .debs into /var/cache/apt/
-# archives inside the chroot; optionally save them to the host so later
-# CI runs skip most downloads. The default removes them after bootstrap,
-# because keeping a multi-GB apt cache beside rootfs.ext4 and the final
-# disk image can prevent the image artifact from being emitted.
 APT_CACHE="$BUILD_DIR/apt-cache"
 mkdir -p "$APT_CACHE"
 cached_in=$(find "$APT_CACHE" -maxdepth 1 -name '*.deb' 2>/dev/null | wc -l)
@@ -198,9 +160,6 @@ mmdebstrap \
     "$ROOTFS_DIR" \
     'http://deb.debian.org/debian'
 
-# sync-out may have brought back the partial/ subdir; drop it. Keep the
-# cache only when explicitly requested; CI's limiting factor is disk space
-# during image assembly/compression, not download speed.
 rm -rf "$APT_CACHE/partial" 2>/dev/null || true
 cached_out=$(find "$APT_CACHE" -maxdepth 1 -name '*.deb' 2>/dev/null | wc -l)
 if [ "${EDEMINT_KEEP_APT_CACHE:-0}" = "1" ]; then
@@ -211,9 +170,6 @@ else
 fi
 
 # --- 3. Pi firmware boot files -------------------------------------------
-# raspi-firmware populates /boot/firmware; our config.txt/cmdline.txt must
-# always take precedence over the package defaults (raspi-firmware ships its
-# own versions, so the old `if [ ! -f ]` guard silently dropped ours).
 mkdir -p "$ROOTFS_DIR/boot/firmware"
 cp -f "$PROFILE_DIR/boot/config.txt"  "$ROOTFS_DIR/boot/firmware/config.txt"
 cp -f "$PROFILE_DIR/boot/cmdline.txt" "$ROOTFS_DIR/boot/firmware/cmdline.txt"
@@ -224,11 +180,6 @@ GENIMAGE_TMP="$TMP_DIR/genimage"
 rm -rf "$GENIMAGE_TMP"
 mkdir -p "$GENIMAGE_TMP"
 
-# Build a complete FAT image with ALL files from /boot/firmware.
-# genimage.cfg has no 'image boot.vfat {}' block so genimage reads
-# this pre-built file from --inputpath instead of building its own
-# (which could only enumerate files statically).
-# Loop-mount is reliable for root builds and avoids mtools quoting issues.
 BOOT_IMG="$TMP_DIR/boot.vfat"
 dd if=/dev/zero of="$BOOT_IMG" bs=1M count=512 status=none
 mkfs.vfat -F 32 -n FIRMWARE "$BOOT_IMG"
@@ -240,21 +191,11 @@ sync
 umount "$BOOT_MNT"
 echo ">> boot.vfat: $(find "$ROOTFS_DIR/boot/firmware" -type f | wc -l) firmware files"
 
-# Size the ext4 root to the ACTUAL rootfs + 30% headroom (min 4G). The cfg
-# ships a 5G default, but the populated desktop rootfs (firmware-misc-nonfree
-# alone is ~1GB, plus Firefox/GNOME/fonts-noto/ffmpeg/fcitx5-mozc) can exceed
-# that, and genimage's `mke2fs -d` aborts when content overflows a fixed
-# size. firstboot-growfs expands the partition to the card on first boot, so
-# this only needs to hold the shipped content, not the final disk.
 ROOT_KB="$(du -sk "$ROOTFS_DIR" | awk '{print $1}')"
 ROOT_SIZE_MB="$(( ROOT_KB * 130 / 100 / 1024 + 512 ))"
 [ "$ROOT_SIZE_MB" -lt 4096 ] && ROOT_SIZE_MB=4096
 echo ">> rootfs is ${ROOT_KB} KB; sizing ext4 root to ${ROOT_SIZE_MB}M"
 
-# genimage.cfg names its output image edemint-0.1-arm64-rpi.img and sets a
-# placeholder 5G root size. For a versioned build (EDEMINT_VERSION != 0.1)
-# the name must track IMG_NAME, or the zstd step below looks for a file
-# genimage never wrote. Template a copy of the cfg with the real name + size.
 GENIMAGE_CFG="$TMP_DIR/genimage.cfg"
 sed -e "s|edemint-0\.1-arm64-rpi\.img|$IMG_NAME|g" \
     -e "s|size = 5G|size = ${ROOT_SIZE_MB}M|" \
@@ -267,19 +208,10 @@ genimage \
     --inputpath "$TMP_DIR" \
     --outputpath "$IMAGES_DIR"
 
-# genimage has already copied rootfs content into rootfs.ext4 and then into
-# the final disk image. Delete the chroot and temporary FAT/genimage files
-# before zstd creates its output, otherwise CI can run out of disk space at
-# the final artifact-emission step.
 echo ">> freeing build scratch before compression..."
 rm -rf "$ROOTFS_DIR" "$TMP_DIR"
 
 # --- 5. compress --------------------------------------------------------
-# zstd -T0 over xz: multithreaded zstd at -12 packs a multi-GB image in
-# tens of seconds (xz -3 took minutes) at a comparable ratio. The level is
-# the speed/size knob — raise toward -19 for smaller downloads, lower for a
-# faster build. .img.zst flashes with `zstd -dc img.zst | dd ...` and via
-# current Raspberry Pi Imager / balenaEtcher builds.
 echo ">> compressing (zstd -12, multithreaded)..."
 zstd -T0 -12 -f --rm "$IMAGES_DIR/$IMG_NAME"
 ls -lh "$IMAGES_DIR/$IMG_NAME.zst"
