@@ -9,7 +9,10 @@ on:
       - .github/workflows/app-foundations-contract.yml
       - apps/catalog.json
       - scripts/validate-app-catalog.py
+      - scripts/validate-completed-features.py
       - scripts/verify-app-foundations.sh
+      - scripts/smoke-hyprland-session.sh
+      - profiles/arm64-pi/build.sh
       - shared/package-lists/app-foundations.candidates
       - shared/package-lists/app-suite.list.chroot
       - shared/package-lists/desktop.list.chroot
@@ -18,6 +21,10 @@ on:
       - shared/includes/usr/libexec/edemint-app
       - shared/includes/usr/libexec/edemint-library-tools
       - shared/includes/usr/libexec/edemint-messenger
+      - shared/includes/usr/libexec/edemint-inspector
+      - shared/includes/usr/libexec/edemint-inspector-probe
+      - shared/includes/usr/libexec/edemint-fullcall
+      - shared/includes/usr/libexec/edemint-default-apps
       - shared/includes/usr/local/bin/edemint-*
       - shared/includes/usr/share/applications/edemint-*.desktop
       - shared/includes/etc/xdg/Thunar/uca.xml
@@ -73,8 +80,14 @@ jobs:
             shared/includes/usr/libexec/edemint-app \
             shared/includes/usr/libexec/edemint-library-tools \
             shared/includes/usr/libexec/edemint-messenger \
-            scripts/validate-app-catalog.py
+            shared/includes/usr/libexec/edemint-inspector \
+            shared/includes/usr/libexec/edemint-inspector-probe \
+            shared/includes/usr/libexec/edemint-fullcall \
+            shared/includes/usr/libexec/edemint-default-apps \
+            scripts/validate-app-catalog.py \
+            scripts/validate-completed-features.py
           python3 scripts/validate-app-catalog.py apps/catalog.json .
+          python3 scripts/validate-completed-features.py
           for wrapper in shared/includes/usr/local/bin/edemint-*; do
             sh -n "$wrapper"
           done
@@ -85,3 +98,17 @@ jobs:
               exit 1
             }
           done
+
+      - name: Exercise bounded Inspector probe
+        if: matrix.arch == 'amd64'
+        shell: sh
+        run: |
+          sample="$(mktemp)"
+          printf 'bounded preview\n' > "$sample"
+          python3 shared/includes/usr/libexec/edemint-inspector-probe "$sample" \
+            | python3 -c 'import json,sys; p=json.load(sys.stdin); assert p["ok"] and p["size"] == 16'
+          ln -s "$sample" "$sample.link"
+          if python3 shared/includes/usr/libexec/edemint-inspector-probe "$sample.link" >/dev/null; then
+            echo "Inspector probe followed a symbolic link" >&2
+            exit 1
+          fi
