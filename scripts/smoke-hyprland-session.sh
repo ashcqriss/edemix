@@ -39,7 +39,9 @@ LOG="$WORK/hyprland.log"
 export LOG
 
 dbus-run-session -- sh -eu <<'EOF'
-Hyprland --config "$XDG_CONFIG_HOME/hypr/smoke.conf" >"$LOG" 2>&1 &
+# The CI container runs as root. Hyprland requires this explicit opt-in only
+# for the isolated headless smoke environment; installed sessions do not use it.
+Hyprland --config "$XDG_CONFIG_HOME/hypr/smoke.conf" --i-am-really-stupid >"$LOG" 2>&1 &
 compositor=$!
 cleanup() {
     kill "$compositor" 2>/dev/null || true
