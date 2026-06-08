@@ -31,6 +31,35 @@ on:
       - shared/includes/etc/xdg/mimeapps.list
       - packaging/edemint-app-suite/control
       - packaging/build-metapackages.sh
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/app-foundations-contract.yml
+      - apps/catalog.json
+      - scripts/validate-app-catalog.py
+      - scripts/validate-completed-features.py
+      - scripts/verify-app-foundations.sh
+      - scripts/smoke-hyprland-session.sh
+      - profiles/arm64-pi/build.sh
+      - shared/package-lists/app-foundations.candidates
+      - shared/package-lists/app-suite.list.chroot
+      - shared/package-lists/desktop.list.chroot
+      - profiles/amd64-iso/config/package-lists/app-suite.list.chroot
+      - profiles/amd64-iso/config/package-lists/apps-desktop-extra.list.chroot
+      - shared/includes/usr/libexec/edemint-app
+      - shared/includes/usr/libexec/edemint-library-tools
+      - shared/includes/usr/libexec/edemint-messenger
+      - shared/includes/usr/libexec/edemint-inspector
+      - shared/includes/usr/libexec/edemint-inspector-probe
+      - shared/includes/usr/libexec/edemint-fullcall
+      - shared/includes/usr/libexec/edemint-default-apps
+      - shared/includes/usr/local/bin/edemint-*
+      - shared/includes/usr/share/applications/edemint-*.desktop
+      - shared/includes/etc/xdg/Thunar/uca.xml
+      - shared/includes/etc/xdg/mimeapps.list
+      - packaging/edemint-app-suite/control
+      - packaging/build-metapackages.sh
 
 permissions:
   contents: read
