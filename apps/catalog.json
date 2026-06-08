@@ -5,7 +5,7 @@
     {"id":"settings","name":"Settings","kind":"native","status":"mvp","exec":"edemint-settings","package":"edemint-app-suite","profile":"shared"},
     {"id":"activity-monitor","name":"Activity Monitor","kind":"native","status":"mvp","exec":"edemint-activity-monitor","package":"edemint-app-suite","profile":"shared"},
     {"id":"filer","name":"Filer","kind":"foundation","status":"integrated","exec":"thunar","package":"thunar","profile":"shared"},
-    {"id":"messenger","name":"Messenger","kind":"foundation","status":"integrated","exec":"nheko","package":"nheko","profile":"shared"},
+    {"id":"messenger","name":"Messenger","kind":"foundation","status":"integrated","exec":"edemint-messenger","package":"nheko","profile":"shared"},
     {"id":"app-store","name":"App Store","kind":"foundation","status":"integrated","exec":"gnome-software","package":"gnome-software","profile":"shared"},
     {"id":"calendar","name":"Calendar","kind":"foundation","status":"integrated","exec":"gnome-calendar","package":"gnome-calendar","profile":"shared"},
     {"id":"maps","name":"Maps","kind":"foundation","status":"integrated","exec":"gnome-maps","package":"gnome-maps","profile":"shared"},

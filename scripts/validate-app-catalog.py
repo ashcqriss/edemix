@@ -79,6 +79,26 @@ def main() -> int:
         raise SystemExit(
             f"App Library runtime is not executable: {library_runtime}"
         )
+    messenger_runtime = root / "shared/includes/usr/libexec/edemint-messenger"
+    if not messenger_runtime.is_file():
+        raise SystemExit(f"missing Messenger runtime: {messenger_runtime}")
+    if not messenger_runtime.stat().st_mode & (
+        stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+    ):
+        raise SystemExit(
+            f"Messenger runtime is not executable: {messenger_runtime}"
+        )
+    messenger_wrapper = (
+        root / "shared/includes/usr/local/bin/edemint-messenger"
+    )
+    if not messenger_wrapper.is_file():
+        raise SystemExit(f"missing Messenger wrapper: {messenger_wrapper}")
+    if not messenger_wrapper.stat().st_mode & (
+        stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+    ):
+        raise SystemExit(
+            f"Messenger wrapper is not executable: {messenger_wrapper}"
+        )
     print(f"catalog valid: {len(apps)} applications")
     return 0
 

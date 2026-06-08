@@ -1,0 +1,623 @@
+#!/usr/bin/python3
+"""Edemint Messenger integration shell for the Nheko Matrix client."""
+
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import time
+from urllib.parse import quote, urlparse
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+
+
+APP_ID = "org.edemint.Messenger"
+PROFILE_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
+MAX_NAME_LENGTH = 120
+MAX_TARGET_LENGTH = 2048
+
+
+def data_dir() -> Path:
+    root = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share"))
+    path = root / "edemint" / "messenger"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def state_path() -> Path:
+    return data_dir() / "integration.json"
+
+
+def load_state() -> dict[str, object]:
+    try:
+        payload = json.loads(state_path().read_text(encoding="utf-8"))
+    except (OSError, TypeError, ValueError):
+        payload = {}
+
+    profiles = []
+    raw_profiles = payload.get("profiles", []) if isinstance(payload, dict) else []
+    if isinstance(raw_profiles, list):
+        for profile in raw_profiles:
+            if (
+                isinstance(profile, str)
+                and PROFILE_PATTERN.fullmatch(profile)
+                and profile.casefold() != "default"
+                and profile not in profiles
+            ):
+                profiles.append(profile)
+
+    targets = []
+    raw_targets = payload.get("targets", []) if isinstance(payload, dict) else []
+    if isinstance(raw_targets, list):
+        for item in raw_targets:
+            if not isinstance(item, dict):
+                continue
+            identifier = item.get("id")
+            name = item.get("name")
+            target = item.get("target")
+            if (
+                isinstance(identifier, str)
+                and 0 < len(identifier) <= 240
+                and isinstance(name, str)
+                and 0 < len(name.strip()) <= MAX_NAME_LENGTH
+                and isinstance(target, str)
+                and normalize_matrix_target(target)[0]
+            ):
+                targets.append({
+                    "id": identifier,
+                    "name": name.strip(),
+                    "target": target.strip(),
+                })
+
+    return {"schema": 1, "profiles": profiles, "targets": targets}
+
+
+def save_state(state: dict[str, object]) -> None:
+    path = state_path()
+    temporary = path.with_suffix(".tmp")
+    with temporary.open("w", encoding="utf-8") as handle:
+        json.dump(state, handle, ensure_ascii=True, indent=2)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    temporary.chmod(0o600)
+    temporary.replace(path)
+
+
+def normalize_matrix_target(value: str) -> tuple[str | None, str]:
+    target = value.strip()
+    if not target:
+        return None, "Enter a Matrix user, room, or link."
+    if len(target) > MAX_TARGET_LENGTH:
+        return None, "The Matrix destination is too long."
+    if any(character.isspace() or ord(character) < 32 for character in target):
+        return None, "Matrix destinations cannot contain whitespace."
+
+    if target.startswith("matrix:"):
+        parsed = urlparse(target)
+        if parsed.scheme == "matrix" and (parsed.path or parsed.netloc):
+            return target, ""
+        return None, "The Matrix URI is incomplete."
+
+    parsed = urlparse(target)
+    if (
+        parsed.scheme == "https"
+        and parsed.hostname == "matrix.to"
+        and parsed.fragment
+    ):
+        return target, ""
+
+    if target[0] in {"@", "#", "!"} and ":" in target[1:]:
+        encoded = quote(target, safe="@#!:$?=~._-")
+        return f"https://matrix.to/#/{encoded}", ""
+
+    return (
+        None,
+        "Use a Matrix ID such as @name:server, a room alias, "
+        "a matrix: URI, or an https://matrix.to link.",
+    )
+
+
+def launch_nheko(profile: str | None = None, target: str | None = None) -> tuple[
+    bool, str
+]:
+    if not shutil.which("nheko"):
+        return False, "The Nheko Matrix client is not installed."
+    argv = ["nheko"]
+    if profile:
+        argv.extend(["-p", profile])
+    if target:
+        argv.append(target)
+    try:
+        subprocess.Popen(argv, start_new_session=True)
+    except OSError as exc:
+        return False, str(exc)
+    return True, ""
+
+
+def secret_service_status() -> str:
+    try:
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        result = bus.call_sync(
+            "org.freedesktop.DBus",
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus",
+            "NameHasOwner",
+            GLib.Variant("(s)", ("org.freedesktop.secrets",)),
+            GLib.VariantType.new("(b)"),
+            Gio.DBusCallFlags.NONE,
+            1000,
+            None,
+        )
+        return "Available" if result.unpack()[0] else "Not currently available"
+    except GLib.Error:
+        return "Unable to query"
+
+
+def matrix_handler_status() -> str:
+    handler = Gio.AppInfo.get_default_for_uri_scheme("matrix")
+    return handler.get_display_name() if handler else "No default handler"
+
+
+def body_label(text: str) -> Gtk.Label:
+    label = Gtk.Label(label=text, xalign=0)
+    label.set_wrap(True)
+    label.set_selectable(True)
+    return label
+
+
+def scrolled(child: Gtk.Widget) -> Gtk.ScrolledWindow:
+    view = Gtk.ScrolledWindow()
+    view.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+    view.set_vexpand(True)
+    view.set_child(child)
+    return view
+
+
+class MessengerApp(Adw.Application):
+    def __init__(self, arguments: list[str]) -> None:
+        super().__init__(application_id=APP_ID)
+        self.arguments = arguments
+        self.window: Adw.ApplicationWindow | None = None
+        self.target_entry: Gtk.Entry | None = None
+        self.name_entry: Gtk.Entry | None = None
+        self.search_entry: Gtk.SearchEntry | None = None
+        self.saved_box: Gtk.ListBox | None = None
+        self.profile_box: Gtk.ListBox | None = None
+        self.profile_dropdown: Gtk.DropDown | None = None
+        self.profile_model: Gtk.StringList | None = None
+
+    def do_activate(self) -> None:
+        if self.window:
+            self.window.present()
+            return
+
+        self.window = Adw.ApplicationWindow(application=self)
+        self.window.set_title("Messenger")
+        self.window.set_default_size(980, 720)
+
+        toolbar = Adw.ToolbarView()
+        header = Adw.HeaderBar()
+        header.set_title_widget(Gtk.Label(label="Messenger"))
+        toolbar.add_top_bar(header)
+        toolbar.set_content(self.build_content())
+        self.window.set_content(toolbar)
+        self.window.present()
+
+        if "--compose" in self.arguments and self.target_entry:
+            self.target_entry.grab_focus()
+
+    def notice(self, message: str) -> None:
+        if not self.window:
+            return
+        dialog = Adw.AlertDialog(heading="Messenger", body=message)
+        dialog.add_response("ok", "OK")
+        dialog.present(self.window)
+
+    def selected_profile(self) -> str | None:
+        if not self.profile_dropdown or not self.profile_model:
+            return None
+        selected = self.profile_dropdown.get_selected()
+        if selected == 0:
+            return None
+        return self.profile_model.get_string(selected)
+
+    def refresh_profile_model(self, selected: str | None = None) -> None:
+        state = load_state()
+        values = ["Default"] + list(state["profiles"])
+        self.profile_model = Gtk.StringList.new(values)
+        if self.profile_dropdown:
+            self.profile_dropdown.set_model(self.profile_model)
+            if selected in values:
+                self.profile_dropdown.set_selected(values.index(selected))
+            else:
+                self.profile_dropdown.set_selected(0)
+
+    def launch(self, target: str | None = None) -> None:
+        normalized = None
+        if target is not None:
+            normalized, error = normalize_matrix_target(target)
+            if not normalized:
+                self.notice(error)
+                return
+        ok, error = launch_nheko(self.selected_profile(), normalized)
+        if not ok:
+            self.notice(error)
+
+    def send_test_notification(self, _button: Gtk.Button) -> None:
+        notification = Gio.Notification.new("Messenger notifications are ready")
+        notification.set_body(
+            "Nheko controls message and mention notifications for Matrix rooms."
+        )
+        self.send_notification("messenger-test", notification)
+
+    def build_content(self) -> Gtk.Widget:
+        outer = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=18,
+            margin_top=20,
+            margin_bottom=20,
+            margin_start=20,
+            margin_end=20,
+        )
+        outer.append(body_label(
+            "Edemint Messenger organizes Matrix destinations and profiles, "
+            "then opens the maintained Nheko client for encrypted messaging, "
+            "files, rooms and calls."
+        ))
+        outer.append(self.build_status_group())
+        outer.append(self.build_compose_group())
+        outer.append(self.build_saved_group())
+        outer.append(self.build_profiles_group())
+        outer.append(self.build_security_group())
+        return scrolled(outer)
+
+    def build_status_group(self) -> Gtk.Widget:
+        group = Adw.PreferencesGroup(title="Client status")
+        nheko_path = shutil.which("nheko")
+        client = Adw.ActionRow(
+            title="Nheko Matrix client",
+            subtitle=nheko_path or "Not installed",
+        )
+        open_button = Gtk.Button(label="Open", valign=Gtk.Align.CENTER)
+        open_button.connect("clicked", lambda _button: self.launch())
+        client.add_suffix(open_button)
+        client.set_activatable_widget(open_button)
+        group.add(client)
+
+        group.add(Adw.ActionRow(
+            title="Matrix link handler",
+            subtitle=matrix_handler_status(),
+        ))
+        group.add(Adw.ActionRow(
+            title="Secret Service",
+            subtitle=secret_service_status(),
+        ))
+
+        notification = Adw.ActionRow(
+            title="Desktop notifications",
+            subtitle="Send a local test notification",
+        )
+        test_button = Gtk.Button(label="Test", valign=Gtk.Align.CENTER)
+        test_button.connect("clicked", self.send_test_notification)
+        notification.add_suffix(test_button)
+        notification.set_activatable_widget(test_button)
+        group.add(notification)
+        return group
+
+    def build_compose_group(self) -> Gtk.Widget:
+        group = Adw.PreferencesGroup(
+            title="New conversation",
+            description=(
+                "Enter a Matrix user ID, room alias, room ID, matrix: URI, "
+                "or matrix.to link."
+            ),
+        )
+        row = Adw.ActionRow(title="Destination")
+        self.target_entry = Gtk.Entry(
+            placeholder_text="@person:server or #room:server",
+            valign=Gtk.Align.CENTER,
+        )
+        self.target_entry.set_width_chars(34)
+        self.profile_dropdown = Gtk.DropDown()
+        self.refresh_profile_model()
+        open_button = Gtk.Button(label="Open", valign=Gtk.Align.CENTER)
+        open_button.connect(
+            "clicked",
+            lambda _button: self.launch(
+                self.target_entry.get_text() if self.target_entry else ""
+            ),
+        )
+        row.add_suffix(self.target_entry)
+        row.add_suffix(self.profile_dropdown)
+        row.add_suffix(open_button)
+        group.add(row)
+        return group
+
+    def build_saved_group(self) -> Gtk.Widget:
+        group = Adw.PreferencesGroup(
+            title="Saved conversations",
+            description=(
+                "Favorites are stored locally. No contact list or message "
+                "content is uploaded by this integration shell."
+            ),
+        )
+        form = Adw.ActionRow(title="Add favorite")
+        self.name_entry = Gtk.Entry(
+            placeholder_text="Display name",
+            valign=Gtk.Align.CENTER,
+        )
+        target = Gtk.Entry(
+            placeholder_text="Matrix destination",
+            valign=Gtk.Align.CENTER,
+        )
+        self.name_entry.set_width_chars(18)
+        target.set_width_chars(30)
+        add_button = Gtk.Button(label="Add", valign=Gtk.Align.CENTER)
+        add_button.connect(
+            "clicked",
+            lambda _button: self.add_target(
+                self.name_entry.get_text() if self.name_entry else "",
+                target.get_text(),
+                target,
+            ),
+        )
+        form.add_suffix(self.name_entry)
+        form.add_suffix(target)
+        form.add_suffix(add_button)
+        group.add(form)
+
+        self.search_entry = Gtk.SearchEntry(
+            placeholder_text="Search saved conversations"
+        )
+        self.search_entry.connect(
+            "search-changed",
+            lambda entry: self.refresh_targets(entry.get_text()),
+        )
+        search_row = Adw.ActionRow(title="Search")
+        search_row.add_suffix(self.search_entry)
+        group.add(search_row)
+
+        self.saved_box = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        group.add(self.saved_box)
+        self.refresh_targets()
+        return group
+
+    def add_target(
+        self,
+        name: str,
+        target: str,
+        target_entry: Gtk.Entry,
+    ) -> None:
+        clean_name = name.strip()
+        normalized, error = normalize_matrix_target(target)
+        if not clean_name:
+            self.notice("Enter a name for the saved conversation.")
+            return
+        if len(clean_name) > MAX_NAME_LENGTH:
+            self.notice("The saved-conversation name is too long.")
+            return
+        if not normalized:
+            self.notice(error)
+            return
+
+        state = load_state()
+        targets = list(state["targets"])
+        if any(item["target"] == normalized for item in targets):
+            self.notice("That Matrix destination is already saved.")
+            return
+        targets.append({
+            "id": f"target-{time.time_ns()}",
+            "name": clean_name,
+            "target": normalized,
+        })
+        state["targets"] = targets
+        save_state(state)
+        if self.name_entry:
+            self.name_entry.set_text("")
+        target_entry.set_text("")
+        self.refresh_targets()
+
+    def remove_target(self, identifier: str) -> None:
+        state = load_state()
+        state["targets"] = [
+            item for item in state["targets"] if item["id"] != identifier
+        ]
+        save_state(state)
+        self.refresh_targets(
+            self.search_entry.get_text() if self.search_entry else ""
+        )
+
+    def refresh_targets(self, query: str = "") -> None:
+        if not self.saved_box:
+            return
+        while child := self.saved_box.get_first_child():
+            self.saved_box.remove(child)
+
+        lowered = query.strip().casefold()
+        targets = [
+            item for item in load_state()["targets"]
+            if not lowered
+            or lowered in item["name"].casefold()
+            or lowered in item["target"].casefold()
+        ]
+        if not targets:
+            self.saved_box.append(Adw.ActionRow(
+                title="No saved conversations",
+                subtitle="Add a Matrix user or room above.",
+            ))
+            return
+
+        for item in targets:
+            row = Adw.ActionRow(title=item["name"], subtitle=item["target"])
+            remove_button = Gtk.Button(label="Remove", valign=Gtk.Align.CENTER)
+            remove_button.add_css_class("destructive-action")
+            remove_button.connect(
+                "clicked",
+                lambda _button, identifier=item["id"]:
+                    self.remove_target(identifier),
+            )
+            open_button = Gtk.Button(label="Open", valign=Gtk.Align.CENTER)
+            open_button.connect(
+                "clicked",
+                lambda _button, target=item["target"]: self.launch(target),
+            )
+            row.add_suffix(remove_button)
+            row.add_suffix(open_button)
+            row.set_activatable_widget(open_button)
+            self.saved_box.append(row)
+
+    def build_profiles_group(self) -> Gtk.Widget:
+        group = Adw.PreferencesGroup(
+            title="Profiles",
+            description=(
+                "Nheko profiles keep separate accounts and sessions. "
+                "Forgetting a launcher profile does not delete Nheko data."
+            ),
+        )
+        add_row = Adw.ActionRow(title="Add profile")
+        profile_entry = Gtk.Entry(
+            placeholder_text="work",
+            valign=Gtk.Align.CENTER,
+        )
+        add_button = Gtk.Button(label="Add", valign=Gtk.Align.CENTER)
+        add_button.connect(
+            "clicked",
+            lambda _button: self.add_profile(
+                profile_entry.get_text(), profile_entry
+            ),
+        )
+        add_row.add_suffix(profile_entry)
+        add_row.add_suffix(add_button)
+        group.add(add_row)
+
+        self.profile_box = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        group.add(self.profile_box)
+        self.refresh_profiles()
+        return group
+
+    def add_profile(self, value: str, entry: Gtk.Entry) -> None:
+        profile = value.strip()
+        if (
+            not PROFILE_PATTERN.fullmatch(profile)
+            or profile.casefold() == "default"
+        ):
+            self.notice(
+                "Profile names may contain letters, numbers, dot, dash, "
+                "and underscore, must start with a letter or number, and "
+                "cannot be named Default."
+            )
+            return
+        state = load_state()
+        profiles = list(state["profiles"])
+        if profile in profiles:
+            self.notice("That profile is already listed.")
+            return
+        profiles.append(profile)
+        profiles.sort(key=str.casefold)
+        state["profiles"] = profiles
+        save_state(state)
+        entry.set_text("")
+        self.refresh_profile_model(profile)
+        self.refresh_profiles()
+
+    def remove_profile(self, profile: str) -> None:
+        state = load_state()
+        state["profiles"] = [
+            item for item in state["profiles"] if item != profile
+        ]
+        save_state(state)
+        self.refresh_profile_model()
+        self.refresh_profiles()
+
+    def refresh_profiles(self) -> None:
+        if not self.profile_box:
+            return
+        while child := self.profile_box.get_first_child():
+            self.profile_box.remove(child)
+        profiles = load_state()["profiles"]
+        if not profiles:
+            self.profile_box.append(Adw.ActionRow(
+                title="Default profile only",
+                subtitle="Add a named profile for another Matrix account.",
+            ))
+            return
+        for profile in profiles:
+            row = Adw.ActionRow(
+                title=profile,
+                subtitle=f"Launches nheko -p {profile}",
+            )
+            forget_button = Gtk.Button(label="Forget", valign=Gtk.Align.CENTER)
+            forget_button.connect(
+                "clicked",
+                lambda _button, item=profile: self.remove_profile(item),
+            )
+            open_button = Gtk.Button(label="Open", valign=Gtk.Align.CENTER)
+            open_button.connect(
+                "clicked",
+                lambda _button, item=profile:
+                    self.launch_profile(item),
+            )
+            row.add_suffix(forget_button)
+            row.add_suffix(open_button)
+            row.set_activatable_widget(open_button)
+            self.profile_box.append(row)
+
+    def launch_profile(self, profile: str) -> None:
+        ok, error = launch_nheko(profile)
+        if not ok:
+            self.notice(error)
+
+    def build_security_group(self) -> Gtk.Widget:
+        group = Adw.PreferencesGroup(
+            title="Security and privacy",
+            description=(
+                "Encryption, device trust, room membership and session "
+                "management remain inside Nheko."
+            ),
+        )
+        group.add(Adw.ActionRow(
+            title="Verify devices",
+            subtitle=(
+                "Compare security keys before trusting a new device or "
+                "sensitive conversation."
+            ),
+        ))
+        group.add(Adw.ActionRow(
+            title="Review sessions",
+            subtitle=(
+                "Remove unknown or old sessions from Nheko's user settings."
+            ),
+        ))
+        group.add(Adw.ActionRow(
+            title="Encryption notice",
+            subtitle=(
+                "Nheko supports Matrix end-to-end encryption, but its "
+                "implementation is not represented here as independently audited."
+            ),
+        ))
+        group.add(Adw.ActionRow(
+            title="Local-data boundary",
+            subtitle=(
+                "This shell stores only profile names and saved Matrix "
+                "destinations. It does not read messages, keys, or credentials."
+            ),
+        ))
+        return group
+
+
+def main() -> int:
+    return MessengerApp(sys.argv[1:]).run([sys.argv[0]])
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

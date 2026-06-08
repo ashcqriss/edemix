@@ -26,13 +26,19 @@ Fullcall and Phone are deliberately labelled `experimental`. Their launchers
 must not claim that network calling, encryption, cellular service or emergency
 calling is complete.
 
+## Edemint integration shells
+
+| App | Current integrated behavior | Remaining production work |
+| --- | --- | --- |
+| Messenger | Organizes saved Matrix users/rooms, validates direct-conversation links, manages named Nheko profiles, tests notifications and reports Secret Service/URI-handler status; Nheko remains the disclosed messaging engine | Headless Wayland launch test, portal attachment handoff, accessibility audit and tested deep-link behavior across Nheko releases |
+
 ## Maintained foundations
 
 | Edemint name | Foundation |
 | --- | --- |
 | Adventurer | GNOME Web / WebKitGTK |
 | Filer | Thunar |
-| Messenger | Nheko / Matrix |
+| Messenger engine | Nheko / Matrix |
 | App Store | GNOME Software and Flatpak |
 | Calendar | GNOME Calendar |
 | Maps | GNOME Maps |

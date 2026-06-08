@@ -3,12 +3,22 @@ Version=1.0
 Type=Application
 Name=Messenger
 GenericName=Encrypted Messaging
-Comment=Message through the maintained Matrix foundation
-Exec=nheko
+Comment=Organize Matrix conversations and open the maintained Nheko client
+Exec=edemint-messenger
 Icon=nheko
 Terminal=false
 Categories=Network;Chat;InstantMessaging;
 StartupNotify=true
-Keywords=message;chat;matrix;encrypted;
+Keywords=message;chat;matrix;encrypted;rooms;contacts;profiles;
+Actions=OpenClient;NewConversation;
 X-Edemint-Foundation=true
 X-Edemint-Upstream=im.nheko.Nheko
+X-Edemint-Integration=true
+
+[Desktop Action OpenClient]
+Name=Open Nheko Client
+Exec=nheko
+
+[Desktop Action NewConversation]
+Name=New Matrix Conversation
+Exec=edemint-messenger --compose
