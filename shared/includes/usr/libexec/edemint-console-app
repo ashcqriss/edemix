@@ -1,0 +1,417 @@
+#!/usr/bin/python3
+"""Edemint Console: structured, bounded user-journal diagnostics."""
+
+from __future__ import annotations
+
+from datetime import datetime
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import time
+import zipfile
+from typing import Any
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gdk, GLib, Gtk  # noqa: E402
+
+
+APP_ID = "org.edemint.Console"
+MAX_RECORDS = 2000
+PRIORITIES = ("Emergency", "Alert", "Critical", "Error", "Warning", "Notice", "Info", "Debug")
+TIME_RANGES = (
+    ("Last 15 minutes", "-15m"),
+    ("Last hour", "-1h"),
+    ("Today", "today"),
+    ("Current boot", None),
+    ("All retained logs", None),
+)
+BOOT_CHOICES = ("Current boot", "Previous boot", "All boots")
+UNIT_PATTERN = re.compile(r"^[A-Za-z0-9_.@:-]{1,160}$")
+EMAIL_PATTERN = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
+IP_PATTERN = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+
+
+def state_dir() -> Path:
+    root = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"))
+    path = root / "edemint" / "console"
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    return path
+
+
+def bookmarks_path() -> Path:
+    return state_dir() / "bookmarks.json"
+
+
+def load_bookmarks() -> list[dict[str, Any]]:
+    try:
+        payload = json.loads(bookmarks_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return []
+    if not isinstance(payload, list):
+        return []
+    return [item for item in payload if isinstance(item, dict)][:500]
+
+
+def save_bookmarks(items: list[dict[str, Any]]) -> None:
+    target = bookmarks_path()
+    temporary = target.with_suffix(".tmp")
+    temporary.write_text(json.dumps(items[:500], indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.chmod(0o600)
+    temporary.replace(target)
+
+
+def journal_records(boot: int | None, since: str | None) -> tuple[list[dict[str, Any]], str]:
+    command = [
+        "journalctl", "--user", "--no-pager", "--quiet", "--output=json",
+        "--lines", str(MAX_RECORDS),
+    ]
+    if boot is not None:
+        command.extend(("--boot", str(boot)))
+    if since:
+        command.extend(("--since", since))
+    try:
+        result = subprocess.run(
+            command,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=8,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return [], str(exc)
+    records = []
+    for line in result.stdout.splitlines():
+        try:
+            value = json.loads(line)
+        except (ValueError, TypeError):
+            continue
+        if isinstance(value, dict):
+            records.append(value)
+    error = result.stderr.strip() if result.returncode not in (0, 1) else ""
+    return records, error
+
+
+def record_time(record: dict[str, Any]) -> str:
+    raw = record.get("__REALTIME_TIMESTAMP", "")
+    try:
+        return datetime.fromtimestamp(int(raw) / 1_000_000).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    except (ValueError, TypeError, OSError):
+        return "unknown time"
+
+
+def record_priority(record: dict[str, Any]) -> int:
+    try:
+        return max(0, min(7, int(record.get("PRIORITY", 6))))
+    except (ValueError, TypeError):
+        return 6
+
+
+def record_unit(record: dict[str, Any]) -> str:
+    return str(
+        record.get("_SYSTEMD_USER_UNIT")
+        or record.get("UNIT")
+        or record.get("SYSLOG_IDENTIFIER")
+        or record.get("_COMM")
+        or "session"
+    )
+
+
+def record_message(record: dict[str, Any]) -> str:
+    value = record.get("MESSAGE", "")
+    if isinstance(value, list):
+        return " ".join(str(item) for item in value)
+    return str(value).replace("\x00", " ")
+
+
+def redact(text: str) -> str:
+    value = EMAIL_PATTERN.sub("[redacted-email]", text)
+    value = IP_PATTERN.sub("[redacted-ip]", value)
+    home = str(Path.home())
+    if home and home != "/":
+        value = value.replace(home, "$HOME")
+    return value
+
+
+class ConsoleApp(Adw.Application):
+    def __init__(self) -> None:
+        super().__init__(application_id=APP_ID)
+        self.window: Adw.ApplicationWindow | None = None
+        self.records: list[dict[str, Any]] = []
+        self.filtered: list[dict[str, Any]] = []
+        self.selected: dict[str, Any] | None = None
+        self.search = Gtk.SearchEntry(placeholder_text="Search messages and structured fields")
+        self.unit = Gtk.Entry(placeholder_text="Unit or process")
+        self.severity = Gtk.DropDown.new_from_strings(("All severities",) + PRIORITIES)
+        self.time_range = Gtk.DropDown.new_from_strings(tuple(item[0] for item in TIME_RANGES))
+        self.time_range.set_selected(1)
+        self.boot = Gtk.DropDown.new_from_strings(BOOT_CHOICES)
+        self.follow = Gtk.CheckButton(label="Follow")
+        self.follow.set_active(True)
+        self.redaction = Gtk.CheckButton(label="Redact exports")
+        self.redaction.set_active(True)
+        self.status = Gtk.Label(xalign=0)
+        self.log_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
+        self.timer_id = 0
+
+    def do_activate(self) -> None:
+        if self.window:
+            self.window.present()
+            return
+        self.window = Adw.ApplicationWindow(application=self)
+        self.window.set_title("Console")
+        self.window.set_default_size(1180, 760)
+        toolbar = Adw.ToolbarView()
+        header = Adw.HeaderBar()
+        header.set_title_widget(Gtk.Label(label="Console"))
+        refresh = Gtk.Button(label="Refresh")
+        refresh.connect("clicked", lambda _button: self.reload())
+        header.pack_end(refresh)
+        toolbar.add_top_bar(header)
+        toolbar.set_content(self.build_content())
+        self.window.set_content(toolbar)
+        for widget, signal_name in (
+            (self.search, "search-changed"),
+            (self.unit, "changed"),
+            (self.severity, "notify::selected"),
+        ):
+            widget.connect(signal_name, lambda *_args: self.apply_filters())
+        self.time_range.connect("notify::selected", lambda *_args: self.reload())
+        self.boot.connect("notify::selected", lambda *_args: self.reload())
+        self.log_list.connect("row-selected", self.select_record)
+        self.window.present()
+        self.reload()
+        self.timer_id = GLib.timeout_add_seconds(3, self.periodic_refresh)
+
+    def build_content(self) -> Gtk.Widget:
+        root = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=10,
+            margin_top=12,
+            margin_bottom=12,
+            margin_start=12,
+            margin_end=12,
+        )
+        filters = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.search.set_hexpand(True)
+        self.unit.set_width_chars(18)
+        filters.append(self.search)
+        filters.append(self.unit)
+        filters.append(self.severity)
+        filters.append(self.time_range)
+        filters.append(self.boot)
+        filters.append(self.follow)
+        root.append(filters)
+        root.append(self.status)
+        scroll = Gtk.ScrolledWindow(vexpand=True)
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_child(self.log_list)
+        root.append(scroll)
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        for label, callback in (
+            ("Details", self.show_details),
+            ("Copy", self.copy_selected),
+            ("Bookmark", self.bookmark_selected),
+            ("Bookmarks", self.show_bookmarks),
+            ("Export", self.export_filtered),
+            ("Support Bundle", self.export_support_bundle),
+        ):
+            button = Gtk.Button(label=label)
+            button.connect("clicked", callback)
+            actions.append(button)
+        actions.append(self.redaction)
+        root.append(actions)
+        return root
+
+    def periodic_refresh(self) -> bool:
+        if self.follow.get_active():
+            self.reload()
+        return True
+
+    def reload(self) -> None:
+        time_index = self.time_range.get_selected()
+        since = TIME_RANGES[time_index][1]
+        boot_choice = self.boot.get_selected()
+        boot = 0 if boot_choice == 0 else (-1 if boot_choice == 1 else None)
+        if time_index == 3:
+            boot = 0
+            since = None
+        elif time_index == 4:
+            since = None
+        records, error = journal_records(boot, since)
+        if error:
+            self.status.set_text(f"Journal warning: {error}")
+        self.records = records
+        self.apply_filters()
+
+    def apply_filters(self) -> None:
+        query = self.search.get_text().strip().casefold()
+        unit_query = self.unit.get_text().strip().casefold()
+        severity_choice = self.severity.get_selected()
+        maximum_priority = severity_choice - 1 if severity_choice else 7
+        filtered = []
+        for record in self.records:
+            if record_priority(record) > maximum_priority:
+                continue
+            unit = record_unit(record)
+            if unit_query and unit_query not in unit.casefold():
+                continue
+            message = record_message(record)
+            if query:
+                searchable = " ".join((message, unit, json.dumps(record, sort_keys=True, default=str))).casefold()
+                if query not in searchable:
+                    continue
+            filtered.append(record)
+        self.filtered = filtered
+        self.populate()
+
+    def populate(self) -> None:
+        while child := self.log_list.get_first_child():
+            self.log_list.remove(child)
+        for record in self.filtered[-1000:]:
+            row = Gtk.ListBoxRow()
+            row.record = record
+            box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+            box.set_margin_top(5)
+            box.set_margin_bottom(5)
+            box.set_margin_start(8)
+            box.set_margin_end(8)
+            timestamp = Gtk.Label(label=record_time(record), xalign=0, width_chars=20)
+            priority = record_priority(record)
+            severity = Gtk.Label(label=PRIORITIES[priority], xalign=0, width_chars=9)
+            unit = Gtk.Label(label=record_unit(record), xalign=0, width_chars=22, ellipsize=3)
+            message = Gtk.Label(label=record_message(record), xalign=0, ellipsize=3)
+            message.set_hexpand(True)
+            message.set_tooltip_text(record_message(record))
+            box.append(timestamp)
+            box.append(severity)
+            box.append(unit)
+            box.append(message)
+            row.set_child(box)
+            self.log_list.append(row)
+        self.status.set_text(
+            f"Showing {len(self.filtered):,} of {len(self.records):,} retained user-session records. "
+            "System-wide logs require explicit administrative access outside Console."
+        )
+
+    def select_record(self, _box: Gtk.ListBox, row: Gtk.ListBoxRow | None) -> None:
+        self.selected = getattr(row, "record", None) if row else None
+
+    def selected_text(self) -> str:
+        if not self.selected:
+            return ""
+        return (
+            f"{record_time(self.selected)} {PRIORITIES[record_priority(self.selected)]} "
+            f"{record_unit(self.selected)}: {record_message(self.selected)}"
+        )
+
+    def show_details(self, _button: Gtk.Button) -> None:
+        if not self.selected:
+            self.notice("Select a log entry first.")
+            return
+        details = json.dumps(self.selected, indent=2, sort_keys=True, default=str)
+        dialog = Adw.AlertDialog(heading="Structured log fields", body=details[:30000])
+        dialog.add_response("ok", "Close")
+        dialog.present(self.window)
+
+    def copy_selected(self, _button: Gtk.Button) -> None:
+        text = self.selected_text()
+        if not text:
+            self.notice("Select a log entry first.")
+            return
+        display = Gdk.Display.get_default()
+        if display:
+            display.get_clipboard().set(text)
+
+    def bookmark_selected(self, _button: Gtk.Button) -> None:
+        if not self.selected:
+            self.notice("Select a log entry first.")
+            return
+        bookmarks = load_bookmarks()
+        bookmarks.insert(0, {
+            "saved_at": int(time.time()),
+            "time": record_time(self.selected),
+            "priority": PRIORITIES[record_priority(self.selected)],
+            "unit": record_unit(self.selected),
+            "message": record_message(self.selected),
+            "cursor": self.selected.get("__CURSOR", ""),
+        })
+        save_bookmarks(bookmarks)
+        self.notice("Bookmarked this log entry locally.")
+
+    def show_bookmarks(self, _button: Gtk.Button) -> None:
+        items = load_bookmarks()
+        if not items:
+            self.notice("No bookmarked entries.")
+            return
+        body = "\n\n".join(
+            f"{item.get('time', '')} {item.get('priority', '')} {item.get('unit', '')}\n{item.get('message', '')}"
+            for item in items[:50]
+        )
+        dialog = Adw.AlertDialog(heading="Bookmarked logs", body=body[:30000])
+        dialog.add_response("ok", "Close")
+        dialog.present(self.window)
+
+    def export_text(self) -> str:
+        lines = []
+        for record in self.filtered:
+            line = (
+                f"{record_time(record)} {PRIORITIES[record_priority(record)]} "
+                f"{record_unit(record)}: {record_message(record)}"
+            )
+            lines.append(redact(line) if self.redaction.get_active() else line)
+        return "\n".join(lines) + ("\n" if lines else "")
+
+    def export_filtered(self, _button: Gtk.Button) -> None:
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        path = state_dir() / f"console-{stamp}.log"
+        path.write_text(self.export_text(), encoding="utf-8")
+        path.chmod(0o600)
+        self.notice(f"Exported {len(self.filtered)} records to {path}")
+
+    def export_support_bundle(self, _button: Gtk.Button) -> None:
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        path = state_dir() / f"edemint-support-{stamp}.zip"
+        metadata = {
+            "created_at": datetime.now().astimezone().isoformat(),
+            "platform": sys.platform,
+            "uname": tuple(os.uname()),
+            "record_count": len(self.filtered),
+            "redacted": self.redaction.get_active(),
+        }
+        os_release = ""
+        try:
+            os_release = Path("/etc/os-release").read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            pass
+        with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+            bundle.writestr("metadata.json", json.dumps(metadata, indent=2, default=str) + "\n")
+            bundle.writestr("user-journal.log", self.export_text())
+            bundle.writestr("os-release.txt", os_release)
+            bundle.writestr("README.txt", (
+                "This bundle contains bounded user-session diagnostics only. Review it before sharing.\n"
+                "Console does not collect credentials, system-wide journal data, or application files.\n"
+            ))
+        path.chmod(0o600)
+        self.notice(f"Created support bundle at {path}")
+
+    def notice(self, message: str) -> None:
+        if not self.window:
+            return
+        dialog = Adw.AlertDialog(heading="Console", body=message)
+        dialog.add_response("ok", "OK")
+        dialog.present(self.window)
+
+
+def main() -> int:
+    return ConsoleApp().run([os.path.basename(__file__)])
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
