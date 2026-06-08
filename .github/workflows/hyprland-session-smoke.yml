@@ -1,0 +1,54 @@
+name: Hyprland session smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/app-foundations-roadmap
+    paths:
+      - .github/workflows/hyprland-session-smoke.yml
+      - scripts/smoke-hyprland-session.sh
+      - shared/includes/etc/greetd/config.toml
+      - shared/includes/etc/skel/.config/hypr/**
+      - shared/includes/usr/share/edemint/required-desktop.packages
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hyprland-session-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  headless-session:
+    name: Headless login and Wayland session
+    runs-on: ubuntu-latest
+    container: debian:trixie
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Enable Trixie backports
+        shell: sh
+        run: |
+          cat > /etc/apt/sources.list.d/backports.sources <<'EOF'
+          Types: deb
+          URIs: http://deb.debian.org/debian
+          Suites: trixie-backports
+          Components: main
+          Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+          EOF
+          apt-get update -o Acquire::Languages=none
+
+      - name: Install headless session dependencies
+        shell: sh
+        run: |
+          apt-get install -y --no-install-recommends \
+            -t trixie-backports hyprland
+          apt-get install -y --no-install-recommends \
+            dbus-x11 foot jq procps
+
+      - name: Start and inspect Hyprland session
+        shell: sh
+        run: sh scripts/smoke-hyprland-session.sh
