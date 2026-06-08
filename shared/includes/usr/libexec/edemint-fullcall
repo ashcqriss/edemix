@@ -137,9 +137,11 @@ class Fullcall(Adw.Application):
         sign_row.add_suffix(sign_password)
         sign_button = Gtk.Button(label="Sign in", valign=Gtk.Align.CENTER)
         sign_button.connect(
-            "clicked", lambda _button: self.sign_in(
+            "clicked",
+            lambda _button: self.sign_in(
                 sign_user.get_text(), sign_password.get_text()
-            )
+            ),
+        )
         sign_row.add_suffix(sign_button)
         sign_group.add(sign_row)
         box.append(sign_group)
@@ -154,25 +156,36 @@ class Fullcall(Adw.Application):
             create_row.add_suffix(entry)
         create_button = Gtk.Button(label="Create", valign=Gtk.Align.CENTER)
         create_button.connect(
-            "clicked", lambda _button: self.create_account(
-                create_user.get_text(), create_name.get_text(),
-                create_password.get_text(), create_confirm.get_text()
-            )
+            "clicked",
+            lambda _button: self.create_account(
+                create_user.get_text(),
+                create_name.get_text(),
+                create_password.get_text(),
+                create_confirm.get_text(),
+            ),
+        )
         create_row.add_suffix(create_button)
         create_group.add(create_row)
         box.append(create_group)
 
-        accounts = list(self.db.execute(
-            "SELECT username, display_name, created FROM accounts ORDER BY username"
-        ))
+        accounts = list(
+            self.db.execute(
+                "SELECT username, display_name, created FROM accounts ORDER BY username"
+            )
+        )
         known = Adw.PreferencesGroup(title="Accounts on this device")
         if not accounts:
             known.add(Adw.ActionRow(title="No accounts yet"))
         for username, display_name, created in accounts:
-            known.add(Adw.ActionRow(
-                title=display_name,
-                subtitle=f"@{username} - created {time.strftime('%Y-%m-%d', time.localtime(created))}",
-            ))
+            known.add(
+                Adw.ActionRow(
+                    title=display_name,
+                    subtitle=(
+                        f"@{username} - created "
+                        f"{time.strftime('%Y-%m-%d', time.localtime(created))}"
+                    ),
+                )
+            )
         box.append(known)
         scroller = Gtk.ScrolledWindow(vexpand=True)
         scroller.set_child(box)
@@ -203,20 +216,28 @@ class Fullcall(Adw.Application):
             cursor = self.db.execute(
                 "INSERT INTO accounts(username, display_name, salt, password_hash, created) "
                 "VALUES(?, ?, ?, ?, ?)",
-                (username, display_name, salt, password_digest(password, salt), int(time.time())),
+                (
+                    username,
+                    display_name,
+                    salt,
+                    password_digest(password, salt),
+                    int(time.time()),
+                ),
             )
             self.db.commit()
         except sqlite3.IntegrityError:
             self.notice("That username already exists on this device.")
             return
-        self.current_account = (cursor.lastrowid, username, display_name)
+        account_id = int(cursor.lastrowid)
+        self.current_account = (account_id, username, display_name)
         self.show_channels()
 
     def sign_in(self, username: str, password: str) -> None:
         username = username.strip().lower()
         row = self.db.execute(
             "SELECT id, username, display_name, salt, password_hash "
-            "FROM accounts WHERE username = ?", (username,)
+            "FROM accounts WHERE username = ?",
+            (username,),
         ).fetchone()
         valid = bool(row) and hmac.compare_digest(
             password_digest(password, row[3]), row[4]
@@ -245,7 +266,9 @@ class Fullcall(Adw.Application):
             margin_end=18,
         )
         account_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        identity = Gtk.Label(label=f"Signed in as {display_name} (@{username})", xalign=0)
+        identity = Gtk.Label(
+            label=f"Signed in as {display_name} (@{username})", xalign=0
+        )
         identity.set_hexpand(True)
         sign_out = Gtk.Button(label="Sign out")
         sign_out.connect("clicked", lambda _button: self.show_accounts())
@@ -273,10 +296,15 @@ class Fullcall(Adw.Application):
                 byline = author
                 if author_username:
                     byline += f" (@{author_username})"
-                timeline.append(Adw.ActionRow(
-                    title=body,
-                    subtitle=f"{byline} - {time.strftime('%Y-%m-%d %H:%M', time.localtime(created))}",
-                ))
+                timeline.append(
+                    Adw.ActionRow(
+                        title=body,
+                        subtitle=(
+                            f"{byline} - "
+                            f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(created))}"
+                        ),
+                    )
+                )
 
         def send(_button: Gtk.Button) -> None:
             body = message.get_text().strip()
@@ -284,10 +312,13 @@ class Fullcall(Adw.Application):
             if not body:
                 return
             if len(body) > 10000 or len(destination) > 120:
-                self.notice("Messages are limited to 10,000 characters and channels to 120.")
+                self.notice(
+                    "Messages are limited to 10,000 characters and channels to 120."
+                )
                 return
             self.db.execute(
-                "INSERT INTO messages(channel, body, created, author_id) VALUES(?, ?, ?, ?)",
+                "INSERT INTO messages(channel, body, created, author_id) "
+                "VALUES(?, ?, ?, ?)",
                 (destination, body, int(time.time()), account_id),
             )
             self.db.commit()
