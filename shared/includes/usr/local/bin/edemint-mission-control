@@ -1,2 +1,2 @@
 #!/bin/sh
-exec /usr/libexec/edemint-app mission-control "$@"
+exec python3 /usr/libexec/edemint-mission-control-app "$@"

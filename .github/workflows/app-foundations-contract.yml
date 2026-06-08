@@ -21,6 +21,8 @@ on:
       - shared/includes/usr/libexec/edemint-app
       - shared/includes/usr/libexec/edemint-activity-monitor-app
       - shared/includes/usr/libexec/edemint-console-app
+      - shared/includes/usr/libexec/edemint-mission-control-app
+      - shared/includes/usr/libexec/edemint-sticky-notes-app
       - shared/includes/usr/libexec/edemint-library-tools
       - shared/includes/usr/libexec/edemint-messenger
       - shared/includes/usr/libexec/edemint-inspector
@@ -52,6 +54,8 @@ on:
       - shared/includes/usr/libexec/edemint-app
       - shared/includes/usr/libexec/edemint-activity-monitor-app
       - shared/includes/usr/libexec/edemint-console-app
+      - shared/includes/usr/libexec/edemint-mission-control-app
+      - shared/includes/usr/libexec/edemint-sticky-notes-app
       - shared/includes/usr/libexec/edemint-library-tools
       - shared/includes/usr/libexec/edemint-messenger
       - shared/includes/usr/libexec/edemint-inspector
@@ -113,6 +117,8 @@ jobs:
             shared/includes/usr/libexec/edemint-app \
             shared/includes/usr/libexec/edemint-activity-monitor-app \
             shared/includes/usr/libexec/edemint-console-app \
+            shared/includes/usr/libexec/edemint-mission-control-app \
+            shared/includes/usr/libexec/edemint-sticky-notes-app \
             shared/includes/usr/libexec/edemint-library-tools \
             shared/includes/usr/libexec/edemint-messenger \
             shared/includes/usr/libexec/edemint-inspector \

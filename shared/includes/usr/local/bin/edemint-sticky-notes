@@ -1,2 +1,2 @@
 #!/bin/sh
-exec /usr/libexec/edemint-app sticky-notes "$@"
+exec python3 /usr/libexec/edemint-sticky-notes-app "$@"

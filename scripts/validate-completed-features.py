@@ -76,6 +76,34 @@ def main() -> int:
         ),
     )
     require(
+        "shared/includes/usr/libexec/edemint-mission-control-app",
+        (
+            'hypr_json("workspaces")',
+            'hypr_json("clients")',
+            'dispatch("focuswindow"',
+            'dispatch("closewindow"',
+            'dispatch("movetoworkspacesilent"',
+            "Remove Empty",
+            "set_accels_for_action",
+            "reconnect automatically",
+        ),
+    )
+    require(
+        "shared/includes/usr/libexec/edemint-sticky-notes-app",
+        (
+            "MAX_NOTES = 1000",
+            "save_store",
+            "GLib.timeout_add(350, self.flush)",
+            "Pinned",
+            "Move to Trash",
+            "Add Checkbox",
+            "check_reminders",
+            "export_notes",
+            "import_notes",
+            "set_opacity",
+        ),
+    )
+    require(
         "scripts/smoke-hyprland-session.sh",
         (
             "weston --backend=headless-backend.so",

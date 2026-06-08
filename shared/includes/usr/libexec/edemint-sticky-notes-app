@@ -1,0 +1,623 @@
+#!/usr/bin/python3
+"""Edemint Sticky Notes: local multi-note desktop notes."""
+
+from __future__ import annotations
+
+from datetime import datetime
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import time
+from typing import Any
+import uuid
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
+
+
+APP_ID = "org.edemint.StickyNotes"
+SCHEMA = 1
+COLORS = ("yellow", "blue", "green", "violet", "neutral")
+STATUSES = ("active", "archived", "trash")
+REMINDER_FORMAT = "%Y-%m-%d %H:%M"
+MAX_NOTES = 1000
+MAX_TEXT = 200_000
+WORKSPACE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]{0,63}$")
+CSS = b"""
+.note-yellow { background: #f5dd57; color: #1d1d1d; }
+.note-blue { background: #4f7fe8; color: #ffffff; }
+.note-green { background: #61ad62; color: #102010; }
+.note-violet { background: #7550a8; color: #ffffff; }
+.note-neutral { background: #dedede; color: #1d1d1d; }
+"""
+
+
+def data_dir() -> Path:
+    root = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share"))
+    path = root / "edemint" / "sticky-notes"
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    return path
+
+
+def store_path() -> Path:
+    return data_dir() / "notes.json"
+
+
+def empty_store() -> dict[str, Any]:
+    return {"schema": SCHEMA, "notes": []}
+
+
+def normalize_note(item: Any) -> dict[str, Any] | None:
+    if not isinstance(item, dict):
+        return None
+    identifier = item.get("id")
+    title = item.get("title")
+    body = item.get("body")
+    if not isinstance(identifier, str) or not identifier or not isinstance(title, str) or not isinstance(body, str):
+        return None
+    if len(title) > 200 or len(body) > MAX_TEXT:
+        return None
+    color = item.get("color", "yellow")
+    status = item.get("status", "active")
+    reminder = item.get("reminder")
+    return {
+        "id": identifier[:80],
+        "title": title,
+        "body": body,
+        "color": color if color in COLORS else "yellow",
+        "opacity": max(0.35, min(1.0, float(item.get("opacity", 1.0)))),
+        "pinned": bool(item.get("pinned", False)),
+        "workspace": str(item.get("workspace", ""))[:64],
+        "reminder": reminder if isinstance(reminder, (int, float)) else None,
+        "reminder_sent": bool(item.get("reminder_sent", False)),
+        "status": status if status in STATUSES else "active",
+        "created": int(item.get("created", time.time())),
+        "modified": int(item.get("modified", time.time())),
+        "width": max(280, min(1200, int(item.get("width", 420)))),
+        "height": max(240, min(1000, int(item.get("height", 420)))),
+    }
+
+
+def load_store() -> dict[str, Any]:
+    try:
+        payload = json.loads(store_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return empty_store()
+    notes = payload.get("notes") if isinstance(payload, dict) else None
+    if not isinstance(notes, list):
+        return empty_store()
+    normalized = [note for item in notes[:MAX_NOTES] if (note := normalize_note(item))]
+    return {"schema": SCHEMA, "notes": normalized}
+
+
+def save_store(store: dict[str, Any]) -> None:
+    target = store_path()
+    temporary = target.with_suffix(".tmp")
+    payload = {"schema": SCHEMA, "notes": store.get("notes", [])[:MAX_NOTES]}
+    with temporary.open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=True, indent=2, sort_keys=True)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    temporary.chmod(0o600)
+    temporary.replace(target)
+
+
+def new_note() -> dict[str, Any]:
+    now = int(time.time())
+    return {
+        "id": uuid.uuid4().hex,
+        "title": "New note",
+        "body": "",
+        "color": "yellow",
+        "opacity": 1.0,
+        "pinned": False,
+        "workspace": "",
+        "reminder": None,
+        "reminder_sent": False,
+        "status": "active",
+        "created": now,
+        "modified": now,
+        "width": 420,
+        "height": 420,
+    }
+
+
+def parse_reminder(value: str) -> float | None:
+    text = value.strip()
+    if not text:
+        return None
+    return datetime.strptime(text, REMINDER_FORMAT).astimezone().timestamp()
+
+
+def format_reminder(value: Any) -> str:
+    if not isinstance(value, (int, float)):
+        return ""
+    try:
+        return datetime.fromtimestamp(value).astimezone().strftime(REMINDER_FORMAT)
+    except (ValueError, OSError, OverflowError):
+        return ""
+
+
+def dispatch(name: str, argument: str = "") -> tuple[bool, str]:
+    if not shutil.which("hyprctl"):
+        return False, "Hyprland control is unavailable"
+    command = ["hyprctl", "dispatch", name]
+    if argument:
+        command.append(argument)
+    try:
+        result = subprocess.run(
+            command,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=3,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, str(exc)
+    if result.returncode != 0:
+        return False, result.stderr.strip() or result.stdout.strip() or "Hyprland rejected the action"
+    return True, ""
+
+
+class NoteWindow(Adw.ApplicationWindow):
+    def __init__(self, owner: "StickyNotesApp", note_id: str) -> None:
+        super().__init__(application=owner)
+        self.owner = owner
+        self.note_id = note_id
+        self.save_source = 0
+        note = owner.note(note_id)
+        self.set_title(note["title"] or "Sticky Note")
+        self.set_default_size(note["width"], note["height"])
+        self.set_opacity(note["opacity"])
+        self.add_css_class(f"note-{note['color']}")
+        toolbar = Adw.ToolbarView()
+        header = Adw.HeaderBar()
+        self.title_entry = Gtk.Entry(text=note["title"], placeholder_text="Note title")
+        self.title_entry.set_hexpand(True)
+        header.set_title_widget(self.title_entry)
+        toolbar.add_top_bar(header)
+        toolbar.set_content(self.build_content(note))
+        self.set_content(toolbar)
+        self.title_entry.connect("changed", self.changed)
+        self.connect("close-request", self.close_requested)
+
+    def build_content(self, note: dict[str, Any]) -> Gtk.Widget:
+        root = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=8,
+            margin_top=10,
+            margin_bottom=10,
+            margin_start=10,
+            margin_end=10,
+        )
+        options = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.color = Gtk.DropDown.new_from_strings(tuple(item.title() for item in COLORS))
+        self.color.set_selected(COLORS.index(note["color"]))
+        self.opacity = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0.35, 1.0, 0.05)
+        self.opacity.set_value(note["opacity"])
+        self.opacity.set_width_request(130)
+        self.pin = Gtk.CheckButton(label="Pinned")
+        self.pin.set_active(note["pinned"])
+        options.append(Gtk.Label(label="Color"))
+        options.append(self.color)
+        options.append(Gtk.Label(label="Opacity"))
+        options.append(self.opacity)
+        options.append(self.pin)
+        root.append(options)
+
+        routing = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.workspace = Gtk.Entry(text=note["workspace"], placeholder_text="Workspace name or number")
+        self.workspace.set_hexpand(True)
+        move = Gtk.Button(label="Move Here")
+        move.connect("clicked", self.move_workspace)
+        self.reminder = Gtk.Entry(
+            text=format_reminder(note["reminder"]),
+            placeholder_text="Reminder YYYY-MM-DD HH:MM",
+        )
+        self.reminder.set_width_chars(22)
+        routing.append(self.workspace)
+        routing.append(move)
+        routing.append(self.reminder)
+        root.append(routing)
+
+        self.buffer = Gtk.TextBuffer()
+        self.buffer.set_text(note["body"])
+        view = Gtk.TextView(buffer=self.buffer, wrap_mode=Gtk.WrapMode.WORD_CHAR, vexpand=True)
+        scroll = Gtk.ScrolledWindow(vexpand=True)
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_child(view)
+        root.append(scroll)
+
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        checkbox = Gtk.Button(label="Add Checkbox")
+        checkbox.connect("clicked", self.add_checkbox)
+        archive = Gtk.Button(label="Archive")
+        archive.connect("clicked", lambda _button: self.owner.set_status(self.note_id, "archived"))
+        trash = Gtk.Button(label="Move to Trash")
+        trash.add_css_class("destructive-action")
+        trash.connect("clicked", lambda _button: self.owner.set_status(self.note_id, "trash"))
+        actions.append(checkbox)
+        actions.append(archive)
+        actions.append(trash)
+        root.append(actions)
+
+        self.buffer.connect("changed", self.changed)
+        self.color.connect("notify::selected", self.color_changed)
+        self.opacity.connect("value-changed", self.opacity_changed)
+        self.pin.connect("toggled", self.pin_changed)
+        self.workspace.connect("changed", self.changed)
+        self.reminder.connect("changed", self.changed)
+        return root
+
+    def changed(self, *_args: object) -> None:
+        if self.save_source:
+            GLib.source_remove(self.save_source)
+        self.save_source = GLib.timeout_add(350, self.flush)
+
+    def flush(self) -> bool:
+        self.save_source = 0
+        note = self.owner.note(self.note_id)
+        start, end = self.buffer.get_bounds()
+        body = self.buffer.get_text(start, end, True)
+        note["title"] = self.title_entry.get_text().strip()[:200] or "Untitled note"
+        note["body"] = body[:MAX_TEXT]
+        note["color"] = COLORS[self.color.get_selected()]
+        note["opacity"] = round(self.opacity.get_value(), 2)
+        note["pinned"] = self.pin.get_active()
+        note["workspace"] = self.workspace.get_text().strip()[:64]
+        try:
+            reminder = parse_reminder(self.reminder.get_text())
+        except ValueError:
+            reminder = note.get("reminder")
+        if reminder != note.get("reminder"):
+            note["reminder_sent"] = False
+        note["reminder"] = reminder
+        note["modified"] = int(time.time())
+        width, height = self.get_default_size()
+        note["width"] = max(280, min(1200, width))
+        note["height"] = max(240, min(1000, height))
+        self.set_title(note["title"])
+        self.owner.persist()
+        self.owner.refresh_manager()
+        return False
+
+    def color_changed(self, *_args: object) -> None:
+        for color in COLORS:
+            self.remove_css_class(f"note-{color}")
+        self.add_css_class(f"note-{COLORS[self.color.get_selected()]}")
+        self.changed()
+
+    def opacity_changed(self, *_args: object) -> None:
+        self.set_opacity(self.opacity.get_value())
+        self.changed()
+
+    def pin_changed(self, *_args: object) -> None:
+        self.changed()
+        ok, error = dispatch("pin", "active")
+        if not ok:
+            self.owner.notice(
+                f"The pin preference was saved, but compositor pinning failed: {error}"
+            )
+
+    def move_workspace(self, _button: Gtk.Button) -> None:
+        target = self.workspace.get_text().strip()
+        if not target:
+            self.owner.notice("Enter a workspace number or name.")
+            return
+        normalized = target if target.isdigit() else f"name:{target}"
+        if not target.isdigit() and not WORKSPACE_PATTERN.fullmatch(target):
+            self.owner.notice("Workspace names may contain letters, numbers, spaces, dot, dash, and underscore.")
+            return
+        ok, error = dispatch("movetoworkspacesilent", normalized)
+        if not ok:
+            self.owner.notice(error)
+        self.changed()
+
+    def add_checkbox(self, _button: Gtk.Button) -> None:
+        self.buffer.insert_at_cursor("\n- [ ] ", -1)
+
+    def close_requested(self, _window: Gtk.Window) -> bool:
+        self.flush()
+        self.owner.note_windows.pop(self.note_id, None)
+        return False
+
+
+class StickyNotesApp(Adw.Application):
+    def __init__(self) -> None:
+        super().__init__(application_id=APP_ID)
+        self.store = load_store()
+        self.window: Adw.ApplicationWindow | None = None
+        self.note_windows: dict[str, NoteWindow] = {}
+        self.search = Gtk.SearchEntry(placeholder_text="Search titles and note text")
+        self.filter = Gtk.DropDown.new_from_strings(("Active", "Archived", "Trash", "All"))
+        self.list_box = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        self.status = Gtk.Label(xalign=0, wrap=True)
+
+    def do_startup(self) -> None:
+        Adw.Application.do_startup(self)
+        display = Gdk.Display.get_default()
+        if display:
+            provider = Gtk.CssProvider()
+            provider.load_from_data(CSS)
+            Gtk.StyleContext.add_provider_for_display(
+                display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+            )
+
+    def do_activate(self) -> None:
+        if self.window:
+            self.window.present()
+            return
+        self.window = Adw.ApplicationWindow(application=self)
+        self.window.set_title("Sticky Notes")
+        self.window.set_default_size(900, 650)
+        toolbar = Adw.ToolbarView()
+        header = Adw.HeaderBar()
+        header.set_title_widget(Gtk.Label(label="Sticky Notes"))
+        new_button = Gtk.Button(label="New Note")
+        new_button.connect("clicked", self.create_note)
+        header.pack_end(new_button)
+        toolbar.add_top_bar(header)
+        toolbar.set_content(self.build_manager())
+        self.window.set_content(toolbar)
+        self.window.present()
+        self.search.connect("search-changed", lambda _entry: self.refresh_manager())
+        self.filter.connect("notify::selected", lambda *_args: self.refresh_manager())
+        self.refresh_manager()
+        GLib.timeout_add_seconds(30, self.check_reminders)
+
+    def build_manager(self) -> Gtk.Widget:
+        root = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=10,
+            margin_top=12,
+            margin_bottom=12,
+            margin_start=12,
+            margin_end=12,
+        )
+        controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.search.set_hexpand(True)
+        controls.append(self.search)
+        controls.append(self.filter)
+        export_button = Gtk.Button(label="Export")
+        export_button.connect("clicked", self.export_notes)
+        import_button = Gtk.Button(label="Import")
+        import_button.connect("clicked", self.import_notes)
+        controls.append(export_button)
+        controls.append(import_button)
+        root.append(controls)
+        root.append(self.status)
+        scroll = Gtk.ScrolledWindow(vexpand=True)
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_child(self.list_box)
+        root.append(scroll)
+        return root
+
+    def note(self, note_id: str) -> dict[str, Any]:
+        for note in self.store["notes"]:
+            if note["id"] == note_id:
+                return note
+        raise KeyError(note_id)
+
+    def persist(self) -> None:
+        save_store(self.store)
+
+    def create_note(self, _button: Gtk.Button | None = None) -> None:
+        if len(self.store["notes"]) >= MAX_NOTES:
+            self.notice(f"Sticky Notes supports up to {MAX_NOTES} local notes.")
+            return
+        note = new_note()
+        self.store["notes"].insert(0, note)
+        self.persist()
+        self.refresh_manager()
+        self.open_note(note["id"])
+
+    def open_note(self, note_id: str) -> None:
+        note = self.note(note_id)
+        if note["status"] != "active":
+            self.notice("Restore this note before opening it on the desktop.")
+            return
+        existing = self.note_windows.get(note_id)
+        if existing:
+            existing.present()
+            return
+        note_window = NoteWindow(self, note_id)
+        self.note_windows[note_id] = note_window
+        note_window.present()
+
+    def set_status(self, note_id: str, status: str) -> None:
+        note = self.note(note_id)
+        note["status"] = status
+        note["modified"] = int(time.time())
+        self.persist()
+        window = self.note_windows.pop(note_id, None)
+        if window:
+            window.close()
+        self.refresh_manager()
+
+    def delete_permanently(self, note_id: str) -> None:
+        self.store["notes"] = [note for note in self.store["notes"] if note["id"] != note_id]
+        self.persist()
+        self.refresh_manager()
+
+    def duplicate_note(self, note_id: str) -> None:
+        source = dict(self.note(note_id))
+        source["id"] = uuid.uuid4().hex
+        source["title"] = f"{source['title']} copy"[:200]
+        source["status"] = "active"
+        source["created"] = int(time.time())
+        source["modified"] = source["created"]
+        source["reminder_sent"] = False
+        self.store["notes"].insert(0, source)
+        self.persist()
+        self.refresh_manager()
+
+    def visible_status(self, note: dict[str, Any]) -> bool:
+        selected = self.filter.get_selected()
+        return selected == 3 or note["status"] == STATUSES[selected]
+
+    def refresh_manager(self) -> None:
+        while child := self.list_box.get_first_child():
+            self.list_box.remove(child)
+        query = self.search.get_text().strip().casefold()
+        notes = [
+            note for note in self.store["notes"]
+            if self.visible_status(note)
+            and (not query or query in f"{note['title']} {note['body']} {note['workspace']}".casefold())
+        ]
+        notes.sort(key=lambda item: (-int(item["pinned"]), -int(item["modified"])))
+        for note in notes:
+            reminder = format_reminder(note["reminder"])
+            subtitle = (
+                f"{note['status'].title()} | {note['color']} | opacity {note['opacity']:.0%}"
+                + (f" | workspace {note['workspace']}" if note["workspace"] else "")
+                + (f" | reminder {reminder}" if reminder else "")
+                + (" | pinned" if note["pinned"] else "")
+            )
+            row = Adw.ActionRow(title=note["title"], subtitle=subtitle)
+            if note["status"] == "active":
+                open_button = Gtk.Button(label="Open", valign=Gtk.Align.CENTER)
+                open_button.connect("clicked", lambda _button, item=note["id"]: self.open_note(item))
+                duplicate = Gtk.Button(label="Duplicate", valign=Gtk.Align.CENTER)
+                duplicate.connect("clicked", lambda _button, item=note["id"]: self.duplicate_note(item))
+                row.add_suffix(duplicate)
+                row.add_suffix(open_button)
+                row.set_activatable_widget(open_button)
+            else:
+                restore = Gtk.Button(label="Restore", valign=Gtk.Align.CENTER)
+                restore.connect("clicked", lambda _button, item=note["id"]: self.set_status(item, "active"))
+                row.add_suffix(restore)
+                if note["status"] == "trash":
+                    delete = Gtk.Button(label="Delete", valign=Gtk.Align.CENTER)
+                    delete.add_css_class("destructive-action")
+                    delete.connect("clicked", lambda _button, item=note["id"]: self.delete_permanently(item))
+                    row.add_suffix(delete)
+            self.list_box.append(row)
+        self.status.set_text(
+            f"{len(notes)} shown, {len(self.store['notes'])} total. Notes autosave locally with atomic writes. "
+            "Pinned and workspace placement use Hyprland when available."
+        )
+
+    def check_reminders(self) -> bool:
+        now = time.time()
+        changed = False
+        for note in self.store["notes"]:
+            reminder = note.get("reminder")
+            if (
+                note["status"] == "active"
+                and isinstance(reminder, (int, float))
+                and reminder <= now
+                and not note.get("reminder_sent")
+            ):
+                notification = Gio.Notification.new(note["title"] or "Sticky Note reminder")
+                notification.set_body(note["body"][:240] or "Your Sticky Note reminder is due.")
+                self.send_notification(f"note-{note['id']}", notification)
+                note["reminder_sent"] = True
+                changed = True
+        if changed:
+            self.persist()
+            self.refresh_manager()
+        return True
+
+    def export_notes(self, _button: Gtk.Button) -> None:
+        path = data_dir() / "edemint-sticky-notes-export.json"
+        path.write_text(json.dumps(self.store, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        path.chmod(0o600)
+        self.notice(f"Exported all notes to {path}")
+
+    def import_candidates(self) -> list[Path]:
+        return [
+            Path.home() / "Downloads" / "edemint-sticky-notes.json",
+            Path.home() / "Documents" / "edemint-sticky-notes.json",
+            data_dir() / "edemint-sticky-notes-import.json",
+        ]
+
+    def import_notes(self, _button: Gtk.Button) -> None:
+        source = next((path for path in self.import_candidates() if path.is_file()), None)
+        if source is None:
+            self.notice(
+                "Place edemint-sticky-notes.json in Downloads or Documents, or place "
+                "edemint-sticky-notes-import.json in the Sticky Notes data directory."
+            )
+            return
+        try:
+            payload = json.loads(source.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError) as exc:
+            self.notice(f"Could not import notes: {exc}")
+            return
+        raw_notes = payload.get("notes") if isinstance(payload, dict) else None
+        if not isinstance(raw_notes, list):
+            self.notice("The import does not contain a valid notes list.")
+            return
+        imported = []
+        existing = {note["id"] for note in self.store["notes"]}
+        for raw in raw_notes:
+            note = normalize_note(raw)
+            if not note:
+                continue
+            if note["id"] in existing:
+                note["id"] = uuid.uuid4().hex
+            existing.add(note["id"])
+            imported.append(note)
+            if len(existing) >= MAX_NOTES:
+                break
+        self.store["notes"] = imported + self.store["notes"]
+        self.store["notes"] = self.store["notes"][:MAX_NOTES]
+        self.persist()
+        self.refresh_manager()
+        self.notice(f"Imported {len(imported)} notes from {source}")
+
+    def notice(self, message: str) -> None:
+        if not self.window:
+            return
+        dialog = Adw.AlertDialog(heading="Sticky Notes", body=message)
+        dialog.add_response("ok", "OK")
+        dialog.present(self.window)
+
+
+def command_mode(arguments: list[str]) -> int | None:
+    if len(arguments) == 2 and arguments[0] == "--export":
+        target = Path(arguments[1]).expanduser()
+        target.write_text(json.dumps(load_store(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        target.chmod(0o600)
+        return 0
+    if len(arguments) == 2 and arguments[0] == "--import":
+        source = Path(arguments[1]).expanduser()
+        payload = json.loads(source.read_text(encoding="utf-8"))
+        notes = payload.get("notes") if isinstance(payload, dict) else None
+        if not isinstance(notes, list):
+            raise ValueError("import does not contain notes")
+        store = load_store()
+        existing = {note["id"] for note in store["notes"]}
+        for raw in notes:
+            note = normalize_note(raw)
+            if not note:
+                continue
+            if note["id"] in existing:
+                note["id"] = uuid.uuid4().hex
+            existing.add(note["id"])
+            store["notes"].append(note)
+            if len(store["notes"]) >= MAX_NOTES:
+                break
+        save_store(store)
+        return 0
+    return None
+
+
+def main() -> int:
+    handled = command_mode(sys.argv[1:])
+    if handled is not None:
+        return handled
+    return StickyNotesApp().run([sys.argv[0]])
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

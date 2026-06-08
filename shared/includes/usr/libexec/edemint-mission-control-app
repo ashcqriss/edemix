@@ -1,0 +1,378 @@
+#!/usr/bin/python3
+"""Actionable Hyprland workspace and window control for Edemint."""
+
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+from typing import Any
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+
+
+APP_ID = "org.edemint.MissionControl"
+TARGET_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]{0,63}$")
+
+
+def hypr_json(topic: str) -> tuple[Any, str]:
+    if not shutil.which("hyprctl"):
+        return None, "hyprctl is unavailable"
+    try:
+        result = subprocess.run(
+            ["hyprctl", "-j", topic],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=3,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return None, str(exc)
+    if result.returncode != 0:
+        return None, result.stderr.strip() or f"hyprctl {topic} failed"
+    try:
+        return json.loads(result.stdout), ""
+    except (ValueError, TypeError) as exc:
+        return None, f"invalid Hyprland JSON: {exc}"
+
+
+def dispatch(name: str, argument: str = "") -> tuple[bool, str]:
+    command = ["hyprctl", "dispatch", name]
+    if argument:
+        command.append(argument)
+    try:
+        result = subprocess.run(
+            command,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=3,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, str(exc)
+    if result.returncode != 0:
+        return False, result.stderr.strip() or result.stdout.strip() or "Hyprland rejected the action"
+    return True, ""
+
+
+def normalize_workspace(value: str) -> str | None:
+    target = value.strip()
+    if target.isdigit() and 1 <= int(target) <= 9999:
+        return target
+    if target.startswith(("name:", "special:")):
+        prefix, _, name = target.partition(":")
+        return f"{prefix}:{name}" if TARGET_PATTERN.fullmatch(name) else None
+    if TARGET_PATTERN.fullmatch(target):
+        return f"name:{target}"
+    return None
+
+
+def workspace_identity(workspace: dict[str, Any]) -> tuple[int | None, str]:
+    identifier = workspace.get("id")
+    name = str(workspace.get("name", identifier if identifier is not None else "unknown"))
+    return identifier if isinstance(identifier, int) else None, name
+
+
+class MissionControlApp(Adw.Application):
+    def __init__(self) -> None:
+        super().__init__(application_id=APP_ID)
+        self.window: Adw.ApplicationWindow | None = None
+        self.search = Gtk.SearchEntry(placeholder_text="Search title, application, workspace, or address")
+        self.workspace_entry = Gtk.Entry(placeholder_text="Workspace number or name")
+        self.status = Gtk.Label(xalign=0, wrap=True)
+        self.workspace_label = Gtk.Label(xalign=0, wrap=True, selectable=True)
+        self.window_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
+        self.workspaces: list[dict[str, Any]] = []
+        self.clients: list[dict[str, Any]] = []
+        self.active_workspace: dict[str, Any] = {}
+        self.selected_address: str | None = None
+        self.timer_id = 0
+        self.connected = False
+
+    def do_activate(self) -> None:
+        if self.window:
+            self.window.present()
+            return
+        self.window = Adw.ApplicationWindow(application=self)
+        self.window.set_title("Mission Control")
+        self.window.set_default_size(1120, 740)
+        toolbar = Adw.ToolbarView()
+        header = Adw.HeaderBar()
+        header.set_title_widget(Gtk.Label(label="Mission Control"))
+        refresh_button = Gtk.Button(label="Refresh")
+        refresh_button.connect("clicked", lambda _button: self.refresh())
+        header.pack_end(refresh_button)
+        toolbar.add_top_bar(header)
+        toolbar.set_content(self.build_content())
+        self.window.set_content(toolbar)
+        self.search.connect("search-changed", lambda _entry: self.populate_clients())
+        self.window_list.connect("row-selected", self.select_client)
+        self.install_actions()
+        self.window.present()
+        self.refresh()
+        self.timer_id = GLib.timeout_add_seconds(2, self.refresh)
+
+    def install_actions(self) -> None:
+        actions = (
+            ("refresh", self.refresh_action, ("<Primary>r",)),
+            ("focus-search", self.focus_search, ("<Primary>f",)),
+            ("focus-window", self.focus_selected_action, ("Return",)),
+            ("close-window", self.close_selected_action, ("Delete",)),
+        )
+        for name, callback, accelerators in actions:
+            action = Gio.SimpleAction.new(name, None)
+            action.connect("activate", callback)
+            self.add_action(action)
+            self.set_accels_for_action(f"app.{name}", accelerators)
+
+    def build_content(self) -> Gtk.Widget:
+        root = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=10,
+            margin_top=12,
+            margin_bottom=12,
+            margin_start=12,
+            margin_end=12,
+        )
+        workspace_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.workspace_entry.set_hexpand(True)
+        workspace_bar.append(self.workspace_entry)
+        for label, callback in (
+            ("Open/Create", self.open_workspace),
+            ("Remove Empty", self.remove_empty_workspace),
+            ("Move Selected", self.move_selected),
+        ):
+            button = Gtk.Button(label=label)
+            button.connect("clicked", callback)
+            workspace_bar.append(button)
+        root.append(workspace_bar)
+        root.append(self.workspace_label)
+        root.append(self.search)
+        root.append(self.status)
+        scroll = Gtk.ScrolledWindow(vexpand=True)
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_child(self.window_list)
+        root.append(scroll)
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        focus = Gtk.Button(label="Focus Selected")
+        focus.connect("clicked", self.focus_selected)
+        close = Gtk.Button(label="Close Selected")
+        close.add_css_class("destructive-action")
+        close.connect("clicked", self.confirm_close_selected)
+        actions.append(focus)
+        actions.append(close)
+        root.append(actions)
+        return root
+
+    def refresh_action(self, _action: Gio.SimpleAction, _parameter: object) -> None:
+        self.refresh()
+
+    def focus_search(self, _action: Gio.SimpleAction, _parameter: object) -> None:
+        self.search.grab_focus()
+
+    def focus_selected_action(self, _action: Gio.SimpleAction, _parameter: object) -> None:
+        self.focus_selected(None)
+
+    def close_selected_action(self, _action: Gio.SimpleAction, _parameter: object) -> None:
+        self.confirm_close_selected(None)
+
+    def refresh(self) -> bool:
+        workspaces, workspace_error = hypr_json("workspaces")
+        clients, client_error = hypr_json("clients")
+        active, active_error = hypr_json("activeworkspace")
+        error = workspace_error or client_error or active_error
+        if error:
+            self.connected = False
+            self.status.set_text(
+                f"Hyprland connection unavailable: {error}. Mission Control will reconnect automatically."
+            )
+            return True
+        self.connected = True
+        self.workspaces = workspaces if isinstance(workspaces, list) else []
+        self.clients = clients if isinstance(clients, list) else []
+        self.active_workspace = active if isinstance(active, dict) else {}
+        workspace_names = []
+        for workspace in sorted(self.workspaces, key=lambda item: int(item.get("id", 0))):
+            identifier, name = workspace_identity(workspace)
+            count = int(workspace.get("windows", 0))
+            workspace_names.append(f"{identifier if identifier is not None else '?'}:{name} ({count})")
+        active_name = self.active_workspace.get("name", self.active_workspace.get("id", "unknown"))
+        self.workspace_label.set_text(
+            f"Active workspace: {active_name} | Available: "
+            + (", ".join(workspace_names) if workspace_names else "none")
+        )
+        self.status.set_text(
+            f"Connected to Hyprland. {len(self.clients)} windows across {len(self.workspaces)} workspaces. "
+            "Ctrl+F searches, Enter focuses, Delete closes after confirmation."
+        )
+        self.populate_clients()
+        return True
+
+    def populate_clients(self) -> None:
+        while child := self.window_list.get_first_child():
+            self.window_list.remove(child)
+        query = self.search.get_text().strip().casefold()
+        clients = []
+        for client in self.clients:
+            workspace = client.get("workspace") if isinstance(client.get("workspace"), dict) else {}
+            searchable = " ".join((
+                str(client.get("title", "")),
+                str(client.get("class", "")),
+                str(client.get("initialClass", "")),
+                str(client.get("address", "")),
+                str(workspace.get("id", "")),
+                str(workspace.get("name", "")),
+            )).casefold()
+            if not query or query in searchable:
+                clients.append(client)
+        clients.sort(key=lambda item: (
+            int((item.get("workspace") or {}).get("id", 0)),
+            str(item.get("title", "")).casefold(),
+        ))
+        for client in clients:
+            address = str(client.get("address", ""))
+            workspace = client.get("workspace") if isinstance(client.get("workspace"), dict) else {}
+            title = str(client.get("title") or client.get("class") or "Untitled window")
+            application = str(client.get("class") or client.get("initialClass") or "unknown application")
+            flags = []
+            if client.get("floating"):
+                flags.append("floating")
+            if client.get("fullscreen"):
+                flags.append("fullscreen")
+            subtitle = (
+                f"{application} | workspace {workspace.get('id', '?')}:{workspace.get('name', '?')} "
+                f"| monitor {client.get('monitor', '?')} | {address}"
+            )
+            if flags:
+                subtitle += " | " + ", ".join(flags)
+            row = Adw.ActionRow(title=title, subtitle=subtitle)
+            row.address = address
+            focus_button = Gtk.Button(label="Focus", valign=Gtk.Align.CENTER)
+            focus_button.connect("clicked", lambda _button, item=address: self.focus_address(item))
+            row.add_suffix(focus_button)
+            row.set_activatable_widget(focus_button)
+            self.window_list.append(row)
+
+    def select_client(self, _box: Gtk.ListBox, row: Gtk.ListBoxRow | None) -> None:
+        self.selected_address = getattr(row, "address", None) if row else None
+
+    def require_selected(self) -> str | None:
+        if not self.selected_address:
+            self.notice("Select a window first.")
+            return None
+        return self.selected_address
+
+    def focus_address(self, address: str) -> None:
+        ok, error = dispatch("focuswindow", f"address:{address}")
+        if not ok:
+            self.notice(error)
+
+    def focus_selected(self, _button: Gtk.Button | None) -> None:
+        address = self.require_selected()
+        if address:
+            self.focus_address(address)
+
+    def confirm_close_selected(self, _button: Gtk.Button | None) -> None:
+        address = self.require_selected()
+        if not address or not self.window:
+            return
+        dialog = Adw.AlertDialog(
+            heading="Close this window?",
+            body="The application may ask to save unsaved work.",
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("close", "Close")
+        dialog.set_response_appearance("close", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.connect("response", lambda _dialog, response: self.close_address(address) if response == "close" else None)
+        dialog.present(self.window)
+
+    def close_address(self, address: str) -> None:
+        ok, error = dispatch("closewindow", f"address:{address}")
+        if not ok:
+            self.notice(error)
+        GLib.timeout_add(250, self.refresh_once)
+
+    def refresh_once(self) -> bool:
+        self.refresh()
+        return False
+
+    def workspace_target(self) -> str | None:
+        target = normalize_workspace(self.workspace_entry.get_text())
+        if target is None:
+            self.notice("Use workspace 1-9999, a short name, name:NAME, or special:NAME.")
+        return target
+
+    def open_workspace(self, _button: Gtk.Button) -> None:
+        target = self.workspace_target()
+        if not target:
+            return
+        ok, error = dispatch("workspace", target)
+        if not ok:
+            self.notice(error)
+        GLib.timeout_add(250, self.refresh_once)
+
+    def move_selected(self, _button: Gtk.Button) -> None:
+        address = self.require_selected()
+        target = self.workspace_target()
+        if not address or not target:
+            return
+        ok, error = dispatch("movetoworkspacesilent", f"{target},address:{address}")
+        if not ok:
+            self.notice(error)
+        GLib.timeout_add(250, self.refresh_once)
+
+    def remove_empty_workspace(self, _button: Gtk.Button) -> None:
+        target = self.workspace_target()
+        if not target:
+            return
+        raw_name = target.partition(":")[2] if target.startswith("name:") else target
+        workspace = next((
+            item for item in self.workspaces
+            if str(item.get("id")) == raw_name or str(item.get("name")) in (raw_name, target)
+        ), None)
+        if workspace is None:
+            self.notice("That workspace is not currently present.")
+            return
+        identifier, name = workspace_identity(workspace)
+        matching_clients = [
+            item for item in self.clients
+            if (item.get("workspace") or {}).get("id") == identifier
+            or (item.get("workspace") or {}).get("name") == name
+        ]
+        if matching_clients:
+            self.notice("Move or close every window before removing this workspace.")
+            return
+        active_id, active_name = workspace_identity(self.active_workspace)
+        if identifier == active_id or name == active_name:
+            ok, error = dispatch("workspace", "previous")
+            if not ok:
+                self.notice(error)
+                return
+        self.notice(
+            "Hyprland workspaces are dynamic. The empty inactive workspace is removed automatically."
+        )
+        GLib.timeout_add(300, self.refresh_once)
+
+    def notice(self, message: str) -> None:
+        if not self.window:
+            return
+        dialog = Adw.AlertDialog(heading="Mission Control", body=message)
+        dialog.add_response("ok", "OK")
+        dialog.present(self.window)
+
+
+def main() -> int:
+    return MissionControlApp().run([Path(__file__).name])
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
