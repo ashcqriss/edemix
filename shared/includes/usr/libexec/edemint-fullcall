@@ -1,0 +1,318 @@
+#!/usr/bin/python3
+"""Fullcall local-account and team-channel MVP."""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+import os
+from pathlib import Path
+import re
+import sqlite3
+import sys
+import time
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gtk  # noqa: E402
+
+APP_ID = "org.edemint.Fullcall"
+USERNAME = re.compile(r"[a-z0-9][a-z0-9._-]{2,31}")
+PBKDF2_ROUNDS = 310000
+
+
+def database_path() -> Path:
+    root = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share"))
+    directory = root / "edemint" / "fullcall"
+    directory.mkdir(parents=True, exist_ok=True)
+    directory.chmod(0o700)
+    return directory / "fullcall.db"
+
+
+def open_database() -> sqlite3.Connection:
+    path = database_path()
+    db = sqlite3.connect(path)
+    path.chmod(0o600)
+    db.execute("PRAGMA foreign_keys = ON")
+    db.execute("PRAGMA journal_mode = WAL")
+    db.execute(
+        "CREATE TABLE IF NOT EXISTS accounts ("
+        "id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE, "
+        "display_name TEXT NOT NULL, salt BLOB NOT NULL, password_hash BLOB NOT NULL, "
+        "created INTEGER NOT NULL)"
+    )
+    db.execute(
+        "CREATE TABLE IF NOT EXISTS messages ("
+        "id INTEGER PRIMARY KEY, channel TEXT NOT NULL, body TEXT NOT NULL, "
+        "created INTEGER NOT NULL, author_id INTEGER REFERENCES accounts(id))"
+    )
+    columns = {row[1] for row in db.execute("PRAGMA table_info(messages)")}
+    if "author_id" not in columns:
+        db.execute(
+            "ALTER TABLE messages ADD COLUMN author_id INTEGER REFERENCES accounts(id)"
+        )
+    db.commit()
+    return db
+
+
+def password_digest(password: str, salt: bytes) -> bytes:
+    return hashlib.pbkdf2_hmac(
+        "sha256", password.encode("utf-8"), salt, PBKDF2_ROUNDS
+    )
+
+
+def text_entry(placeholder: str, password: bool = False) -> Gtk.Entry:
+    entry = Gtk.Entry(placeholder_text=placeholder)
+    if password:
+        entry.set_visibility(False)
+        entry.set_input_purpose(Gtk.InputPurpose.PASSWORD)
+    return entry
+
+
+class Fullcall(Adw.Application):
+    def __init__(self) -> None:
+        super().__init__(application_id=APP_ID)
+        self.db = open_database()
+        self.window: Adw.ApplicationWindow | None = None
+        self.current_account: tuple[int, str, str] | None = None
+        self.content: Gtk.Box | None = None
+        self.failed_logins = 0
+
+    def do_activate(self) -> None:
+        if self.window:
+            self.window.present()
+            return
+        self.window = Adw.ApplicationWindow(application=self)
+        self.window.set_title("Fullcall")
+        self.window.set_default_size(980, 720)
+        toolbar = Adw.ToolbarView()
+        toolbar.add_top_bar(Adw.HeaderBar())
+        self.content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        toolbar.set_content(self.content)
+        self.window.set_content(toolbar)
+        self.show_accounts()
+        self.window.present()
+
+    def notice(self, message: str) -> None:
+        if self.window:
+            dialog = Adw.AlertDialog(heading="Fullcall", body=message)
+            dialog.add_response("ok", "OK")
+            dialog.present(self.window)
+
+    def replace_content(self, child: Gtk.Widget) -> None:
+        if not self.content:
+            return
+        while old := self.content.get_first_child():
+            self.content.remove(old)
+        self.content.append(child)
+
+    def show_accounts(self) -> None:
+        self.current_account = None
+        box = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=18,
+            margin_top=24,
+            margin_bottom=24,
+            margin_start=24,
+            margin_end=24,
+        )
+        intro = Gtk.Label(
+            label=(
+                "Fullcall accounts are local to this device. Passwords are stored "
+                "as salted PBKDF2-SHA256 hashes; network identity, federation, "
+                "encryption and calling remain separate production work."
+            ),
+            xalign=0,
+            wrap=True,
+        )
+        box.append(intro)
+
+        sign_group = Adw.PreferencesGroup(title="Sign in")
+        sign_user = text_entry("Username")
+        sign_password = text_entry("Password", True)
+        sign_row = Adw.ActionRow(title="Existing account")
+        sign_row.add_suffix(sign_user)
+        sign_row.add_suffix(sign_password)
+        sign_button = Gtk.Button(label="Sign in", valign=Gtk.Align.CENTER)
+        sign_button.connect(
+            "clicked", lambda _button: self.sign_in(
+                sign_user.get_text(), sign_password.get_text()
+            )
+        sign_row.add_suffix(sign_button)
+        sign_group.add(sign_row)
+        box.append(sign_group)
+
+        create_group = Adw.PreferencesGroup(title="Create local account")
+        create_user = text_entry("username")
+        create_name = text_entry("Display name")
+        create_password = text_entry("Password (10+ characters)", True)
+        create_confirm = text_entry("Confirm password", True)
+        create_row = Adw.ActionRow(title="New account")
+        for entry in (create_user, create_name, create_password, create_confirm):
+            create_row.add_suffix(entry)
+        create_button = Gtk.Button(label="Create", valign=Gtk.Align.CENTER)
+        create_button.connect(
+            "clicked", lambda _button: self.create_account(
+                create_user.get_text(), create_name.get_text(),
+                create_password.get_text(), create_confirm.get_text()
+            )
+        create_row.add_suffix(create_button)
+        create_group.add(create_row)
+        box.append(create_group)
+
+        accounts = list(self.db.execute(
+            "SELECT username, display_name, created FROM accounts ORDER BY username"
+        ))
+        known = Adw.PreferencesGroup(title="Accounts on this device")
+        if not accounts:
+            known.add(Adw.ActionRow(title="No accounts yet"))
+        for username, display_name, created in accounts:
+            known.add(Adw.ActionRow(
+                title=display_name,
+                subtitle=f"@{username} - created {time.strftime('%Y-%m-%d', time.localtime(created))}",
+            ))
+        box.append(known)
+        scroller = Gtk.ScrolledWindow(vexpand=True)
+        scroller.set_child(box)
+        self.replace_content(scroller)
+
+    def create_account(
+        self, username: str, display_name: str, password: str, confirmation: str
+    ) -> None:
+        username = username.strip().lower()
+        display_name = display_name.strip()
+        if not USERNAME.fullmatch(username):
+            self.notice(
+                "Use 3-32 lowercase letters, numbers, dots, dashes or underscores; "
+                "the first character must be a letter or number."
+            )
+            return
+        if not display_name or len(display_name) > 80:
+            self.notice("Enter a display name of 1-80 characters.")
+            return
+        if len(password) < 10:
+            self.notice("Use a password of at least 10 characters.")
+            return
+        if password != confirmation:
+            self.notice("The password confirmation does not match.")
+            return
+        salt = os.urandom(16)
+        try:
+            cursor = self.db.execute(
+                "INSERT INTO accounts(username, display_name, salt, password_hash, created) "
+                "VALUES(?, ?, ?, ?, ?)",
+                (username, display_name, salt, password_digest(password, salt), int(time.time())),
+            )
+            self.db.commit()
+        except sqlite3.IntegrityError:
+            self.notice("That username already exists on this device.")
+            return
+        self.current_account = (cursor.lastrowid, username, display_name)
+        self.show_channels()
+
+    def sign_in(self, username: str, password: str) -> None:
+        username = username.strip().lower()
+        row = self.db.execute(
+            "SELECT id, username, display_name, salt, password_hash "
+            "FROM accounts WHERE username = ?", (username,)
+        ).fetchone()
+        valid = bool(row) and hmac.compare_digest(
+            password_digest(password, row[3]), row[4]
+        )
+        if not valid:
+            self.failed_logins += 1
+            if self.failed_logins >= 5:
+                time.sleep(min(self.failed_logins - 4, 3))
+            self.notice("Username or password is incorrect.")
+            return
+        self.failed_logins = 0
+        self.current_account = (row[0], row[1], row[2])
+        self.show_channels()
+
+    def show_channels(self) -> None:
+        if not self.current_account:
+            self.show_accounts()
+            return
+        account_id, username, display_name = self.current_account
+        box = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=12,
+            margin_top=18,
+            margin_bottom=18,
+            margin_start=18,
+            margin_end=18,
+        )
+        account_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        identity = Gtk.Label(label=f"Signed in as {display_name} (@{username})", xalign=0)
+        identity.set_hexpand(True)
+        sign_out = Gtk.Button(label="Sign out")
+        sign_out.connect("clicked", lambda _button: self.show_accounts())
+        account_bar.append(identity)
+        account_bar.append(sign_out)
+        box.append(account_bar)
+
+        channel = text_entry("Channel")
+        channel.set_text("general")
+        message = text_entry("Write a message")
+        timeline = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+
+        def refresh() -> None:
+            while child := timeline.get_first_child():
+                timeline.remove(child)
+            rows = self.db.execute(
+                "SELECT messages.body, messages.created, "
+                "COALESCE(accounts.display_name, 'Legacy local message'), "
+                "accounts.username FROM messages LEFT JOIN accounts "
+                "ON accounts.id = messages.author_id WHERE messages.channel = ? "
+                "ORDER BY messages.id DESC LIMIT 100",
+                (channel.get_text().strip() or "general",),
+            ).fetchall()
+            for body, created, author, author_username in reversed(rows):
+                byline = author
+                if author_username:
+                    byline += f" (@{author_username})"
+                timeline.append(Adw.ActionRow(
+                    title=body,
+                    subtitle=f"{byline} - {time.strftime('%Y-%m-%d %H:%M', time.localtime(created))}",
+                ))
+
+        def send(_button: Gtk.Button) -> None:
+            body = message.get_text().strip()
+            destination = channel.get_text().strip() or "general"
+            if not body:
+                return
+            if len(body) > 10000 or len(destination) > 120:
+                self.notice("Messages are limited to 10,000 characters and channels to 120.")
+                return
+            self.db.execute(
+                "INSERT INTO messages(channel, body, created, author_id) VALUES(?, ?, ?, ?)",
+                (destination, body, int(time.time()), account_id),
+            )
+            self.db.commit()
+            message.set_text("")
+            refresh()
+
+        channel.connect("changed", lambda _entry: refresh())
+        box.append(channel)
+        scroller = Gtk.ScrolledWindow(vexpand=True)
+        scroller.set_child(timeline)
+        box.append(scroller)
+        composer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        message.set_hexpand(True)
+        send_button = Gtk.Button(label="Send")
+        send_button.connect("clicked", send)
+        composer.append(message)
+        composer.append(send_button)
+        box.append(composer)
+        refresh()
+        self.replace_content(box)
+
+
+def main() -> int:
+    return Fullcall().run([sys.argv[0]])
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
