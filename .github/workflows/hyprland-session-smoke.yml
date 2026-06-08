@@ -11,6 +11,15 @@ on:
       - shared/includes/etc/greetd/config.toml
       - shared/includes/etc/skel/.config/hypr/**
       - shared/includes/usr/share/edemint/required-desktop.packages
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/hyprland-session-smoke.yml
+      - scripts/smoke-hyprland-session.sh
+      - shared/includes/etc/greetd/config.toml
+      - shared/includes/etc/skel/.config/hypr/**
+      - shared/includes/usr/share/edemint/required-desktop.packages
 
 permissions:
   contents: read
