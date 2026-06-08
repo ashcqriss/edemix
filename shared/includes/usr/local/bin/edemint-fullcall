@@ -1,2 +1,2 @@
 #!/bin/sh
-exec /usr/libexec/edemint-app fullcall "$@"
+exec /usr/libexec/edemint-fullcall "$@"
