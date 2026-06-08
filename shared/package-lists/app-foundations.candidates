@@ -27,5 +27,5 @@ python3-gi|GObject bindings for native apps|core|candidate
 gir1.2-gtk-4.0|GTK4 introspection for native apps|core|candidate
 gir1.2-adw-1|libadwaita introspection for native apps|core|candidate
 gir1.2-webkit-6.0|WebKitGTK introspection for Adventurer|desktop|candidate
-fractal|Messenger foundation|desktop|candidate
+nheko|Messenger Matrix foundation|desktop|candidate
 gnome-contacts|Contacts foundation and interoperability|desktop|candidate
