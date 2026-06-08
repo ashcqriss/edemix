@@ -9,7 +9,7 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gio, Gtk  # noqa: E402
+from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 APP_ID = "org.edemint.DefaultApps"
 COMMON_TYPES = (
@@ -86,7 +86,7 @@ class AssociationRow(Adw.ActionRow):
         try:
             if not app.set_as_default_for_type(self.content_type):
                 raise RuntimeError("The desktop rejected the association change.")
-        except (GLib.Error, RuntimeError) as exc:  # type: ignore[name-defined]
+        except (GLib.Error, RuntimeError) as exc:
             self.owner.notice(str(exc))
             return
         self.owner.notice(
@@ -135,7 +135,9 @@ class DefaultApps(Adw.Application):
             label=(
                 "Choose user-level defaults for common links and document types. "
                 "Changes use the freedesktop MIME application API and require no root access."
-            ), xalign=0, wrap=True,
+            ),
+            xalign=0,
+            wrap=True,
         )
         box.append(intro)
         common = Adw.PreferencesGroup(title="Common defaults")
@@ -196,7 +198,7 @@ class DefaultApps(Adw.Application):
             app = apps[selector.get_selected()]
             try:
                 success = app.set_as_default_for_type(content_type)
-            except GLib.Error as exc:  # type: ignore[name-defined]
+            except GLib.Error as exc:
                 self.notice(str(exc))
                 return
             if success:
