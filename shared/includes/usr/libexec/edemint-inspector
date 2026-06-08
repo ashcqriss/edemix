@@ -1,0 +1,152 @@
+#!/usr/bin/python3
+"""Edemint Inspector with a bounded, timeout-enforced file probe."""
+
+from __future__ import annotations
+
+import base64
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gtk  # noqa: E402
+
+APP_ID = "org.edemint.Inspector"
+PROBE = "/usr/libexec/edemint-inspector-probe"
+DEFAULT_TIMEOUT_SECONDS = 3.0
+MAX_TIMEOUT_SECONDS = 10.0
+
+
+def timeout_seconds() -> float:
+    try:
+        configured = float(os.environ.get(
+            "EDEMINT_INSPECTOR_TIMEOUT", str(DEFAULT_TIMEOUT_SECONDS)
+        ))
+    except ValueError:
+        configured = DEFAULT_TIMEOUT_SECONDS
+    return max(1.0, min(configured, MAX_TIMEOUT_SECONDS))
+
+
+def label(text: str, title: bool = False) -> Gtk.Label:
+    widget = Gtk.Label(label=text, xalign=0, selectable=not title)
+    widget.set_wrap(True)
+    if title:
+        widget.add_css_class("title-2")
+    return widget
+
+
+def probe(path: Path) -> tuple[dict[str, object] | None, str]:
+    try:
+        completed = subprocess.run(
+            [PROBE, str(path)],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds(),
+            env={
+                "PATH": "/usr/bin:/bin",
+                "LANG": os.environ.get("LANG", "C.UTF-8"),
+            },
+        )
+    except subprocess.TimeoutExpired:
+        return None, (
+            f"Preview timed out after {timeout_seconds():g} seconds. "
+            "The reader process was stopped."
+        )
+    except OSError as exc:
+        return None, str(exc)
+
+    try:
+        payload = json.loads(completed.stdout)
+    except (TypeError, ValueError):
+        return None, "Inspector received an invalid response from its file probe."
+    if not isinstance(payload, dict) or not payload.get("ok"):
+        return None, str(payload.get("error", "The file cannot be inspected."))
+    return payload, ""
+
+
+class Inspector(Adw.Application):
+    def __init__(self, arguments: list[str]) -> None:
+        super().__init__(application_id=APP_ID)
+        self.arguments = arguments
+        self.window: Adw.ApplicationWindow | None = None
+
+    def do_activate(self) -> None:
+        if self.window:
+            self.window.present()
+            return
+        self.window = Adw.ApplicationWindow(application=self)
+        self.window.set_title("Inspector")
+        self.window.set_default_size(920, 640)
+        toolbar = Adw.ToolbarView()
+        toolbar.add_top_bar(Adw.HeaderBar())
+        toolbar.set_content(self.build_content())
+        self.window.set_content(toolbar)
+        self.window.present()
+
+    def build_content(self) -> Gtk.Widget:
+        box = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=14,
+            margin_top=20,
+            margin_bottom=20,
+            margin_start=20,
+            margin_end=20,
+        )
+        if not self.arguments:
+            box.append(label("No file selected", True))
+            box.append(label("Open Inspector from Filer or run `edemint-inspector FILE`."))
+            return box
+
+        payload, error = probe(Path(self.arguments[0]).expanduser())
+        if not payload:
+            box.append(label("File cannot be inspected", True))
+            box.append(label(error))
+            box.append(label(
+                "Inspector refuses symbolic links and non-regular files, reads at "
+                "most 64 KiB, and terminates a reader that exceeds its timeout."
+            ))
+            return box
+
+        raw = base64.b64decode(str(payload["data"]), validate=True)
+        text = raw.decode("utf-8", errors="replace")
+        if "\x00" in text:
+            text = raw[:4096].hex(" ")
+        if payload.get("truncated"):
+            text += "\n\n[Preview truncated at 65,536 bytes]"
+
+        box.append(label(str(payload["name"]), True))
+        box.append(label(
+            f"Type: {payload['mime']}\n"
+            f"Size: {payload['size']} bytes\n"
+            f"Modified: {time.ctime(float(payload['modified']))}\n"
+            f"Path: {payload['path']}\n"
+            f"Reader timeout: {timeout_seconds():g} seconds"
+        ))
+        buffer = Gtk.TextBuffer()
+        buffer.set_text(text)
+        view = Gtk.TextView(buffer=buffer, editable=False, monospace=True)
+        view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        scroller = Gtk.ScrolledWindow(vexpand=True)
+        scroller.set_child(view)
+        box.append(scroller)
+        box.append(label(
+            "Inspector reads only the selected regular file through a separate "
+            "bounded process. It does not bypass permissions, execute embedded "
+            "content, follow symbolic links, or extract archives."
+        ))
+        return box
+
+
+def main() -> int:
+    return Inspector(sys.argv[1:]).run([sys.argv[0]])
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
