@@ -1,2 +1,2 @@
 #!/bin/sh
-exec /usr/libexec/edemint-app activity-monitor "$@"
+exec python3 /usr/libexec/edemint-activity-monitor-app "$@"
