@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Contacts
+GenericName=Contact Manager
+Comment=Manage people and contact details
+Exec=gnome-contacts
+Icon=org.gnome.Contacts
+Terminal=false
+Categories=Office;ContactManagement;
+StartupNotify=true
+Keywords=contacts;people;address;phone;
+X-Edemint-Foundation=true
+X-Edemint-Upstream=org.gnome.Contacts

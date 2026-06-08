@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Fullcall
+GenericName=Team Communication
+Comment=Edemint team channels, messages and calls
+Exec=edemint-fullcall
+Icon=system-users
+Terminal=false
+Categories=Network;Chat;VideoConference;
+StartupNotify=true
+Keywords=teams;channels;chat;meeting;call;fullcall;
+X-Edemint-Native=true
+X-Edemint-Maturity=experimental

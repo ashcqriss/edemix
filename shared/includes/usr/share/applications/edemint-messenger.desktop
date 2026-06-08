@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Messenger
+GenericName=Encrypted Messaging
+Comment=Message through the maintained Matrix foundation
+Exec=nheko
+Icon=nheko
+Terminal=false
+Categories=Network;Chat;InstantMessaging;
+StartupNotify=true
+Keywords=message;chat;matrix;encrypted;
+X-Edemint-Foundation=true
+X-Edemint-Upstream=im.nheko.Nheko

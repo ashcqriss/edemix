@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Color Control
+GenericName=Color Profiles
+Comment=Inspect display and device color profiles
+Exec=gcm-viewer
+Icon=preferences-color
+Terminal=false
+Categories=Settings;HardwareSettings;
+StartupNotify=true
+Keywords=color;icc;profile;display;
+X-Edemint-Foundation=true
+X-Edemint-Upstream=gnome-color-manager

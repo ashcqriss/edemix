@@ -1,0 +1,593 @@
+#!/usr/bin/python3
+"""Edemint native application MVP host.
+
+Each installed wrapper supplies one application key. Apps share GTK plumbing
+but keep distinct application IDs and private data directories.
+"""
+
+from __future__ import annotations
+
+import configparser
+import json
+import mimetypes
+import os
+from pathlib import Path
+import shutil
+import sqlite3
+import subprocess
+import sys
+import time
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+
+
+APPS = {
+    "settings": ("Settings", "org.edemint.Settings"),
+    "activity-monitor": ("Activity Monitor", "org.edemint.ActivityMonitor"),
+    "app-library": ("App Library", "org.edemint.AppLibrary"),
+    "inspector": ("Inspector", "org.edemint.Inspector"),
+    "console": ("Console", "org.edemint.Console"),
+    "mission-control": ("Mission Control", "org.edemint.MissionControl"),
+    "sticky-notes": ("Sticky Notes", "org.edemint.StickyNotes"),
+    "automator": ("Automator", "org.edemint.Automator"),
+    "fullcall": ("Fullcall", "org.edemint.Fullcall"),
+    "phone": ("Phone", "org.edemint.Phone"),
+}
+
+
+def data_dir(key: str) -> Path:
+    root = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share"))
+    path = root / "edemint" / key
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def run_command(argv: list[str]) -> tuple[bool, str]:
+    if not argv or not shutil.which(argv[0]):
+        return False, f"{argv[0] if argv else 'Command'} is not installed."
+    try:
+        subprocess.Popen(argv, start_new_session=True)
+        return True, ""
+    except OSError as exc:
+        return False, str(exc)
+
+
+def read_command(argv: list[str], timeout: float = 4.0) -> str:
+    if not argv or not shutil.which(argv[0]):
+        return f"{argv[0] if argv else 'Command'} is not installed."
+    try:
+        result = subprocess.run(
+            argv,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return str(exc)
+    output = result.stdout.strip() or result.stderr.strip()
+    return output or "No output."
+
+
+def heading(text: str, css_class: str = "title-2") -> Gtk.Label:
+    label = Gtk.Label(label=text, xalign=0)
+    label.add_css_class(css_class)
+    label.set_wrap(True)
+    return label
+
+
+def body_label(text: str) -> Gtk.Label:
+    label = Gtk.Label(label=text, xalign=0)
+    label.set_wrap(True)
+    label.set_selectable(True)
+    return label
+
+
+def scrolled(child: Gtk.Widget) -> Gtk.ScrolledWindow:
+    view = Gtk.ScrolledWindow()
+    view.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+    view.set_child(child)
+    return view
+
+
+class NativeApp(Adw.Application):
+    def __init__(self, key: str, app_args: list[str]) -> None:
+        title, app_id = APPS[key]
+        super().__init__(application_id=app_id)
+        self.key = key
+        self.title = title
+        self.app_args = app_args
+        self.window: Adw.ApplicationWindow | None = None
+
+    def do_activate(self) -> None:
+        if self.window:
+            self.window.present()
+            return
+        self.window = Adw.ApplicationWindow(application=self)
+        self.window.set_title(self.title)
+        self.window.set_default_size(920, 640)
+
+        toolbar = Adw.ToolbarView()
+        header = Adw.HeaderBar()
+        header.set_title_widget(heading(self.title, "title-3"))
+        toolbar.add_top_bar(header)
+        toolbar.set_content(self.build_content())
+        self.window.set_content(toolbar)
+        self.window.present()
+
+    def notice(self, message: str) -> None:
+        if self.window:
+            dialog = Adw.AlertDialog(heading="Edemint", body=message)
+            dialog.add_response("ok", "OK")
+            dialog.present(self.window)
+
+    def action_button(
+        self, label: str, argv: list[str], subtitle: str = ""
+    ) -> Gtk.Widget:
+        row = Adw.ActionRow(title=label, subtitle=subtitle)
+        button = Gtk.Button(label="Open", valign=Gtk.Align.CENTER)
+
+        def activate(_button: Gtk.Button) -> None:
+            ok, error = run_command(argv)
+            if not ok:
+                self.notice(error)
+
+        button.connect("clicked", activate)
+        row.add_suffix(button)
+        row.set_activatable_widget(button)
+        return row
+
+    def build_content(self) -> Gtk.Widget:
+        builders = {
+            "settings": self.build_settings,
+            "activity-monitor": self.build_activity,
+            "app-library": self.build_library,
+            "inspector": self.build_inspector,
+            "console": self.build_console,
+            "mission-control": self.build_mission_control,
+            "sticky-notes": self.build_sticky_notes,
+            "automator": self.build_automator,
+            "fullcall": self.build_fullcall,
+            "phone": self.build_phone,
+        }
+        return builders[self.key]()
+
+    def build_settings(self) -> Gtk.Widget:
+        box = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL, spacing=18,
+            margin_top=24, margin_bottom=24, margin_start=24, margin_end=24,
+        )
+        box.append(body_label(
+            "A unified control surface over Edemint's maintained system services."
+        ))
+        groups = [
+            ("Connections", [
+                ("Network", ["nm-connection-editor"], "Wi-Fi, Ethernet and VPN"),
+                ("Bluetooth", ["blueman-manager"], "Pair and manage devices"),
+            ]),
+            ("Sound and display", [
+                ("Sound", ["pavucontrol"], "PipeWire inputs and outputs"),
+                ("Display layout", ["wlr-randr"], "Inspect Wayland outputs"),
+                ("Color profiles", ["gcm-viewer"], "ICC profiles through colord"),
+            ]),
+            ("Hardware and services", [
+                ("Printers", ["system-config-printer"], "CUPS printer management"),
+                ("Disks", ["gnome-disks"], "Storage devices and filesystems"),
+                ("Power statistics", ["gnome-power-statistics"], "Battery details"),
+            ]),
+        ]
+        for group_name, actions in groups:
+            group = Adw.PreferencesGroup(title=group_name)
+            for label, argv, subtitle in actions:
+                group.add(self.action_button(label, argv, subtitle))
+            box.append(group)
+        return scrolled(box)
+
+    @staticmethod
+    def _system_snapshot() -> str:
+        mem = {}
+        try:
+            for line in Path("/proc/meminfo").read_text().splitlines():
+                key, value = line.split(":", 1)
+                mem[key] = int(value.strip().split()[0])
+        except (OSError, ValueError):
+            pass
+        total = mem.get("MemTotal", 0)
+        available = mem.get("MemAvailable", 0)
+        used = max(total - available, 0)
+
+        load = "Unavailable"
+        try:
+            load = Path("/proc/loadavg").read_text().split()[:3]
+            load = " / ".join(load)
+        except OSError:
+            pass
+
+        rx = tx = 0
+        try:
+            for line in Path("/proc/net/dev").read_text().splitlines()[2:]:
+                _, values = line.split(":", 1)
+                fields = values.split()
+                rx += int(fields[0])
+                tx += int(fields[8])
+        except (OSError, ValueError, IndexError):
+            pass
+
+        gpu_nodes = len(list(Path("/sys/class/drm").glob("card[0-9]*")))
+        return (
+            f"CPU load (1/5/15 min): {load}\n"
+            f"Memory: {used / 1048576:.1f} GiB used of {total / 1048576:.1f} GiB\n"
+            f"Network totals: {rx / 1048576:.1f} MiB received, "
+            f"{tx / 1048576:.1f} MiB sent\n"
+            f"GPU devices reported by DRM: {gpu_nodes}\n\n"
+            "GPU utilization is shown only when the kernel driver exposes it."
+        )
+
+    def build_activity(self) -> Gtk.Widget:
+        box = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL, spacing=18,
+            margin_top=24, margin_bottom=24, margin_start=24, margin_end=24,
+        )
+        label = body_label(self._system_snapshot())
+        label.add_css_class("monospace")
+        box.append(label)
+        box.append(self.action_button(
+            "Processes", ["gnome-system-monitor"],
+            "Open the maintained process-control foundation",
+        ))
+        box.append(self.action_button(
+            "Storage usage", ["baobab"], "Inspect disk usage",
+        ))
+
+        def refresh() -> bool:
+            label.set_label(self._system_snapshot())
+            return GLib.SOURCE_CONTINUE
+
+        GLib.timeout_add_seconds(2, refresh)
+        return box
+
+    @staticmethod
+    def _desktop_apps() -> list[tuple[str, str]]:
+        found: dict[str, tuple[str, str]] = {}
+        roots = [
+            Path.home() / ".local/share/applications",
+            Path("/usr/local/share/applications"),
+            Path("/usr/share/applications"),
+        ]
+        for root in roots:
+            if not root.is_dir():
+                continue
+            for path in root.glob("*.desktop"):
+                parser = configparser.ConfigParser(interpolation=None, strict=False)
+                try:
+                    parser.read(path, encoding="utf-8")
+                    entry = parser["Desktop Entry"]
+                except (OSError, KeyError, configparser.Error):
+                    continue
+                if entry.get("NoDisplay", "false").lower() == "true":
+                    continue
+                if entry.get("Type", "Application") != "Application":
+                    continue
+                name = entry.get("Name", path.stem)
+                found[path.name] = (name, path.stem)
+        return sorted(found.values(), key=lambda item: item[0].casefold())
+
+    def build_library(self) -> Gtk.Widget:
+        outer = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL, spacing=12,
+            margin_top=18, margin_bottom=18, margin_start=18, margin_end=18,
+        )
+        search = Gtk.SearchEntry(placeholder_text="Search applications")
+        apps_box = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        apps = self._desktop_apps()
+
+        def populate(query: str = "") -> None:
+            while child := apps_box.get_first_child():
+                apps_box.remove(child)
+            lowered = query.casefold()
+            for name, desktop_id in apps:
+                if lowered and lowered not in name.casefold():
+                    continue
+                row = Adw.ActionRow(title=name)
+                button = Gtk.Button(label="Open", valign=Gtk.Align.CENTER)
+                button.connect(
+                    "clicked",
+                    lambda _button, item=desktop_id: run_command(["gtk-launch", item]),
+                )
+                row.add_suffix(button)
+                row.set_activatable_widget(button)
+                apps_box.append(row)
+
+        search.connect("search-changed", lambda entry: populate(entry.get_text()))
+        populate()
+        outer.append(search)
+        outer.append(scrolled(apps_box))
+        return outer
+
+    def build_inspector(self) -> Gtk.Widget:
+        box = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL, spacing=14,
+            margin_top=20, margin_bottom=20, margin_start=20, margin_end=20,
+        )
+        path = Path(self.app_args[0]).expanduser() if self.app_args else None
+        if not path:
+            box.append(heading("No file selected"))
+            box.append(body_label(
+                "Open Inspector from Filer or run `edemint-inspector FILE`."
+            ))
+            return box
+        try:
+            stat = path.stat()
+            with path.open("rb") as handle:
+                raw = handle.read(65536)
+        except OSError as exc:
+            box.append(heading("File cannot be read"))
+            box.append(body_label(str(exc)))
+            return box
+
+        mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        box.append(heading(path.name))
+        box.append(body_label(
+            f"Type: {mime}\nSize: {stat.st_size} bytes\n"
+            f"Modified: {time.ctime(stat.st_mtime)}\n"
+            f"Path: {path.resolve()}"
+        ))
+        text = raw.decode("utf-8", errors="replace")
+        if "\x00" in text:
+            text = raw[:4096].hex(" ")
+        buffer = Gtk.TextBuffer()
+        buffer.set_text(text)
+        view = Gtk.TextView(buffer=buffer, editable=False, monospace=True)
+        view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        box.append(scrolled(view))
+        box.append(body_label(
+            "Inspector reads only the selected file. It does not bypass Unix "
+            "permissions, execute embedded content, or extract archives."
+        ))
+        return box
+
+    def build_console(self) -> Gtk.Widget:
+        box = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL, spacing=12,
+            margin_top=18, margin_bottom=18, margin_start=18, margin_end=18,
+        )
+        buffer = Gtk.TextBuffer()
+        view = Gtk.TextView(buffer=buffer, editable=False, monospace=True)
+        view.set_wrap_mode(Gtk.WrapMode.NONE)
+
+        def refresh(_button: Gtk.Button | None = None) -> None:
+            buffer.set_text(read_command(
+                ["journalctl", "--user", "-n", "300", "--no-pager", "-o", "short-iso"],
+                timeout=8,
+            ))
+
+        refresh()
+        button = Gtk.Button(label="Refresh", halign=Gtk.Align.START)
+        button.connect("clicked", refresh)
+        box.append(button)
+        box.append(scrolled(view))
+        return box
+
+    def build_mission_control(self) -> Gtk.Widget:
+        box = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL, spacing=12,
+            margin_top=18, margin_bottom=18, margin_start=18, margin_end=18,
+        )
+        label = body_label("")
+        label.add_css_class("monospace")
+
+        def refresh(_button: Gtk.Button | None = None) -> None:
+            if not shutil.which("hyprctl"):
+                label.set_label("Hyprland IPC is unavailable in this session.")
+                return
+            try:
+                workspaces = json.loads(read_command(["hyprctl", "-j", "workspaces"]))
+                clients = json.loads(read_command(["hyprctl", "-j", "clients"]))
+                lines = ["Workspaces"]
+                for workspace in workspaces:
+                    lines.append(
+                        f"  {workspace.get('id')}: {workspace.get('name')} "
+                        f"({workspace.get('windows', 0)} windows)"
+                    )
+                lines.append("\nWindows")
+                for client in clients:
+                    lines.append(
+                        f"  [{client.get('workspace', {}).get('name', '?')}] "
+                        f"{client.get('title') or client.get('class') or 'Untitled'}"
+                    )
+                label.set_label("\n".join(lines))
+            except (ValueError, TypeError):
+                label.set_label("Hyprland returned invalid workspace data.")
+
+        refresh()
+        button = Gtk.Button(label="Refresh", halign=Gtk.Align.START)
+        button.connect("clicked", refresh)
+        box.append(button)
+        box.append(scrolled(label))
+        return box
+
+    def build_sticky_notes(self) -> Gtk.Widget:
+        note_path = data_dir(self.key) / "note.txt"
+        buffer = Gtk.TextBuffer()
+        try:
+            buffer.set_text(note_path.read_text(encoding="utf-8"))
+        except OSError:
+            pass
+        view = Gtk.TextView(buffer=buffer, wrap_mode=Gtk.WrapMode.WORD_CHAR)
+        box = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL, spacing=12,
+            margin_top=18, margin_bottom=18, margin_start=18, margin_end=18,
+        )
+
+        def save(_button: Gtk.Button | None = None) -> None:
+            start, end = buffer.get_bounds()
+            temporary = note_path.with_suffix(".tmp")
+            temporary.write_text(buffer.get_text(start, end, True), encoding="utf-8")
+            temporary.replace(note_path)
+
+        save_button = Gtk.Button(label="Save", halign=Gtk.Align.START)
+        save_button.connect("clicked", save)
+        box.append(save_button)
+        box.append(scrolled(view))
+        return box
+
+    def build_automator(self) -> Gtk.Widget:
+        box = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL, spacing=18,
+            margin_top=24, margin_bottom=24, margin_start=24, margin_end=24,
+        )
+        box.append(body_label(
+            "Automator MVP exposes an allowlisted action set. It does not run "
+            "downloaded workflows or arbitrary privileged shell commands."
+        ))
+        group = Adw.PreferencesGroup(title="Safe actions")
+        group.add(self.action_button(
+            "Open App Library", ["edemint-app-library"], "Browse installed apps",
+        ))
+        group.add(self.action_button(
+            "Capture a screenshot", ["grim", str(data_dir(self.key) / "capture.png")],
+            "Save to Automator's private data directory",
+        ))
+        group.add(self.action_button(
+            "Lock the session", ["hyprlock"], "Lock without ending the session",
+        ))
+        box.append(group)
+        return box
+
+    def _message_database(self) -> sqlite3.Connection:
+        db = sqlite3.connect(data_dir(self.key) / "fullcall.db")
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS messages "
+            "(id INTEGER PRIMARY KEY, channel TEXT NOT NULL, body TEXT NOT NULL, "
+            "created INTEGER NOT NULL)"
+        )
+        db.commit()
+        return db
+
+    def build_fullcall(self) -> Gtk.Widget:
+        db = self._message_database()
+        box = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL, spacing=12,
+            margin_top=18, margin_bottom=18, margin_start=18, margin_end=18,
+        )
+        box.append(body_label(
+            "Independent Edemint team app MVP. Local channels and messages work; "
+            "network sync, encryption and calls remain gated by the Fullcall roadmap."
+        ))
+        channel = Gtk.Entry(placeholder_text="Channel", text="general")
+        message = Gtk.Entry(placeholder_text="Write a message")
+        timeline = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+
+        def refresh() -> None:
+            while child := timeline.get_first_child():
+                timeline.remove(child)
+            rows = db.execute(
+                "SELECT body, created FROM messages WHERE channel = ? "
+                "ORDER BY id DESC LIMIT 100",
+                (channel.get_text().strip() or "general",),
+            ).fetchall()
+            for body, created in reversed(rows):
+                timeline.append(Adw.ActionRow(
+                    title=body, subtitle=time.strftime("%Y-%m-%d %H:%M", time.localtime(created))
+                ))
+
+        def send(_button: Gtk.Button) -> None:
+            body = message.get_text().strip()
+            if not body:
+                return
+            db.execute(
+                "INSERT INTO messages(channel, body, created) VALUES(?, ?, ?)",
+                (channel.get_text().strip() or "general", body, int(time.time())),
+            )
+            db.commit()
+            message.set_text("")
+            refresh()
+
+        channel.connect("changed", lambda _entry: refresh())
+        button = Gtk.Button(label="Send")
+        button.connect("clicked", send)
+        box.append(channel)
+        box.append(scrolled(timeline))
+        composer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        message.set_hexpand(True)
+        composer.append(message)
+        composer.append(button)
+        box.append(composer)
+        refresh()
+        return box
+
+    def _phone_database(self) -> sqlite3.Connection:
+        db = sqlite3.connect(data_dir(self.key) / "phone.db")
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS calls "
+            "(id INTEGER PRIMARY KEY, number TEXT NOT NULL, state TEXT NOT NULL, "
+            "created INTEGER NOT NULL)"
+        )
+        db.commit()
+        return db
+
+    def build_phone(self) -> Gtk.Widget:
+        db = self._phone_database()
+        box = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL, spacing=14,
+            margin_top=20, margin_bottom=20, margin_start=20, margin_end=20,
+        )
+        modem_output = read_command(["mmcli", "-L"])
+        modem_available = "No modems were found" not in modem_output and "not installed" not in modem_output
+        box.append(body_label(
+            "Independent Edemint Phone MVP.\n"
+            + ("A modem was detected." if modem_available else
+               "No voice-capable modem has been confirmed. Calls remain disabled.")
+        ))
+        number = Gtk.Entry(placeholder_text="Telephone number or SIP address")
+        if self.app_args:
+            initial = self.app_args[0]
+            if initial.startswith("tel:"):
+                initial = initial[4:]
+            number.set_text(initial)
+        number.set_input_purpose(Gtk.InputPurpose.PHONE)
+        grid = Gtk.Grid(column_spacing=8, row_spacing=8, halign=Gtk.Align.CENTER)
+        for index, digit in enumerate("123456789*0#"):
+            button = Gtk.Button(label=digit)
+            button.connect(
+                "clicked",
+                lambda _button, value=digit: number.set_text(number.get_text() + value),
+            )
+            grid.attach(button, index % 3, index // 3, 1, 1)
+        call = Gtk.Button(label="Call", sensitive=False)
+        call.set_tooltip_text(
+            "Enabled after a tested cellular or SIP call backend is configured."
+        )
+        history = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        for called_number, state, created in db.execute(
+            "SELECT number, state, created FROM calls ORDER BY id DESC LIMIT 50"
+        ):
+            history.append(Adw.ActionRow(
+                title=called_number,
+                subtitle=f"{state} - {time.strftime('%Y-%m-%d %H:%M', time.localtime(created))}",
+            ))
+        box.append(number)
+        box.append(grid)
+        box.append(call)
+        box.append(heading("Recent calls", "title-3"))
+        box.append(scrolled(history))
+        return box
+
+
+def main() -> int:
+    if len(sys.argv) < 2 or sys.argv[1] not in APPS:
+        choices = ", ".join(sorted(APPS))
+        print(f"Usage: {Path(sys.argv[0]).name} APP [ARGS...]")
+        print(f"Apps: {choices}")
+        return 2
+    key = sys.argv[1]
+    app = NativeApp(key, sys.argv[2:])
+    return app.run([sys.argv[0]])
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

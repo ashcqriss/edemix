@@ -1,0 +1,15 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Phone
+GenericName=Phone Calls
+Comment=Place cellular and internet calls with supported accounts and hardware
+Exec=edemint-phone %u
+Icon=call-start
+Terminal=false
+Categories=Network;Telephony;
+MimeType=x-scheme-handler/tel;
+StartupNotify=true
+Keywords=phone;call;dialer;cellular;sip;
+X-Edemint-Native=true
+X-Edemint-Maturity=experimental

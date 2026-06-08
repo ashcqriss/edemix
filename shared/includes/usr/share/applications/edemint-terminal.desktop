@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Terminal
+GenericName=Terminal Emulator
+Comment=Use the command line in the Foot Wayland terminal
+Exec=foot
+Icon=utilities-terminal
+Terminal=false
+Categories=System;TerminalEmulator;
+StartupNotify=true
+Keywords=terminal;shell;command;console;
+X-Edemint-Foundation=true
+X-Edemint-Upstream=foot

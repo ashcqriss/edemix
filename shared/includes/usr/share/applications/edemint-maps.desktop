@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Maps
+GenericName=Maps
+Comment=View maps, places and routes
+Exec=gnome-maps
+Icon=org.gnome.Maps
+Terminal=false
+Categories=Education;Geography;
+StartupNotify=true
+Keywords=maps;places;route;navigation;
+X-Edemint-Foundation=true
+X-Edemint-Upstream=org.gnome.Maps

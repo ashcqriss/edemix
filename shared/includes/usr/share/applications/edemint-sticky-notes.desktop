@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Sticky Notes
+GenericName=Desktop Notes
+Comment=Keep a persistent note on the Edemint desktop
+Exec=edemint-sticky-notes
+Icon=accessories-text-editor
+Terminal=false
+Categories=Utility;Office;
+StartupNotify=true
+Keywords=notes;sticky;memo;
+X-Edemint-Native=true
+X-Edemint-Maturity=mvp

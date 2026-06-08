@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Dictionary
+GenericName=Dictionary
+Comment=Look up words in installed dictionaries
+Exec=goldendict
+Icon=goldendict
+Terminal=false
+Categories=Office;Dictionary;
+StartupNotify=true
+Keywords=dictionary;words;language;definition;
+X-Edemint-Foundation=true
+X-Edemint-Upstream=goldendict-ng

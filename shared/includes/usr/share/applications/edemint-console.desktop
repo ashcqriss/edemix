@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Console
+GenericName=System Log Viewer
+Comment=Read user-session logs and diagnostics
+Exec=edemint-console
+Icon=utilities-terminal
+Terminal=false
+Categories=System;Monitor;
+StartupNotify=true
+Keywords=console;logs;journal;diagnostics;
+X-Edemint-Native=true
+X-Edemint-Maturity=mvp

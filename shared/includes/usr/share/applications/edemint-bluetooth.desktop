@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Bluetooth Manager
+GenericName=Bluetooth Devices
+Comment=Pair and manage Bluetooth devices through BlueZ
+Exec=blueman-manager
+Icon=bluetooth
+Terminal=false
+Categories=Settings;HardwareSettings;
+StartupNotify=true
+Keywords=bluetooth;pair;headset;device;
+X-Edemint-Foundation=true
+X-Edemint-Upstream=blueman

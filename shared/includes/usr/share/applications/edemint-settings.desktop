@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Settings
+GenericName=System Settings
+Comment=Configure Edemint hardware, connections and services
+Exec=edemint-settings
+Icon=preferences-system
+Terminal=false
+Categories=Settings;System;
+StartupNotify=true
+Keywords=settings;network;sound;display;power;bluetooth;
+X-Edemint-Native=true
+X-Edemint-Maturity=mvp

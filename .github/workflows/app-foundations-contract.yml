@@ -7,12 +7,21 @@ on:
       - codex/app-foundations-roadmap
     paths:
       - .github/workflows/app-foundations-contract.yml
+      - apps/catalog.json
+      - scripts/validate-app-catalog.py
       - scripts/verify-app-foundations.sh
       - shared/package-lists/app-foundations.candidates
+      - shared/package-lists/app-suite.list.chroot
       - shared/package-lists/desktop.list.chroot
+      - profiles/amd64-iso/config/package-lists/app-suite.list.chroot
       - profiles/amd64-iso/config/package-lists/apps-desktop-extra.list.chroot
+      - shared/includes/usr/libexec/edemint-app
+      - shared/includes/usr/local/bin/edemint-*
       - shared/includes/usr/share/applications/edemint-*.desktop
+      - shared/includes/etc/xdg/Thunar/uca.xml
       - shared/includes/etc/xdg/mimeapps.list
+      - packaging/edemint-app-suite/control
+      - packaging/build-metapackages.sh
 
 permissions:
   contents: read
@@ -49,15 +58,22 @@ jobs:
         shell: sh
         run: sh scripts/verify-app-foundations.sh "${{ matrix.arch }}"
 
-      - name: Install metadata validator
+      - name: Install metadata validators
         if: matrix.arch == 'amd64'
         shell: sh
-        run: apt-get install -y --no-install-recommends desktop-file-utils
+        run: apt-get install -y --no-install-recommends desktop-file-utils python3
 
-      - name: Validate Edemint launchers and defaults
+      - name: Validate Edemint application suite
         if: matrix.arch == 'amd64'
         shell: sh
         run: |
+          python3 -m py_compile \
+            shared/includes/usr/libexec/edemint-app \
+            scripts/validate-app-catalog.py
+          python3 scripts/validate-app-catalog.py apps/catalog.json .
+          for wrapper in shared/includes/usr/local/bin/edemint-*; do
+            sh -n "$wrapper"
+          done
           desktop-file-validate shared/includes/usr/share/applications/edemint-*.desktop
           for desktop in $(grep -o 'edemint-[A-Za-z0-9._-]*\.desktop' shared/includes/etc/xdg/mimeapps.list | sort -u); do
             test -f "shared/includes/usr/share/applications/$desktop" || {
@@ -65,3 +81,4 @@ jobs:
               exit 1
             }
           done
+

@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Inspector
+GenericName=Safe File Inspector
+Comment=Preview an explicitly selected file without executing its content
+Exec=edemint-inspector %f
+Icon=document-properties
+Terminal=false
+Categories=Utility;Security;
+StartupNotify=true
+Keywords=file;preview;inspect;safe;security;
+X-Edemint-Native=true
+X-Edemint-Maturity=mvp

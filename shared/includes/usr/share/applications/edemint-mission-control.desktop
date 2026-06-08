@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Mission Control
+GenericName=Workspace Overview
+Comment=Inspect Edemint workspaces and windows
+Exec=edemint-mission-control
+Icon=view-grid-symbolic
+Terminal=false
+Categories=System;Utility;
+StartupNotify=true
+Keywords=windows;workspaces;overview;mission;control;
+X-Edemint-Native=true
+X-Edemint-Maturity=mvp

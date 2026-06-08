@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Calculator
+GenericName=Calculator
+Comment=Perform basic, scientific and programmer calculations
+Exec=gnome-calculator
+Icon=org.gnome.Calculator
+Terminal=false
+Categories=Utility;Calculator;
+StartupNotify=true
+Keywords=calculator;math;scientific;
+X-Edemint-Foundation=true
+X-Edemint-Upstream=org.gnome.Calculator
