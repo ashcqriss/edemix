@@ -1,5 +1,5 @@
 #!/bin/sh
-# Runs in GitHub Actions only. Starts Hyprland with a headless wlroots backend,
+# Runs in GitHub Actions only. Starts Hyprland with a headless backend,
 # verifies IPC and a real Wayland client, then exits the compositor cleanly.
 set -eu
 
@@ -47,6 +47,15 @@ cleanup() {
     kill "$compositor" 2>/dev/null || true
     wait "$compositor" 2>/dev/null || true
 }
+fail() {
+    printf 'Hyprland smoke failure: %s\n' "$1" >&2
+    if [ -n "${2:-}" ]; then
+        printf '%s\n' "$2" >&2
+    fi
+    printf '%s\n' '--- compositor log ---' >&2
+    cat "$LOG" >&2
+    exit 1
+}
 trap cleanup EXIT INT TERM
 
 signature=""
@@ -56,24 +65,40 @@ for _attempt in $(seq 1 45); do
         signature="$(basename "$signature_dir")"
         break
     fi
-    if ! kill -0 "$compositor" 2>/dev/null; then
-        cat "$LOG" >&2
-        exit 1
-    fi
+    kill -0 "$compositor" 2>/dev/null || fail "compositor exited before IPC became available"
     sleep 1
 done
-[ -n "$signature" ] || { cat "$LOG" >&2; exit 1; }
+[ -n "$signature" ] || fail "IPC instance signature did not appear"
 export HYPRLAND_INSTANCE_SIGNATURE="$signature"
 
-hyprctl version | grep -q 'Hyprland'
-hyprctl -j monitors | jq -e 'length >= 1' >/dev/null
+if ! version_output="$(hyprctl version 2>&1)"; then
+    fail "hyprctl version failed" "$version_output"
+fi
+[ -n "$version_output" ] || fail "hyprctl version returned no data"
+printf 'Hyprland IPC version response:\n%s\n' "$version_output"
+
+if ! monitors_json="$(hyprctl -j monitors 2>&1)"; then
+    fail "monitor IPC query failed" "$monitors_json"
+fi
+if ! printf '%s\n' "$monitors_json" | jq -e 'type == "array" and length >= 1' >/dev/null; then
+    fail "headless monitor was not registered" "$monitors_json"
+fi
 
 for _attempt in $(seq 1 30); do
     [ -e "$EDEMINT_SMOKE_MARKER" ] && break
+    kill -0 "$compositor" 2>/dev/null || fail "compositor exited before the client started"
     sleep 1
 done
-[ -e "$EDEMINT_SMOKE_MARKER" ] || { cat "$LOG" >&2; exit 1; }
-hyprctl -j clients | jq -e 'any(.[]; .title == "edemint-session-smoke")' >/dev/null
+[ -e "$EDEMINT_SMOKE_MARKER" ] || fail "Wayland client did not execute its startup command"
+
+if ! clients_json="$(hyprctl -j clients 2>&1)"; then
+    fail "client IPC query failed" "$clients_json"
+fi
+if ! printf '%s\n' "$clients_json" | jq -e \
+    'type == "array" and any(.[]; (.title // "") == "edemint-session-smoke" or (.class // "") == "foot")' \
+    >/dev/null; then
+    fail "the launched Foot client was not visible through IPC" "$clients_json"
+fi
 
 hyprctl dispatch exit >/dev/null
 wait "$compositor"
