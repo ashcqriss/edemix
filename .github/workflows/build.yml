@@ -43,7 +43,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y equivs
           ./packaging/build-metapackages.sh
-          test "$(find shared/includes/usr/share/edemint/metapackages -maxdepth 1 -name '*.deb' | wc -l)" -eq 3
+          test "$(find shared/includes/usr/share/edemint/metapackages -maxdepth 1 -name '*.deb' | wc -l)" -eq 4
       - uses: actions/upload-artifact@v4
         with:
           name: edemint-metapackages
@@ -137,7 +137,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y mmdebstrap genimage genext2fs parted dosfstools mtools \
-            e2fsprogs zstd equivs debian-archive-keyring gnupg curl
+            e2fsprogs zstd equivs debian-archive-keyring
           if [ "$(dpkg --print-architecture)" != "arm64" ]; then
             sudo apt-get install -y qemu-user-static binfmt-support
             sudo update-binfmts --enable qemu-aarch64 || true
@@ -226,7 +226,7 @@ jobs:
           printf '%s' "$EDEMINT_APT_PRIVATE_KEY" | gpg --batch --import
           mkdir -p repo/dists/trixie/main/binary-all repo/pool/main
           cp dist/edemint-metapackages/*.deb repo/pool/main/
-          test "$(find repo/pool/main -maxdepth 1 -name '*.deb' | wc -l)" -eq 3
+          test "$(find repo/pool/main -maxdepth 1 -name '*.deb' | wc -l)" -eq 4
           (
             cd repo
             apt-ftparchive packages pool/main > dists/trixie/main/binary-all/Packages
