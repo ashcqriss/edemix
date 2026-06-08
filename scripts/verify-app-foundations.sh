@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+REPO_ROOT=$(CDPATH='' cd -- "$SCRIPT_DIR/.." && pwd)
 CANDIDATES=${EDEMINT_APP_CANDIDATES:-"$REPO_ROOT/shared/package-lists/app-foundations.candidates"}
 ARCH=${1:-"$(dpkg --print-architecture 2>/dev/null || true)"}
 
