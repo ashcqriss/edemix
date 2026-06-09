@@ -1,2 +1,2 @@
 #!/bin/sh
-exec /usr/libexec/edemint-app settings "$@"
+exec /usr/libexec/edemint-settings-app "$@"

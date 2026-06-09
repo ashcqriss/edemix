@@ -20,20 +20,12 @@ on:
       - profiles/amd64-iso/config/package-lists/app-suite.list.chroot
       - profiles/amd64-iso/config/package-lists/apps-desktop-extra.list.chroot
       - shared/includes/etc/locale.nopurge
-      - shared/includes/usr/libexec/edemint-app
-      - shared/includes/usr/libexec/edemint-activity-monitor-app
-      - shared/includes/usr/libexec/edemint-console-app
-      - shared/includes/usr/libexec/edemint-mission-control-app
-      - shared/includes/usr/libexec/edemint-sticky-notes-app
-      - shared/includes/usr/libexec/edemint-library-tools
-      - shared/includes/usr/libexec/edemint-messenger
-      - shared/includes/usr/libexec/edemint-inspector
-      - shared/includes/usr/libexec/edemint-inspector-probe
-      - shared/includes/usr/libexec/edemint-inspector-sandbox
-      - shared/includes/usr/libexec/edemint-fullcall
-      - shared/includes/usr/libexec/edemint-default-apps
+      - shared/includes/etc/skel/.config/mako/config
+      - shared/includes/etc/skel/.config/hypr/**
+      - shared/includes/usr/libexec/edemint-*
       - shared/includes/usr/local/bin/edemint-*
       - shared/includes/usr/share/applications/edemint-*.desktop
+      - shared/includes/usr/share/polkit-1/actions/org.edemint.settings.policy
       - shared/includes/etc/xdg/Thunar/uca.xml
       - shared/includes/etc/xdg/mimeapps.list
       - packaging/edemint-app-suite/control
@@ -56,20 +48,12 @@ on:
       - profiles/amd64-iso/config/package-lists/app-suite.list.chroot
       - profiles/amd64-iso/config/package-lists/apps-desktop-extra.list.chroot
       - shared/includes/etc/locale.nopurge
-      - shared/includes/usr/libexec/edemint-app
-      - shared/includes/usr/libexec/edemint-activity-monitor-app
-      - shared/includes/usr/libexec/edemint-console-app
-      - shared/includes/usr/libexec/edemint-mission-control-app
-      - shared/includes/usr/libexec/edemint-sticky-notes-app
-      - shared/includes/usr/libexec/edemint-library-tools
-      - shared/includes/usr/libexec/edemint-messenger
-      - shared/includes/usr/libexec/edemint-inspector
-      - shared/includes/usr/libexec/edemint-inspector-probe
-      - shared/includes/usr/libexec/edemint-inspector-sandbox
-      - shared/includes/usr/libexec/edemint-fullcall
-      - shared/includes/usr/libexec/edemint-default-apps
+      - shared/includes/etc/skel/.config/mako/config
+      - shared/includes/etc/skel/.config/hypr/**
+      - shared/includes/usr/libexec/edemint-*
       - shared/includes/usr/local/bin/edemint-*
       - shared/includes/usr/share/applications/edemint-*.desktop
+      - shared/includes/usr/share/polkit-1/actions/org.edemint.settings.policy
       - shared/includes/etc/xdg/Thunar/uca.xml
       - shared/includes/etc/xdg/mimeapps.list
       - packaging/edemint-app-suite/control
@@ -90,9 +74,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch:
-          - amd64
-          - arm64
+        arch: [amd64, arm64]
 
     steps:
       - name: Check out source
@@ -130,6 +112,8 @@ jobs:
             shared/includes/usr/libexec/edemint-inspector \
             shared/includes/usr/libexec/edemint-inspector-probe \
             shared/includes/usr/libexec/edemint-inspector-sandbox \
+            shared/includes/usr/libexec/edemint-settings-app \
+            shared/includes/usr/libexec/edemint-settings-helper \
             shared/includes/usr/libexec/edemint-fullcall \
             shared/includes/usr/libexec/edemint-default-apps \
             scripts/validate-app-catalog.py \
@@ -151,7 +135,7 @@ jobs:
         if: matrix.arch == 'amd64'
         shell: sh
         run: |
-          sample="$(mktemp)"
+          sample="$(mktemp --suffix=.txt)"
           printf 'bounded preview\n' > "$sample"
           python3 shared/includes/usr/libexec/edemint-inspector-probe "$sample" \
             | python3 -c 'import json,sys; p=json.load(sys.stdin); assert p["ok"] and p["size"] == 16 and p["mime"].startswith("text/") and not p["mime_mismatch"]'

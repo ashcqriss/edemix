@@ -1,12 +1,5 @@
-# Candidate application foundations for Debian 13 (Trixie).
-#
-# This file is documentation/input for scripts/verify-app-foundations.sh.
-# It is intentionally NOT a live-build *.list.chroot file and therefore does
-# not install anything into an Edemint image.
-#
+# Candidate application and system-management foundations for Debian 13.
 # Format: package|capability|profile|status
-# Status remains "candidate" until architecture, dependency, license, launch
-# and installed-size gates in docs/APPLICATIONS_ROADMAP.md have passed.
 
 epiphany-browser|WebKitGTK browser foundation|desktop|candidate
 gnome-calendar|Calendar|desktop|candidate
@@ -30,6 +23,10 @@ libreoffice-impress|Inspector presentation viewer and office suite|desktop|candi
 libreoffice-gtk3|LibreOffice desktop integration|desktop|candidate
 speech-dispatcher|Speech accessibility service|desktop|candidate
 gnome-accessibility-themes|High contrast accessibility themes|desktop|candidate
+smartmontools|Storage health diagnostics|core|candidate
+upower|Battery capability diagnostics|desktop|candidate
+libglib2.0-bin|GSettings system controls|desktop|candidate
+pkexec|Authenticated Settings helper boundary|desktop|candidate
 cheese|Standard camera foundation|desktop|candidate
 webcamoid|Optional Camera Studio foundation|optional|candidate
 goldendict-ng|Dictionary foundation|desktop|candidate

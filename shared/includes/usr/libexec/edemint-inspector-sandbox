@@ -16,30 +16,18 @@ DEFAULT_TIMEOUT = 300
 MAX_TIMEOUT = 900
 MAX_ADDRESS_SPACE = 2 * 1024 * 1024 * 1024
 MAX_FILE_SIZE = 256 * 1024 * 1024
-
 OFFICE_MIMES = {
-    "application/msword",
-    "application/rtf",
-    "application/vnd.ms-excel",
-    "application/vnd.ms-powerpoint",
-    "application/vnd.oasis.opendocument.presentation",
-    "application/vnd.oasis.opendocument.spreadsheet",
-    "application/vnd.oasis.opendocument.text",
+    "application/msword", "application/rtf", "application/vnd.ms-excel",
+    "application/vnd.ms-powerpoint", "application/vnd.oasis.opendocument.presentation",
+    "application/vnd.oasis.opendocument.spreadsheet", "application/vnd.oasis.opendocument.text",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
 ARCHIVE_MIMES = {
-    "application/gzip",
-    "application/vnd.rar",
-    "application/x-7z-compressed",
-    "application/x-bzip2",
-    "application/x-gzip",
-    "application/x-rar",
-    "application/x-tar",
-    "application/x-xz",
-    "application/zip",
-    "application/zstd",
+    "application/gzip", "application/vnd.rar", "application/x-7z-compressed",
+    "application/x-bzip2", "application/x-gzip", "application/x-rar",
+    "application/x-tar", "application/x-xz", "application/zip", "application/zstd",
 }
 
 
@@ -71,7 +59,7 @@ def open_regular(path: Path) -> tuple[int, os.stat_result]:
 
 def content_mime(descriptor: int) -> str:
     completed = subprocess.run(
-        ["file", "--brief", "--mime-type", "--", f"/proc/self/fd/{descriptor}"],
+        ["file", "--dereference", "--brief", "--mime-type", "--", f"/proc/self/fd/{descriptor}"],
         check=False,
         capture_output=True,
         text=True,
@@ -91,16 +79,12 @@ def viewer_for(mime: str) -> list[str] | None:
     if mime.startswith("image/"):
         return ["imv", "/inspect/input"]
     if mime.startswith("audio/") or mime.startswith("video/"):
-        return [
-            "mpv", "--no-config", "--no-terminal", "--audio=no",
-            "--force-window=yes", "/inspect/input",
-        ]
+        return ["mpv", "--no-config", "--no-terminal", "--audio=no", "--force-window=yes", "/inspect/input"]
     if mime in OFFICE_MIMES:
         return [
             "libreoffice", "--safe-mode", "--view", "--nologo", "--nodefault",
             "--norestore", "--nolockcheck",
-            "-env:UserInstallation=file:///home/inspector/profile",
-            "/inspect/input",
+            "-env:UserInstallation=file:///home/inspector/profile", "/inspect/input",
         ]
     if mime in ARCHIVE_MIMES:
         return ["file-roller", "/inspect/input"]
@@ -138,14 +122,11 @@ def sandbox_command(descriptor: int, viewer: list[str]) -> tuple[list[str], dict
 
     command = [
         "timeout", "--foreground", "--kill-after=5", str(timeout_seconds()),
-        "bwrap",
-        "--die-with-parent", "--new-session", "--unshare-all", "--disable-userns",
+        "bwrap", "--die-with-parent", "--new-session", "--unshare-all", "--disable-userns",
         "--cap-drop", "ALL", "--hostname", "edemint-inspector",
         "--ro-bind", "/usr", "/usr",
-        "--ro-bind-try", "/lib", "/lib",
-        "--ro-bind-try", "/lib64", "/lib64",
-        "--dir", "/etc",
-        "--ro-bind-try", "/etc/alternatives", "/etc/alternatives",
+        "--ro-bind-try", "/lib", "/lib", "--ro-bind-try", "/lib64", "/lib64",
+        "--dir", "/etc", "--ro-bind-try", "/etc/alternatives", "/etc/alternatives",
         "--ro-bind-try", "/etc/fonts", "/etc/fonts",
         "--ro-bind-try", "/etc/ld.so.cache", "/etc/ld.so.cache",
         "--ro-bind-try", "/etc/localtime", "/etc/localtime",
@@ -153,27 +134,19 @@ def sandbox_command(descriptor: int, viewer: list[str]) -> tuple[list[str], dict
         "--tmpfs", "/home", "--dir", "/home/inspector",
         "--dir", "/run", "--dir", "/run/user", "--dir", sandbox_runtime,
         "--ro-bind", str(wayland_source), f"{sandbox_runtime}/{wayland_name}",
-        "--dir", "/inspect",
-        "--ro-bind", f"/proc/self/fd/{descriptor}", "/inspect/input",
+        "--dir", "/inspect", "--ro-bind", f"/proc/self/fd/{descriptor}", "/inspect/input",
         "--setenv", "HOME", "/home/inspector",
         "--setenv", "XDG_RUNTIME_DIR", sandbox_runtime,
         "--setenv", "XDG_CONFIG_HOME", "/home/inspector/.config",
         "--setenv", "XDG_CACHE_HOME", "/home/inspector/.cache",
         "--setenv", "XDG_DATA_HOME", "/home/inspector/.local/share",
         "--setenv", "WAYLAND_DISPLAY", wayland_name,
-        "--setenv", "GDK_BACKEND", "wayland",
-        "--setenv", "QT_QPA_PLATFORM", "wayland",
+        "--setenv", "GDK_BACKEND", "wayland", "--setenv", "QT_QPA_PLATFORM", "wayland",
         "--setenv", "LANG", os.environ.get("LANG", "C.UTF-8"),
-        "--setenv", "NO_AT_BRIDGE", "1",
-        "--setenv", "TMPDIR", "/tmp",
-        "--chdir", "/home/inspector",
-        "--", "dbus-run-session", "--", binary, *viewer[1:],
+        "--setenv", "NO_AT_BRIDGE", "1", "--setenv", "TMPDIR", "/tmp",
+        "--chdir", "/home/inspector", "--", "dbus-run-session", "--", binary, *viewer[1:],
     ]
-    environment = {
-        "PATH": "/usr/bin:/bin",
-        "LANG": os.environ.get("LANG", "C.UTF-8"),
-    }
-    return command, environment
+    return command, {"PATH": "/usr/bin:/bin", "LANG": os.environ.get("LANG", "C.UTF-8")}
 
 
 def main() -> int:
@@ -182,14 +155,11 @@ def main() -> int:
     parser.add_argument("--expect", metavar="DEVICE:INODE")
     parser.add_argument("path")
     arguments = parser.parse_args()
-
     descriptor = -1
     try:
         descriptor, metadata = open_regular(Path(arguments.path).expanduser())
-        if arguments.expect:
-            expected = f"{metadata.st_dev}:{metadata.st_ino}"
-            if arguments.expect != expected:
-                return fail("the selected file changed after it was inspected")
+        if arguments.expect and arguments.expect != f"{metadata.st_dev}:{metadata.st_ino}":
+            return fail("the selected file changed after it was inspected")
         mime = content_mime(descriptor)
         viewer = viewer_for(mime)
         if not viewer:
@@ -199,15 +169,12 @@ def main() -> int:
             print(f"content-type={mime}; viewer={viewer[0]}; policy=isolated")
             return 0
         completed = subprocess.run(
-            command,
-            check=False,
-            pass_fds=(descriptor,),
-            env=environment,
+            command, check=False, pass_fds=(descriptor,), env=environment,
             preexec_fn=apply_limits,
         )
         if completed.returncode == 124:
             return fail(f"viewer exceeded the {timeout_seconds()} second limit")
-        if completed.returncode != 0:
+        if completed.returncode:
             return fail(f"viewer exited with status {completed.returncode}")
         return 0
     except (OSError, RuntimeError, subprocess.SubprocessError) as exc:

@@ -1,0 +1,137 @@
+#!/usr/bin/python3
+"""Authenticated, narrowly allowlisted mutations for Edemint Settings."""
+
+from __future__ import annotations
+
+import grp
+import os
+from pathlib import Path
+import pwd
+import re
+import subprocess
+import sys
+
+SAFE_ENV = {
+    "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    "LANG": "C.UTF-8",
+    "DEBIAN_FRONTEND": "noninteractive",
+}
+USERNAME = re.compile(r"[a-z_][a-z0-9_-]{0,30}")
+HOSTNAME = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9.-]{0,61}[A-Za-z0-9])?")
+LOCALE = re.compile(r"[A-Za-z]{2,3}(?:_[A-Za-z]{2})?(?:\.[A-Za-z0-9_-]+)?(?:@[A-Za-z0-9_-]+)?")
+LAYOUT = re.compile(r"[A-Za-z0-9_-]{1,32}")
+
+
+def fail(message: str, code: int = 2) -> int:
+    print(f"edemint-settings-helper: {message}", file=sys.stderr)
+    return code
+
+
+def run(argv: list[str], timeout: int = 7200) -> int:
+    print("+ " + " ".join(argv), flush=True)
+    try:
+        return subprocess.run(argv, check=False, env=SAFE_ENV, timeout=timeout).returncode
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+
+def valid_user(name: str) -> bool:
+    if not USERNAME.fullmatch(name):
+        return False
+    try:
+        entry = pwd.getpwnam(name)
+    except KeyError:
+        return False
+    return entry.pw_uid >= 1000 and name not in {"root", "nobody"}
+
+
+def timezone_valid(value: str) -> bool:
+    if not value or value.startswith("/") or ".." in value.split("/"):
+        return False
+    root = Path("/usr/share/zoneinfo").resolve()
+    candidate = (root / value).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return False
+    return candidate.is_file()
+
+
+def locale_supported(value: str) -> bool:
+    if not LOCALE.fullmatch(value):
+        return False
+    try:
+        supported = Path("/usr/share/i18n/SUPPORTED").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    canonical = value.replace(".utf8", ".UTF-8")
+    return any(line.split()[0] == canonical for line in supported.splitlines() if line.strip())
+
+
+def existing_groups() -> str:
+    requested = ("audio", "video", "render", "plugdev", "netdev", "lp", "scanner")
+    available = []
+    for name in requested:
+        try:
+            grp.getgrnam(name)
+            available.append(name)
+        except KeyError:
+            continue
+    return ",".join(available)
+
+
+def main(arguments: list[str]) -> int:
+    if os.geteuid() != 0:
+        return fail("must be invoked through an authenticated privilege boundary")
+    if not arguments:
+        return fail("an action is required")
+    action, *values = arguments
+
+    if action == "install-updates" and not values:
+        code = run(["/usr/bin/apt-get", "update"])
+        return code or run(["/usr/bin/apt-get", "-y", "full-upgrade"])
+    if action == "cleanup-packages" and not values:
+        code = run(["/usr/bin/apt-get", "clean"])
+        return code or run(["/usr/bin/apt-get", "-y", "autoremove"])
+    if action == "set-timezone" and len(values) == 1 and timezone_valid(values[0]):
+        return run(["/usr/bin/timedatectl", "set-timezone", values[0]], 60)
+    if action == "set-ntp" and values in (["true"], ["false"]):
+        return run(["/usr/bin/timedatectl", "set-ntp", values[0]], 60)
+    if action == "set-hostname" and len(values) == 1 and HOSTNAME.fullmatch(values[0]):
+        return run(["/usr/bin/hostnamectl", "set-hostname", values[0]], 60)
+    if action == "set-locale" and len(values) == 1 and locale_supported(values[0]):
+        value = values[0].replace(".utf8", ".UTF-8")
+        code = run(["/usr/sbin/locale-gen", value], 600)
+        return code or run(["/usr/bin/localectl", "set-locale", f"LANG={value}"], 60)
+    if action == "set-keyboard" and len(values) == 1 and LAYOUT.fullmatch(values[0]):
+        return run(["/usr/bin/localectl", "set-x11-keymap", values[0]], 60)
+    if action == "add-user" and len(values) == 2:
+        name, display = values
+        if not USERNAME.fullmatch(name) or any(char in display for char in ":\n\r") or len(display) > 100:
+            return fail("invalid account fields")
+        try:
+            pwd.getpwnam(name)
+            return fail("account already exists")
+        except KeyError:
+            pass
+        command = ["/usr/sbin/useradd", "--create-home", "--shell", "/bin/bash", "--comment", display]
+        groups = existing_groups()
+        if groups:
+            command.extend(["--groups", groups])
+        command.append(name)
+        return run(command, 120)
+    if action == "passwd-user" and len(values) == 1 and valid_user(values[0]):
+        return run(["/usr/bin/passwd", values[0]], 600)
+    if action == "create-snapshot" and len(values) == 1:
+        description = values[0]
+        if not description or len(description) > 120 or any(char in description for char in "\n\r"):
+            return fail("invalid snapshot description")
+        if run(["/usr/bin/findmnt", "-n", "-t", "btrfs", "/"], 30):
+            return fail("root filesystem is not btrfs", 1)
+        return run(["/usr/bin/snapper", "-c", "root", "create", "-d", description], 120)
+    return fail("action or arguments are not allowed")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

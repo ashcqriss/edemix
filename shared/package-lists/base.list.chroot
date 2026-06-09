@@ -7,9 +7,7 @@ systemd-sysv
 network-manager
 modemmanager
 
-# --- firmware (the non-free-firmware archive area is enabled in auto/config)
-# Without these most Wi-Fi/GPUs are dead on first boot. apt-recommends is off,
-# so list the firmware packages explicitly rather than relying on metapackages.
+# --- firmware ------------------------------------------------------------
 firmware-misc-nonfree
 firmware-iwlwifi
 firmware-realtek
@@ -20,14 +18,14 @@ wireless-regdb
 
 # CPU microcode (Intel + AMD) is shipped only on amd64.
 
-# --- bluetooth (stack only; GUI lives in desktop.list) ------------------
+# --- bluetooth -----------------------------------------------------------
 bluez
 libspa-0.2-bluetooth
 
 # --- power management ---------------------------------------------------
 power-profiles-daemon
 
-# --- printing services (CUPS bound to localhost in includes) ------------
+# --- printing services --------------------------------------------------
 cups
 cups-browsed
 avahi-daemon
@@ -43,12 +41,14 @@ curl
 wget
 git
 htop
+procps
 pciutils
 usbutils
+smartmontools
 xz-utils
 zstd
 
-# --- audio (pipewire) ----------------------------------------------------
+# --- audio ---------------------------------------------------------------
 pipewire
 pipewire-pulse
 wireplumber
@@ -65,8 +65,8 @@ cryptsetup
 lvm2
 
 # --- i18n: preserve the complete Debian locale data ---------------------
-# Edemint is a general-purpose OS. Do not use localepurge: users must be able
-# to select supported languages without repairing packages first.
+# Edemint is a general-purpose OS. Users must be able to select supported
+# languages without first repairing package contents.
 locales
 tzdata
 
@@ -88,9 +88,9 @@ libpam-gnome-keyring
 # --- notify-send ---------------------------------------------------------
 libnotify-bin
 
-# --- whiptail (TUI for edemint-setup) -----------------------------------
+# --- whiptail ------------------------------------------------------------
 whiptail
 
-# --- fingerprint auth - driver only; PAM wired in includes --------------
+# --- fingerprint auth ---------------------------------------------------
 fprintd
 libpam-fprintd
