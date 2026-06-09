@@ -1,6 +1,6 @@
 #!/bin/sh
-# Runs in GitHub Actions only. Starts a headless Weston compositor, nests
-# Hyprland inside it, verifies IPC and a real client, then exits cleanly.
+# Runs in GitHub Actions only. Starts Hyprland on a virtual KMS device,
+# verifies IPC and a real Wayland client, then exits cleanly.
 set -eu
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -11,6 +11,12 @@ mkdir -p "$WORK"
 # The installed greeter contract must still enter the compositor directly.
 grep -q -- '--cmd Hyprland' "$ROOT/shared/includes/etc/greetd/config.toml"
 
+DRM_DEVICE="${EDEMINT_DRM_DEVICE:-/dev/dri/card0}"
+[ -c "$DRM_DEVICE" ] || {
+    echo "Virtual DRM device is unavailable: $DRM_DEVICE" >&2
+    exit 1
+}
+
 export HOME="$WORK/h"
 export XDG_RUNTIME_DIR="$WORK/r"
 export XDG_CONFIG_HOME="$HOME/.config"
@@ -18,39 +24,51 @@ export XDG_DATA_HOME="$HOME/.local/share"
 export XDG_SESSION_TYPE=wayland
 export XDG_CURRENT_DESKTOP=Hyprland
 export XDG_SESSION_DESKTOP=Hyprland
-export WAYLAND_DISPLAY=edemint-ci
-export AQ_NO_KMS_REQUIREMENT=1
+export AQ_DRM_DEVICES="$DRM_DEVICE"
+export AQ_NO_MODIFIERS=1
+export AQ_MGPU_NO_EXPLICIT=1
+export LIBGL_ALWAYS_SOFTWARE=1
+export MESA_LOADER_DRIVER_OVERRIDE=kms_swrast
+export WLR_RENDERER_ALLOW_SOFTWARE=1
+export HYPRLAND_NO_CRASHREPORTER=1
+export SEATD_VTBOUND=0
+export LIBSEAT_BACKEND=seatd
+export SEATD_SOCK=/run/seatd.sock
 export EDEMINT_SMOKE_MARKER="$WORK/client-started"
-mkdir -p "$XDG_RUNTIME_DIR" "$XDG_CONFIG_HOME/hypr"
+unset DISPLAY WAYLAND_DISPLAY
+mkdir -p "$XDG_RUNTIME_DIR" "$XDG_CONFIG_HOME/hypr" /run
 chmod 0700 "$XDG_RUNTIME_DIR"
 
-WESTON_LOG="$WORK/weston.log"
+SEATD_LOG="$WORK/seatd.log"
 LOG="$WORK/hyprland.log"
 export LOG
-weston --backend=headless-backend.so --socket="$WAYLAND_DISPLAY" --idle-time=0 >"$WESTON_LOG" 2>&1 &
-weston_pid=$!
+seatd -g video -l debug >"$SEATD_LOG" 2>&1 &
+seatd_pid=$!
 cleanup_outer() {
-    kill "$weston_pid" 2>/dev/null || true
-    wait "$weston_pid" 2>/dev/null || true
+    kill "$seatd_pid" 2>/dev/null || true
+    wait "$seatd_pid" 2>/dev/null || true
     rm -rf "$WORK"
 }
 trap cleanup_outer EXIT INT TERM
 
-for _attempt in $(seq 1 30); do
-    [ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ] && break
-    if ! kill -0 "$weston_pid" 2>/dev/null; then
-        cat "$WESTON_LOG" >&2
+for _attempt in $(seq 1 20); do
+    [ -S "$SEATD_SOCK" ] && break
+    if ! kill -0 "$seatd_pid" 2>/dev/null; then
+        cat "$SEATD_LOG" >&2
         exit 1
     fi
     sleep 1
 done
-[ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ] || {
-    cat "$WESTON_LOG" >&2
+[ -S "$SEATD_SOCK" ] || {
+    cat "$SEATD_LOG" >&2
     exit 1
 }
 
 cat > "$XDG_CONFIG_HOME/hypr/smoke.conf" <<'EOF'
 monitor = ,preferred,auto,1
+debug {
+    disable_logs = false
+}
 misc {
     disable_hyprland_logo = true
     disable_splash_rendering = true
@@ -63,7 +81,7 @@ EOF
 
 dbus-run-session -- sh -eu <<'EOF'
 # The CI container runs as root. Hyprland requires this explicit opt-in only
-# for the isolated nested smoke environment; installed sessions do not use it.
+# for the isolated virtual-KMS smoke environment; installed sessions do not.
 Hyprland --config "$XDG_CONFIG_HOME/hypr/smoke.conf" --i-am-really-stupid >"$LOG" 2>&1 &
 compositor=$!
 cleanup() {
@@ -82,7 +100,7 @@ fail() {
 trap cleanup EXIT INT TERM
 
 signature=""
-for _attempt in $(seq 1 45); do
+for _attempt in $(seq 1 60); do
     signature_dir="$(find "$XDG_RUNTIME_DIR/hypr" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -n 1 || true)"
     if [ -n "$signature_dir" ] && [ -S "$signature_dir/.socket.sock" ]; then
         signature="$(basename "$signature_dir")"
@@ -104,7 +122,7 @@ if ! monitors_json="$(hyprctl -j monitors 2>&1)"; then
     fail "monitor IPC query failed" "$monitors_json"
 fi
 if ! printf '%s\n' "$monitors_json" | jq -e 'type == "array" and length >= 1' >/dev/null; then
-    fail "nested monitor was not registered" "$monitors_json"
+    fail "virtual monitor was not registered" "$monitors_json"
 fi
 
 for _attempt in $(seq 1 30); do
@@ -128,4 +146,4 @@ wait "$compositor"
 trap - EXIT INT TERM
 EOF
 
-echo "Hyprland nested headless login/session smoke test passed."
+echo "Hyprland virtual-KMS login/session smoke test passed."

@@ -30,34 +30,57 @@ concurrency:
 
 jobs:
   headless-session:
-    name: Headless login and Wayland session
+    name: Virtual-KMS login and Wayland session
     runs-on: ubuntu-latest
-    container: debian:trixie
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - name: Check out source
         uses: actions/checkout@v5
 
-      - name: Enable Trixie backports
-        shell: sh
+      - name: Provision virtual DRM device
+        id: drm
+        shell: bash
         run: |
-          cat > /etc/apt/sources.list.d/backports.sources <<'EOF'
+          set -euo pipefail
+          if ! sudo modprobe vkms; then
+            sudo apt-get update
+            sudo apt-get install -y "linux-modules-extra-$(uname -r)"
+            sudo modprobe vkms
+          fi
+          drm_device=""
+          for sys_device in /sys/class/drm/card[0-9]*; do
+            [ -e "$sys_device" ] || continue
+            module="$(readlink -f "$sys_device/device/driver/module" 2>/dev/null || true)"
+            if [[ "$module" == */vkms ]]; then
+              drm_device="/dev/dri/$(basename "$sys_device")"
+              break
+            fi
+          done
+          test -c "$drm_device"
+          echo "device=$drm_device" >> "$GITHUB_OUTPUT"
+          ls -l /dev/dri
+
+      - name: Start and inspect Hyprland session
+        env:
+          EDEMINT_DRM_DEVICE: ${{ steps.drm.outputs.device }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --privileged \
+            -e EDEMINT_DRM_DEVICE \
+            -v "$GITHUB_WORKSPACE:/workspace:ro" \
+            -w /workspace \
+            debian:trixie sh -eu -c '
+              cat > /etc/apt/sources.list.d/backports.sources <<"EOF"
           Types: deb
           URIs: http://deb.debian.org/debian
           Suites: trixie-backports
           Components: main
           Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
           EOF
-          apt-get update -o Acquire::Languages=none
-
-      - name: Install headless session dependencies
-        shell: sh
-        run: |
-          apt-get install -y --no-install-recommends \
-            -t trixie-backports hyprland
-          apt-get install -y --no-install-recommends \
-            dbus-x11 foot jq procps weston
-
-      - name: Start and inspect Hyprland session
-        shell: sh
-        run: sh scripts/smoke-hyprland-session.sh
+              apt-get update -o Acquire::Languages=none
+              apt-get install -y --no-install-recommends -t trixie-backports hyprland
+              apt-get install -y --no-install-recommends \
+                dbus-x11 foot jq libgl1-mesa-dri procps seatd
+              sh scripts/smoke-hyprland-session.sh
+            '

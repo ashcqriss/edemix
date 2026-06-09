@@ -104,10 +104,29 @@ def main() -> int:
         ),
     )
     require(
+        "shared/includes/usr/libexec/edemint-library-tools",
+        (
+            "SCHEMA = 2",
+            "desktop-index.json",
+            "monitor_directory",
+            "fuzzy_score",
+            "PAGE_SIZE = 80",
+            "record_launch",
+            '"folders": {}',
+            "WORKFLOW_ACTIONS",
+            "MAX_REPEAT = 10",
+            "if_path_exists",
+            "workflow_permissions",
+            "undo_shortcuts",
+            "Arbitrary shell commands are never accepted",
+        ),
+    )
+    require(
         "scripts/smoke-hyprland-session.sh",
         (
-            "weston --backend=headless-backend.so",
-            "WAYLAND_DISPLAY=edemint-ci",
+            "AQ_DRM_DEVICES",
+            "MESA_LOADER_DRIVER_OVERRIDE=kms_swrast",
+            "seatd -g video",
             "Hyprland --config",
             "hyprctl -j monitors",
             "edemint-session-smoke",
