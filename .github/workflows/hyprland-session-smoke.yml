@@ -47,18 +47,27 @@ jobs:
             sudo apt-get install -y "linux-modules-extra-$(uname -r)"
             sudo modprobe vkms
           fi
+          sudo udevadm settle
           drm_device=""
           for sys_device in /sys/class/drm/card[0-9]*; do
             [ -e "$sys_device" ] || continue
-            module="$(readlink -f "$sys_device/device/driver/module" 2>/dev/null || true)"
-            if [[ "$module" == */vkms ]]; then
+            driver="$(basename "$(readlink -f "$sys_device/device/driver" 2>/dev/null || true)")"
+            if [ "$driver" = "vkms" ] || grep -qx 'DRIVER=vkms' "$sys_device/device/uevent" 2>/dev/null; then
               drm_device="/dev/dri/$(basename "$sys_device")"
               break
             fi
           done
+          if [ -z "$drm_device" ]; then
+            drm_device="$(find /dev/dri -maxdepth 1 -type c -name 'card*' -print -quit 2>/dev/null || true)"
+          fi
           test -c "$drm_device"
           echo "device=$drm_device" >> "$GITHUB_OUTPUT"
+          echo "Using virtual DRM device $drm_device"
           ls -l /dev/dri
+          for sys_device in /sys/class/drm/card[0-9]*; do
+            [ -e "$sys_device" ] || continue
+            printf '%s driver=%s\n' "$sys_device" "$(basename "$(readlink -f "$sys_device/device/driver" 2>/dev/null || true)")"
+          done
 
       - name: Start and inspect Hyprland session
         env:

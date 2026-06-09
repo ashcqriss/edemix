@@ -1,0 +1,221 @@
+#!/usr/bin/python3
+"""Launch one Inspector file inside a disposable Bubblewrap viewer sandbox."""
+
+from __future__ import annotations
+
+import argparse
+import os
+from pathlib import Path
+import resource
+import shutil
+import stat
+import subprocess
+import sys
+
+DEFAULT_TIMEOUT = 300
+MAX_TIMEOUT = 900
+MAX_ADDRESS_SPACE = 2 * 1024 * 1024 * 1024
+MAX_FILE_SIZE = 256 * 1024 * 1024
+
+OFFICE_MIMES = {
+    "application/msword",
+    "application/rtf",
+    "application/vnd.ms-excel",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.oasis.opendocument.presentation",
+    "application/vnd.oasis.opendocument.spreadsheet",
+    "application/vnd.oasis.opendocument.text",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+ARCHIVE_MIMES = {
+    "application/gzip",
+    "application/vnd.rar",
+    "application/x-7z-compressed",
+    "application/x-bzip2",
+    "application/x-gzip",
+    "application/x-rar",
+    "application/x-tar",
+    "application/x-xz",
+    "application/zip",
+    "application/zstd",
+}
+
+
+def fail(message: str, code: int = 1) -> int:
+    print(f"Inspector sandbox: {message}", file=sys.stderr)
+    return code
+
+
+def timeout_seconds() -> int:
+    try:
+        configured = int(os.environ.get("EDEMINT_INSPECTOR_VIEW_TIMEOUT", DEFAULT_TIMEOUT))
+    except ValueError:
+        configured = DEFAULT_TIMEOUT
+    return max(30, min(configured, MAX_TIMEOUT))
+
+
+def open_regular(path: Path) -> tuple[int, os.stat_result]:
+    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NONBLOCK
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(path, flags)
+    metadata = os.fstat(descriptor)
+    if not stat.S_ISREG(metadata.st_mode):
+        os.close(descriptor)
+        raise OSError("regular files only")
+    os.set_inheritable(descriptor, True)
+    return descriptor, metadata
+
+
+def content_mime(descriptor: int) -> str:
+    completed = subprocess.run(
+        ["file", "--brief", "--mime-type", "--", f"/proc/self/fd/{descriptor}"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=3,
+        pass_fds=(descriptor,),
+        env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"},
+    )
+    mime = completed.stdout.strip()
+    if completed.returncode != 0 or "/" not in mime:
+        raise RuntimeError(completed.stderr.strip() or "content type detection failed")
+    return mime[:200]
+
+
+def viewer_for(mime: str) -> list[str] | None:
+    if mime == "application/pdf":
+        return ["evince", "/inspect/input"]
+    if mime.startswith("image/"):
+        return ["imv", "/inspect/input"]
+    if mime.startswith("audio/") or mime.startswith("video/"):
+        return [
+            "mpv", "--no-config", "--no-terminal", "--audio=no",
+            "--force-window=yes", "/inspect/input",
+        ]
+    if mime in OFFICE_MIMES:
+        return [
+            "libreoffice", "--safe-mode", "--view", "--nologo", "--nodefault",
+            "--norestore", "--nolockcheck",
+            "-env:UserInstallation=file:///home/inspector/profile",
+            "/inspect/input",
+        ]
+    if mime in ARCHIVE_MIMES:
+        return ["file-roller", "/inspect/input"]
+    if mime.startswith("text/") or mime in {"application/json", "application/xml"}:
+        return ["gnome-text-editor", "/inspect/input"]
+    return None
+
+
+def apply_limits() -> None:
+    resource.setrlimit(resource.RLIMIT_CPU, (60, 65))
+    resource.setrlimit(resource.RLIMIT_AS, (MAX_ADDRESS_SPACE, MAX_ADDRESS_SPACE))
+    resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_FILE_SIZE, MAX_FILE_SIZE))
+    resource.setrlimit(resource.RLIMIT_NOFILE, (256, 256))
+    if hasattr(resource, "RLIMIT_NPROC"):
+        resource.setrlimit(resource.RLIMIT_NPROC, (64, 64))
+
+
+def sandbox_command(descriptor: int, viewer: list[str]) -> tuple[list[str], dict[str, str]]:
+    runtime_source = Path(os.environ.get("XDG_RUNTIME_DIR", ""))
+    wayland_name = os.environ.get("WAYLAND_DISPLAY", "")
+    if not runtime_source.is_dir() or not wayland_name or "/" in wayland_name:
+        raise RuntimeError("a Wayland session is required")
+    wayland_source = runtime_source / wayland_name
+    if not wayland_source.is_socket():
+        raise RuntimeError("the Wayland compositor socket is unavailable")
+
+    uid = os.getuid()
+    sandbox_runtime = f"/run/user/{uid}"
+    binary = shutil.which(viewer[0])
+    if not binary:
+        raise RuntimeError(f"viewer is not installed: {viewer[0]}")
+    for required in ("bwrap", "dbus-run-session", "timeout"):
+        if not shutil.which(required):
+            raise RuntimeError(f"required sandbox component is missing: {required}")
+
+    command = [
+        "timeout", "--foreground", "--kill-after=5", str(timeout_seconds()),
+        "bwrap",
+        "--die-with-parent", "--new-session", "--unshare-all", "--disable-userns",
+        "--cap-drop", "ALL", "--hostname", "edemint-inspector",
+        "--ro-bind", "/usr", "/usr",
+        "--ro-bind-try", "/lib", "/lib",
+        "--ro-bind-try", "/lib64", "/lib64",
+        "--dir", "/etc",
+        "--ro-bind-try", "/etc/alternatives", "/etc/alternatives",
+        "--ro-bind-try", "/etc/fonts", "/etc/fonts",
+        "--ro-bind-try", "/etc/ld.so.cache", "/etc/ld.so.cache",
+        "--ro-bind-try", "/etc/localtime", "/etc/localtime",
+        "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
+        "--tmpfs", "/home", "--dir", "/home/inspector",
+        "--dir", "/run", "--dir", "/run/user", "--dir", sandbox_runtime,
+        "--ro-bind", str(wayland_source), f"{sandbox_runtime}/{wayland_name}",
+        "--dir", "/inspect",
+        "--ro-bind", f"/proc/self/fd/{descriptor}", "/inspect/input",
+        "--setenv", "HOME", "/home/inspector",
+        "--setenv", "XDG_RUNTIME_DIR", sandbox_runtime,
+        "--setenv", "XDG_CONFIG_HOME", "/home/inspector/.config",
+        "--setenv", "XDG_CACHE_HOME", "/home/inspector/.cache",
+        "--setenv", "XDG_DATA_HOME", "/home/inspector/.local/share",
+        "--setenv", "WAYLAND_DISPLAY", wayland_name,
+        "--setenv", "GDK_BACKEND", "wayland",
+        "--setenv", "QT_QPA_PLATFORM", "wayland",
+        "--setenv", "LANG", os.environ.get("LANG", "C.UTF-8"),
+        "--setenv", "NO_AT_BRIDGE", "1",
+        "--setenv", "TMPDIR", "/tmp",
+        "--chdir", "/home/inspector",
+        "--", "dbus-run-session", "--", binary, *viewer[1:],
+    ]
+    environment = {
+        "PATH": "/usr/bin:/bin",
+        "LANG": os.environ.get("LANG", "C.UTF-8"),
+    }
+    return command, environment
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true")
+    parser.add_argument("--expect", metavar="DEVICE:INODE")
+    parser.add_argument("path")
+    arguments = parser.parse_args()
+
+    descriptor = -1
+    try:
+        descriptor, metadata = open_regular(Path(arguments.path).expanduser())
+        if arguments.expect:
+            expected = f"{metadata.st_dev}:{metadata.st_ino}"
+            if arguments.expect != expected:
+                return fail("the selected file changed after it was inspected")
+        mime = content_mime(descriptor)
+        viewer = viewer_for(mime)
+        if not viewer:
+            return fail(f"no isolated viewer is registered for {mime}")
+        command, environment = sandbox_command(descriptor, viewer)
+        if arguments.check:
+            print(f"content-type={mime}; viewer={viewer[0]}; policy=isolated")
+            return 0
+        completed = subprocess.run(
+            command,
+            check=False,
+            pass_fds=(descriptor,),
+            env=environment,
+            preexec_fn=apply_limits,
+        )
+        if completed.returncode == 124:
+            return fail(f"viewer exceeded the {timeout_seconds()} second limit")
+        if completed.returncode != 0:
+            return fail(f"viewer exited with status {completed.returncode}")
+        return 0
+    except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
+        return fail(str(exc))
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

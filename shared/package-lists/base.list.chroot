@@ -1,6 +1,6 @@
-# Edemint base — system plumbing, before any GUI.
+# Edemint base - system plumbing, before any GUI.
 # Kept lean enough for the Pi / 1GB-class targets (zram + earlyoom make
-# low-RAM survivable; see §0d of the plan).
+# low-RAM survivable; see section 0d of the plan).
 
 # --- init / networking ---------------------------------------------------
 systemd-sysv
@@ -18,10 +18,7 @@ firmware-amd-graphics
 firmware-brcm80211
 wireless-regdb
 
-# CPU microcode (Intel + AMD) is shipped only on amd64 — Debian's
-# intel-microcode / amd64-microcode are arch:amd64 and obviously have no
-# meaning on arm64. They live in profiles/amd64-iso/config/package-lists/
-# amd64-firmware.list.chroot, NOT here, so the Pi build skips them.
+# CPU microcode (Intel + AMD) is shipped only on amd64.
 
 # --- bluetooth (stack only; GUI lives in desktop.list) ------------------
 bluez
@@ -30,7 +27,7 @@ libspa-0.2-bluetooth
 # --- power management ---------------------------------------------------
 power-profiles-daemon
 
-# --- printing services (CUPS bound to localhost in includes; see §6e) ---
+# --- printing services (CUPS bound to localhost in includes) ------------
 cups
 cups-browsed
 avahi-daemon
@@ -40,6 +37,7 @@ sudo
 nano
 neovim
 less
+file
 ca-certificates
 curl
 wget
@@ -50,7 +48,7 @@ usbutils
 xz-utils
 zstd
 
-# --- audio (pipewire — lighter and more capable than pulseaudio) --------
+# --- audio (pipewire) ----------------------------------------------------
 pipewire
 pipewire-pulse
 wireplumber
@@ -66,35 +64,33 @@ udisks2
 cryptsetup
 lvm2
 
-# --- i18n: locale + tz data ---------------------------------------------
+# --- i18n: preserve the complete Debian locale data ---------------------
+# Edemint is a general-purpose OS. Do not use localepurge: users must be able
+# to select supported languages without repairing packages first.
 locales
 tzdata
 
-# --- low-RAM resilience (§0d) -------------------------------------------
+# --- low-RAM resilience -------------------------------------------------
 zram-tools
 earlyoom
 
-# --- ISO size trim (~150MB off by removing locale files we don't ship) --
-localepurge
-
-# --- security defaults (§6b) --------------------------------------------
+# --- security defaults --------------------------------------------------
 apparmor
 apparmor-profiles
 nftables
 unattended-upgrades
 apt-listchanges
 
-# --- credential store + PAM integration (§6e) ---------------------------
+# --- credential store + PAM integration --------------------------------
 gnome-keyring
 libpam-gnome-keyring
 
-# --- notify-send (mako already in desktop list; without this the
-#     edemint-welcome popup silently falls back to stdout) --------------
+# --- notify-send ---------------------------------------------------------
 libnotify-bin
 
 # --- whiptail (TUI for edemint-setup) -----------------------------------
 whiptail
 
-# --- fingerprint auth (§0g) — driver only; PAM wired in includes --------
+# --- fingerprint auth - driver only; PAM wired in includes --------------
 fprintd
 libpam-fprintd

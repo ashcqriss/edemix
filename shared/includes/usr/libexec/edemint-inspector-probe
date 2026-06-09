@@ -9,6 +9,7 @@ import mimetypes
 import os
 from pathlib import Path
 import stat
+import subprocess
 import sys
 
 MAX_PREVIEW_BYTES = 65536
@@ -16,6 +17,25 @@ MAX_PREVIEW_BYTES = 65536
 
 def emit(payload: dict[str, object]) -> None:
     print(json.dumps(payload, ensure_ascii=True, separators=(",", ":")))
+
+
+def detect_content_mime(descriptor: int) -> str:
+    try:
+        completed = subprocess.run(
+            ["file", "--brief", "--mime-type", "--", f"/proc/self/fd/{descriptor}"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2,
+            pass_fds=(descriptor,),
+            env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"},
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "application/octet-stream"
+    detected = completed.stdout.strip()
+    if completed.returncode != 0 or "/" not in detected:
+        return "application/octet-stream"
+    return detected[:200]
 
 
 def main() -> int:
@@ -44,13 +64,24 @@ def main() -> int:
             chunks.append(chunk)
             remaining -= len(chunk)
         raw = b"".join(chunks)
+        extension_mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        content_mime = detect_content_mime(descriptor)
+        mismatch = (
+            extension_mime != "application/octet-stream"
+            and content_mime != "application/octet-stream"
+            and extension_mime != content_mime
+        )
         emit({
             "ok": True,
             "name": path.name,
             "path": os.path.realpath(path),
-            "mime": mimetypes.guess_type(path.name)[0] or "application/octet-stream",
+            "mime": content_mime,
+            "extension_mime": extension_mime,
+            "mime_mismatch": mismatch,
             "size": metadata.st_size,
             "modified": metadata.st_mtime,
+            "device": metadata.st_dev,
+            "inode": metadata.st_ino,
             "truncated": metadata.st_size > len(raw),
             "data": base64.b64encode(raw).decode("ascii"),
         })

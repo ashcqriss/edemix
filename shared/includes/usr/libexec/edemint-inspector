@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Edemint Inspector with a bounded, timeout-enforced file probe."""
+"""Edemint Inspector with bounded probing and disposable viewer isolation."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import base64
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import time
@@ -19,6 +20,7 @@ from gi.repository import Adw, Gtk  # noqa: E402
 
 APP_ID = "org.edemint.Inspector"
 PROBE = "/usr/libexec/edemint-inspector-probe"
+SANDBOX = "/usr/libexec/edemint-inspector-sandbox"
 DEFAULT_TIMEOUT_SECONDS = 3.0
 MAX_TIMEOUT_SECONDS = 10.0
 
@@ -90,6 +92,35 @@ class Inspector(Adw.Application):
         self.window.set_content(toolbar)
         self.window.present()
 
+    def notice(self, message: str) -> None:
+        if self.window:
+            dialog = Adw.AlertDialog(heading="Inspector", body=message)
+            dialog.add_response("ok", "OK")
+            dialog.present(self.window)
+
+    def launch_sandbox(self, path: str, expected: str) -> None:
+        try:
+            preflight = subprocess.run(
+                [sys.executable, SANDBOX, "--check", "--expect", expected, path],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=4,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            self.notice(f"Sandbox preflight failed: {exc}")
+            return
+        if preflight.returncode != 0:
+            self.notice(preflight.stderr.strip() or "No isolated viewer is available.")
+            return
+        try:
+            subprocess.Popen(
+                [sys.executable, SANDBOX, "--expect", expected, path],
+                start_new_session=True,
+            )
+        except OSError as exc:
+            self.notice(str(exc))
+
     def build_content(self) -> Gtk.Widget:
         box = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
@@ -123,12 +154,42 @@ class Inspector(Adw.Application):
 
         box.append(label(str(payload["name"]), True))
         box.append(label(
-            f"Type: {payload['mime']}\n"
+            f"Content type: {payload['mime']}\n"
+            f"Extension type: {payload['extension_mime']}\n"
             f"Size: {payload['size']} bytes\n"
             f"Modified: {time.ctime(float(payload['modified']))}\n"
             f"Path: {payload['path']}\n"
             f"Reader timeout: {timeout_seconds():g} seconds"
         ))
+        if payload.get("mime_mismatch"):
+            warning = label(
+                "Warning: the file extension and detected content type disagree. "
+                "Viewer selection follows the detected content, not the filename."
+            )
+            warning.add_css_class("warning")
+            box.append(warning)
+
+        expected = f"{payload['device']}:{payload['inode']}"
+        sandbox_button = Gtk.Button(label="Open Disposable Sandboxed Viewer")
+        sandbox_button.set_halign(Gtk.Align.START)
+        sandbox_button.set_tooltip_text(
+            "Open the same file read-only without network, host D-Bus, host processes, or hardware devices"
+        )
+        sandbox_button.connect(
+            "clicked",
+            lambda _button: self.launch_sandbox(str(payload["path"]), expected),
+        )
+        sandbox_button.set_sensitive(Path(SANDBOX).is_file() and bool(shutil.which("bwrap")))
+        box.append(sandbox_button)
+
+        scanner = "available as an optional warning signal" if shutil.which("clamscan") else "not installed"
+        box.append(label(
+            "Sandbox policy: one read-only file; private temporary home; no network; "
+            "no host process namespace; no host D-Bus, SSH agent, password store, or "
+            "hardware devices; all Linux capabilities dropped; bounded CPU, memory, "
+            f"output size, process count, descriptors, and wall time. Malware scanner: {scanner}."
+        ))
+
         buffer = Gtk.TextBuffer()
         buffer.set_text(text)
         view = Gtk.TextView(buffer=buffer, editable=False, monospace=True)
@@ -137,9 +198,10 @@ class Inspector(Adw.Application):
         scroller.set_child(view)
         box.append(scroller)
         box.append(label(
-            "Inspector reads only the selected regular file through a separate "
-            "bounded process. It does not bypass permissions, execute embedded "
-            "content, follow symbolic links, or extract archives."
+            "The bounded preview never executes content or extracts archives. The optional "
+            "viewer runs in a disposable namespace and cannot bypass the current user's Unix "
+            "file permissions. Office documents use LibreOffice safe/view mode; audio is "
+            "disabled in isolated media previews so no PipeWire device is exposed."
         ))
         return box
 

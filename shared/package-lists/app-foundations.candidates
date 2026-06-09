@@ -19,6 +19,17 @@ gnome-color-manager|Color control frontend|desktop|candidate
 colord|Color management service|desktop|candidate
 bubblewrap|Inspector process sandbox|core|candidate
 xdg-dbus-proxy|Inspector D-Bus boundary|core|candidate
+file|Inspector content type detection|core|candidate
+evince|Inspector PDF viewer|desktop|candidate
+imv|Inspector image viewer|desktop|candidate
+mpv|Inspector media viewer|desktop|candidate
+file-roller|Inspector archive viewer|desktop|candidate
+libreoffice-writer|Inspector document viewer and office suite|desktop|candidate
+libreoffice-calc|Inspector spreadsheet viewer and office suite|desktop|candidate
+libreoffice-impress|Inspector presentation viewer and office suite|desktop|candidate
+libreoffice-gtk3|LibreOffice desktop integration|desktop|candidate
+speech-dispatcher|Speech accessibility service|desktop|candidate
+gnome-accessibility-themes|High contrast accessibility themes|desktop|candidate
 cheese|Standard camera foundation|desktop|candidate
 webcamoid|Optional Camera Studio foundation|optional|candidate
 goldendict-ng|Dictionary foundation|desktop|candidate

@@ -13,11 +13,13 @@ on:
       - scripts/verify-app-foundations.sh
       - scripts/smoke-hyprland-session.sh
       - profiles/arm64-pi/build.sh
+      - shared/package-lists/base.list.chroot
       - shared/package-lists/app-foundations.candidates
       - shared/package-lists/app-suite.list.chroot
       - shared/package-lists/desktop.list.chroot
       - profiles/amd64-iso/config/package-lists/app-suite.list.chroot
       - profiles/amd64-iso/config/package-lists/apps-desktop-extra.list.chroot
+      - shared/includes/etc/locale.nopurge
       - shared/includes/usr/libexec/edemint-app
       - shared/includes/usr/libexec/edemint-activity-monitor-app
       - shared/includes/usr/libexec/edemint-console-app
@@ -27,6 +29,7 @@ on:
       - shared/includes/usr/libexec/edemint-messenger
       - shared/includes/usr/libexec/edemint-inspector
       - shared/includes/usr/libexec/edemint-inspector-probe
+      - shared/includes/usr/libexec/edemint-inspector-sandbox
       - shared/includes/usr/libexec/edemint-fullcall
       - shared/includes/usr/libexec/edemint-default-apps
       - shared/includes/usr/local/bin/edemint-*
@@ -46,11 +49,13 @@ on:
       - scripts/verify-app-foundations.sh
       - scripts/smoke-hyprland-session.sh
       - profiles/arm64-pi/build.sh
+      - shared/package-lists/base.list.chroot
       - shared/package-lists/app-foundations.candidates
       - shared/package-lists/app-suite.list.chroot
       - shared/package-lists/desktop.list.chroot
       - profiles/amd64-iso/config/package-lists/app-suite.list.chroot
       - profiles/amd64-iso/config/package-lists/apps-desktop-extra.list.chroot
+      - shared/includes/etc/locale.nopurge
       - shared/includes/usr/libexec/edemint-app
       - shared/includes/usr/libexec/edemint-activity-monitor-app
       - shared/includes/usr/libexec/edemint-console-app
@@ -60,6 +65,7 @@ on:
       - shared/includes/usr/libexec/edemint-messenger
       - shared/includes/usr/libexec/edemint-inspector
       - shared/includes/usr/libexec/edemint-inspector-probe
+      - shared/includes/usr/libexec/edemint-inspector-sandbox
       - shared/includes/usr/libexec/edemint-fullcall
       - shared/includes/usr/libexec/edemint-default-apps
       - shared/includes/usr/local/bin/edemint-*
@@ -123,6 +129,7 @@ jobs:
             shared/includes/usr/libexec/edemint-messenger \
             shared/includes/usr/libexec/edemint-inspector \
             shared/includes/usr/libexec/edemint-inspector-probe \
+            shared/includes/usr/libexec/edemint-inspector-sandbox \
             shared/includes/usr/libexec/edemint-fullcall \
             shared/includes/usr/libexec/edemint-default-apps \
             scripts/validate-app-catalog.py \
@@ -147,7 +154,7 @@ jobs:
           sample="$(mktemp)"
           printf 'bounded preview\n' > "$sample"
           python3 shared/includes/usr/libexec/edemint-inspector-probe "$sample" \
-            | python3 -c 'import json,sys; p=json.load(sys.stdin); assert p["ok"] and p["size"] == 16'
+            | python3 -c 'import json,sys; p=json.load(sys.stdin); assert p["ok"] and p["size"] == 16 and p["mime"].startswith("text/") and not p["mime_mismatch"]'
           ln -s "$sample" "$sample.link"
           if python3 shared/includes/usr/libexec/edemint-inspector-probe "$sample.link" >/dev/null; then
             echo "Inspector probe followed a symbolic link" >&2
