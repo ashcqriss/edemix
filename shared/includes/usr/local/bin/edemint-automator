@@ -1,2 +1,2 @@
 #!/bin/sh
-exec /usr/libexec/edemint-app automator "$@"
+exec /usr/libexec/edemint-automator "$@"

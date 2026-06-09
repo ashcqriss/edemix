@@ -8,7 +8,6 @@ WORK="/tmp/e-smoke-$$"
 rm -rf "$WORK"
 mkdir -p "$WORK"
 
-# The installed greeter contract must still enter the compositor directly.
 grep -q -- '--cmd Hyprland' "$ROOT/shared/includes/etc/greetd/config.toml"
 
 DRM_DEVICE="${EDEMINT_DRM_DEVICE:-/dev/dri/card0}"
@@ -27,6 +26,7 @@ export XDG_SESSION_DESKTOP=Hyprland
 export AQ_DRM_DEVICES="$DRM_DEVICE"
 export AQ_NO_MODIFIERS=1
 export AQ_MGPU_NO_EXPLICIT=1
+export AQ_TRACE=1
 export LIBGL_ALWAYS_SOFTWARE=1
 export MESA_LOADER_DRIVER_OVERRIDE=kms_swrast
 export GALLIUM_DRIVER=llvmpipe
@@ -69,6 +69,7 @@ cat > "$XDG_CONFIG_HOME/hypr/smoke.conf" <<'EOF'
 monitor = ,preferred,auto,1
 debug {
     disable_logs = false
+    disable_stdout_logs = false
 }
 misc {
     disable_hyprland_logo = true
@@ -81,8 +82,6 @@ exec-once = foot --title=edemint-session-smoke sh -c "touch $EDEMINT_SMOKE_MARKE
 EOF
 
 dbus-run-session -- sh -eu <<'EOF'
-# The CI container runs as root. Hyprland requires this explicit opt-in only
-# for the isolated virtual-KMS smoke environment; installed sessions do not.
 Hyprland --config "$XDG_CONFIG_HOME/hypr/smoke.conf" --i-am-really-stupid >"$LOG" 2>&1 &
 compositor=$!
 cleanup() {
@@ -94,8 +93,13 @@ fail() {
     if [ -n "${2:-}" ]; then
         printf '%s\n' "$2" >&2
     fi
-    printf '%s\n' '--- compositor log ---' >&2
+    printf '%s\n' '--- compositor stdout/stderr ---' >&2
     cat "$LOG" >&2
+    for runtime_log in "$XDG_RUNTIME_DIR"/hypr/*/hyprland.log; do
+        [ -r "$runtime_log" ] || continue
+        printf '%s\n' "--- runtime log: $runtime_log ---" >&2
+        cat "$runtime_log" >&2
+    done
     exit 1
 }
 trap cleanup EXIT INT TERM

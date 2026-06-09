@@ -7,6 +7,8 @@ x-scheme-handler/http=edemint-adventurer.desktop;
 x-scheme-handler/https=edemint-adventurer.desktop;
 x-scheme-handler/mailto=edemint-mail.desktop;
 x-scheme-handler/tel=edemint-phone.desktop;
+x-scheme-handler/sip=edemint-phone.desktop;
+x-scheme-handler/matrix=edemint-messenger.desktop;
 
 [Added Associations]
 inode/directory=edemint-filer.desktop;
@@ -17,3 +19,5 @@ x-scheme-handler/http=edemint-adventurer.desktop;firefox-esr.desktop;
 x-scheme-handler/https=edemint-adventurer.desktop;firefox-esr.desktop;
 x-scheme-handler/mailto=edemint-mail.desktop;
 x-scheme-handler/tel=edemint-phone.desktop;
+x-scheme-handler/sip=edemint-phone.desktop;
+x-scheme-handler/matrix=edemint-messenger.desktop;

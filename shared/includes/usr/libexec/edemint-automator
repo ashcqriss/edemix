@@ -1,0 +1,512 @@
+#!/usr/bin/python3
+"""Edemint Automator: reviewed workflow execution, history and schedules."""
+
+from __future__ import annotations
+
+from datetime import datetime
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import threading
+import time
+from typing import Any, Callable
+from urllib.parse import urlparse
+import uuid
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+
+APP_ID = "org.edemint.Automator"
+SCHEMA = 2
+MAX_STEPS = 40
+MAX_DEPTH = 4
+MAX_REPEAT = 10
+MAX_DELAY = 30.0
+ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,80}")
+ACTIONS = ("launch_application", "open_uri", "open_folder", "delay", "notify", "if_path_exists", "repeat")
+SCHEDULES = ("hourly", "daily", "weekly")
+
+
+def xdg(variable: str, fallback: Path) -> Path:
+    return Path(os.environ.get(variable, fallback)).expanduser()
+
+
+def automator_dir() -> Path:
+    path = xdg("XDG_DATA_HOME", Path.home() / ".local/share") / "edemint" / "automator"
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path.chmod(0o700)
+    return path
+
+
+def shortcuts_path() -> Path:
+    return xdg("XDG_DATA_HOME", Path.home() / ".local/share") / "edemint" / "library" / "shortcuts.json"
+
+
+def atomic_json(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    with temporary.open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=True, indent=2, sort_keys=True)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    temporary.chmod(0o600)
+    temporary.replace(path)
+
+
+def load_items() -> list[dict[str, Any]]:
+    try:
+        payload = json.loads(shortcuts_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return []
+    raw = payload.get("items", []) if isinstance(payload, dict) else payload if isinstance(payload, list) else []
+    return [item for item in raw if isinstance(item, dict)]
+
+
+def save_items(items: list[dict[str, Any]]) -> None:
+    path = shortcuts_path()
+    if path.exists():
+        try:
+            backup = automator_dir() / "shortcuts-before-automator.json"
+            shutil.copyfile(path, backup)
+            backup.chmod(0o600)
+        except OSError:
+            pass
+    atomic_json(path, {"schema": SCHEMA, "items": items})
+
+
+def workflows() -> list[dict[str, Any]]:
+    return [item for item in load_items() if item.get("kind") == "workflow" and isinstance(item.get("id"), str)]
+
+
+def validate_uri(value: str) -> bool:
+    parsed = urlparse(value)
+    return (parsed.scheme in {"http", "https"} and bool(parsed.netloc)) or (parsed.scheme in {"mailto", "tel"} and bool(parsed.path))
+
+
+def desktop_ids() -> set[str]:
+    result: set[str] = set()
+    for root in (Path.home() / ".local/share/applications", Path("/usr/local/share/applications"), Path("/usr/share/applications")):
+        if root.is_dir():
+            result.update(path.stem for path in root.glob("*.desktop"))
+    return result
+
+
+def validate_steps(steps: Any, depth: int = 0) -> tuple[bool, str]:
+    if not isinstance(steps, list) or not steps:
+        return False, "A workflow needs at least one step."
+    if depth > MAX_DEPTH or len(steps) > MAX_STEPS:
+        return False, "The workflow is too large or deeply nested."
+    known_apps = desktop_ids()
+    for index, step in enumerate(steps, 1):
+        if not isinstance(step, dict) or step.get("action") not in ACTIONS:
+            return False, f"Step {index} uses an unsupported action."
+        action = step["action"]
+        if action == "launch_application" and str(step.get("target", "")).removesuffix(".desktop") not in known_apps:
+            return False, f"Step {index} references an unavailable application."
+        if action == "open_uri" and not validate_uri(str(step.get("target", ""))):
+            return False, f"Step {index} needs an HTTP, HTTPS, mailto or tel URI."
+        if action in {"open_folder", "if_path_exists"} and not isinstance(step.get("path"), str):
+            return False, f"Step {index} needs a path."
+        if action == "notify" and not isinstance(step.get("message"), str):
+            return False, f"Step {index} needs a notification message."
+        if action == "delay":
+            try:
+                seconds = float(step.get("seconds", -1))
+            except (TypeError, ValueError):
+                return False, f"Step {index} has an invalid delay."
+            if seconds < 0 or seconds > MAX_DELAY:
+                return False, f"Step {index} delay must be 0-{MAX_DELAY:g} seconds."
+        if action == "repeat":
+            try:
+                count = int(step.get("count", 0))
+            except (TypeError, ValueError):
+                return False, f"Step {index} has an invalid repeat count."
+            if count < 1 or count > MAX_REPEAT:
+                return False, f"Step {index} repeat count must be 1-{MAX_REPEAT}."
+            ok, error = validate_steps(step.get("steps"), depth + 1)
+            if not ok:
+                return False, error
+        if action == "if_path_exists":
+            for branch in ("then", "else"):
+                nested = step.get(branch, [])
+                if nested:
+                    ok, error = validate_steps(nested, depth + 1)
+                    if not ok:
+                        return False, error
+    return True, ""
+
+
+def workflow_permissions(steps: list[Any]) -> set[str]:
+    result: set[str] = set()
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        action = step.get("action")
+        if action == "launch_application":
+            result.add("launch applications")
+        elif action == "open_uri":
+            result.add("open network or communication links")
+        elif action in {"open_folder", "if_path_exists"}:
+            result.add("inspect selected paths")
+        elif action == "notify":
+            result.add("show notifications")
+        elif action == "delay":
+            result.add("use bounded timers")
+        for nested in (step.get("steps"), step.get("then"), step.get("else")):
+            if isinstance(nested, list):
+                result.update(workflow_permissions(nested))
+    return result
+
+
+def substitute(value: str, variables: dict[str, str]) -> str:
+    values = {
+        "HOME": str(Path.home()),
+        "DATE": datetime.now().astimezone().strftime("%Y-%m-%d"),
+        "TIME": datetime.now().astimezone().strftime("%H:%M"),
+        **variables,
+    }
+    output = value
+    for key, replacement in values.items():
+        output = output.replace("${" + key + "}", str(replacement))
+    return output
+
+
+def plan_steps(steps: list[dict[str, Any]], variables: dict[str, str], depth: int = 0) -> list[str]:
+    lines: list[str] = []
+    prefix = "  " * depth
+    for step in steps:
+        action = step["action"]
+        if action == "launch_application":
+            lines.append(prefix + "Launch application: " + substitute(str(step["target"]), variables))
+        elif action == "open_uri":
+            lines.append(prefix + "Open URI: " + substitute(str(step["target"]), variables))
+        elif action == "open_folder":
+            lines.append(prefix + "Open folder: " + substitute(str(step["path"]), variables))
+        elif action == "delay":
+            lines.append(prefix + f"Delay: {float(step.get('seconds', 0)):g} seconds")
+        elif action == "notify":
+            lines.append(prefix + "Notify: " + substitute(str(step["message"]), variables))
+        elif action == "repeat":
+            lines.append(prefix + f"Repeat {int(step['count'])} times:")
+            lines.extend(plan_steps(step["steps"], variables, depth + 1))
+        elif action == "if_path_exists":
+            lines.append(prefix + "If path exists: " + substitute(str(step["path"]), variables))
+            lines.extend(plan_steps(step.get("then", []), variables, depth + 1))
+            if step.get("else"):
+                lines.append(prefix + "Else:")
+                lines.extend(plan_steps(step["else"], variables, depth + 1))
+    return lines
+
+
+def execute_steps(steps: list[dict[str, Any]], variables: dict[str, str], notifier: Callable[[str], None]) -> None:
+    for step in steps:
+        action = step["action"]
+        if action == "launch_application":
+            subprocess.Popen(["gtk-launch", substitute(str(step["target"]), variables).removesuffix(".desktop")], start_new_session=True)
+        elif action == "open_uri":
+            Gio.AppInfo.launch_default_for_uri(substitute(str(step["target"]), variables), None)
+        elif action == "open_folder":
+            path = Path(substitute(str(step["path"]), variables)).expanduser().resolve()
+            if not path.is_dir():
+                raise RuntimeError(f"Folder unavailable: {path}")
+            Gio.AppInfo.launch_default_for_uri(path.as_uri(), None)
+        elif action == "delay":
+            time.sleep(float(step.get("seconds", 0)))
+        elif action == "notify":
+            notifier(substitute(str(step["message"]), variables))
+        elif action == "repeat":
+            for _index in range(int(step["count"])):
+                execute_steps(step["steps"], variables, notifier)
+        elif action == "if_path_exists":
+            path = Path(substitute(str(step["path"]), variables)).expanduser()
+            branch = step.get("then", []) if path.exists() else step.get("else", [])
+            if branch:
+                execute_steps(branch, variables, notifier)
+
+
+def history_path() -> Path:
+    return automator_dir() / "history.json"
+
+
+def append_history(identifier: str, name: str, status: str, detail: str, started: int) -> None:
+    try:
+        rows = json.loads(history_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        rows = []
+    if not isinstance(rows, list):
+        rows = []
+    rows.insert(0, {"id": identifier, "name": name, "status": status, "detail": detail[:1000], "started": started, "finished": int(time.time())})
+    atomic_json(history_path(), rows[:500])
+
+
+def desktop_notify(message: str) -> None:
+    if shutil.which("notify-send"):
+        subprocess.run(["notify-send", "Automator", message[:500]], check=False, timeout=5)
+
+
+def run_workflow(item: dict[str, Any], notifier: Callable[[str], None] = desktop_notify) -> tuple[bool, str]:
+    ok, error = validate_steps(item.get("target"))
+    if not ok:
+        return False, error
+    variables = {str(key)[:64]: str(value)[:1024] for key, value in item.get("variables", {}).items()} if isinstance(item.get("variables"), dict) else {}
+    started = int(time.time())
+    try:
+        execute_steps(item["target"], variables, notifier)
+        append_history(str(item["id"]), str(item.get("name", "Workflow")), "completed", "", started)
+        return True, ""
+    except (OSError, RuntimeError, ValueError, GLib.Error, subprocess.SubprocessError) as exc:
+        try:
+            append_history(str(item["id"]), str(item.get("name", "Workflow")), "failed", str(exc), started)
+        except OSError:
+            pass
+        return False, str(exc)
+
+
+def find_workflow(identifier: str) -> dict[str, Any] | None:
+    return next((item for item in workflows() if item.get("id") == identifier), None)
+
+
+def unit_dir() -> Path:
+    path = Path.home() / ".config/systemd/user"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def unit_name(identifier: str) -> str:
+    return "edemint-automator-" + re.sub(r"[^A-Za-z0-9_-]", "-", identifier)[:80]
+
+
+def install_schedule(item: dict[str, Any], schedule: str) -> tuple[bool, str]:
+    identifier = str(item.get("id", ""))
+    if not ID_PATTERN.fullmatch(identifier) or schedule not in SCHEDULES:
+        return False, "Invalid workflow identifier or schedule."
+    ok, error = validate_steps(item.get("target"))
+    if not ok:
+        return False, error
+    name = unit_name(identifier)
+    service = unit_dir() / f"{name}.service"
+    timer = unit_dir() / f"{name}.timer"
+    # User workflows may intentionally open user files or applications, so the
+    # service keeps normal home access while blocking privilege gain and writes
+    # to the immutable operating-system tree.
+    service.write_text("[Unit]\nDescription=Run reviewed Edemint Automator workflow\n\n[Service]\nType=oneshot\nExecStart=/usr/libexec/edemint-automator --run " + identifier + "\nNoNewPrivileges=yes\nPrivateTmp=yes\nProtectSystem=strict\nRestrictSUIDSGID=yes\nLockPersonality=yes\n\n", encoding="utf-8")
+    timer.write_text(f"[Unit]\nDescription=Schedule reviewed Edemint Automator workflow\n\n[Timer]\nOnCalendar={schedule}\nPersistent=true\nRandomizedDelaySec=5m\n\n[Install]\nWantedBy=timers.target\n", encoding="utf-8")
+    service.chmod(0o600)
+    timer.chmod(0o600)
+    try:
+        subprocess.run(["systemctl", "--user", "daemon-reload"], check=True, timeout=15)
+        subprocess.run(["systemctl", "--user", "enable", "--now", f"{name}.timer"], check=True, timeout=20)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, str(exc)
+    return True, f"Scheduled {schedule}."
+
+
+def remove_schedule(identifier: str) -> tuple[bool, str]:
+    if not ID_PATTERN.fullmatch(identifier):
+        return False, "Invalid workflow identifier."
+    name = unit_name(identifier)
+    try:
+        subprocess.run(["systemctl", "--user", "disable", "--now", f"{name}.timer"], check=False, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    for suffix in ("service", "timer"):
+        try:
+            (unit_dir() / f"{name}.{suffix}").unlink()
+        except FileNotFoundError:
+            pass
+    try:
+        subprocess.run(["systemctl", "--user", "daemon-reload"], check=False, timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return True, "Schedule removed."
+
+
+def templates() -> list[dict[str, Any]]:
+    now = int(time.time())
+    return [
+        {"id": uuid.uuid4().hex, "name": "Daily start", "kind": "workflow", "target": [{"action": "notify", "message": "Daily start at ${TIME}"}, {"action": "launch_application", "target": "org.gnome.Calendar"}], "category": "Automator", "icon": "system-run", "trigger": "manual", "variables": {}, "created": now, "modified": now},
+        {"id": uuid.uuid4().hex, "name": "Backup reminder", "kind": "workflow", "target": [{"action": "if_path_exists", "path": "${HOME}/Documents", "then": [{"action": "notify", "message": "Review your backup status."}, {"action": "launch_application", "target": "org.gnome.DejaDup"}], "else": [{"action": "notify", "message": "Documents folder is unavailable."}]}], "category": "Automator", "icon": "document-save", "trigger": "manual", "variables": {}, "created": now, "modified": now},
+    ]
+
+
+def scrolled(child: Gtk.Widget) -> Gtk.ScrolledWindow:
+    view = Gtk.ScrolledWindow(vexpand=True)
+    view.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+    view.set_child(child)
+    return view
+
+
+class Automator(Adw.Application):
+    def __init__(self) -> None:
+        super().__init__(application_id=APP_ID)
+        self.window: Adw.ApplicationWindow | None = None
+        self.workflow_box: Gtk.ListBox | None = None
+        self.search: Gtk.SearchEntry | None = None
+        self.schedule_choice: Gtk.DropDown | None = None
+
+    def do_activate(self) -> None:
+        if self.window:
+            self.window.present()
+            return
+        self.window = Adw.ApplicationWindow(application=self)
+        self.window.set_title("Automator")
+        self.window.set_default_size(1000, 720)
+        toolbar = Adw.ToolbarView()
+        toolbar.add_top_bar(Adw.HeaderBar())
+        toolbar.set_content(self.build_content())
+        self.window.set_content(toolbar)
+        self.window.present()
+
+    def notice(self, message: str) -> None:
+        if self.window:
+            dialog = Adw.AlertDialog(heading="Automator", body=message)
+            dialog.add_response("ok", "OK")
+            dialog.present(self.window)
+
+    def build_content(self) -> Gtk.Widget:
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin_top=14, margin_bottom=14, margin_start=14, margin_end=14)
+        outer.append(Gtk.Label(label="Automator runs structured, allowlisted Shortcuts workflows. It adds dry-run plans, bounded user schedules, execution history and schedule revocation. Arbitrary shell commands, privilege escalation and unreviewed executable steps are rejected.", xalign=0, wrap=True))
+        controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.search = Gtk.SearchEntry(placeholder_text="Search workflows")
+        self.search.set_hexpand(True)
+        self.search.connect("search-changed", lambda _entry: self.refresh())
+        self.schedule_choice = Gtk.DropDown.new_from_strings(("Hourly", "Daily", "Weekly"))
+        controls.append(self.search)
+        controls.append(self.schedule_choice)
+        for text, callback in (("Open editor", self.open_editor), ("Add templates", self.add_templates), ("History", self.show_history), ("Scheduled timers", self.show_timers)):
+            button = Gtk.Button(label=text)
+            button.connect("clicked", lambda _button, action=callback: action())
+            controls.append(button)
+        outer.append(controls)
+        self.workflow_box = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        outer.append(scrolled(self.workflow_box))
+        self.refresh()
+        return outer
+
+    def refresh(self) -> None:
+        if not self.workflow_box:
+            return
+        while child := self.workflow_box.get_first_child():
+            self.workflow_box.remove(child)
+        query = self.search.get_text().strip().casefold() if self.search else ""
+        items = [item for item in workflows() if not query or query in f"{item.get('name','')} {item.get('category','')}".casefold()]
+        if not items:
+            self.workflow_box.append(Adw.ActionRow(title="No workflows", subtitle="Create one in Shortcuts or add reviewed templates."))
+            return
+        for item in items:
+            ok, error = validate_steps(item.get("target"))
+            requested = ", ".join(sorted(workflow_permissions(item.get("target", [])))) or "no broad permissions"
+            row = Adw.ActionRow(title=str(item.get("name", "Workflow")), subtitle=requested if ok else f"Invalid: {error}")
+            dry = Gtk.Button(label="Dry run", valign=Gtk.Align.CENTER)
+            dry.connect("clicked", lambda _button, workflow=item: self.dry_run(workflow))
+            run = Gtk.Button(label="Run", valign=Gtk.Align.CENTER, sensitive=ok)
+            run.connect("clicked", lambda _button, workflow=item: self.run_async(workflow))
+            schedule = Gtk.Button(label="Schedule", valign=Gtk.Align.CENTER, sensitive=ok)
+            schedule.connect("clicked", lambda _button, workflow=item: self.schedule(workflow))
+            revoke = Gtk.Button(label="Revoke", valign=Gtk.Align.CENTER)
+            revoke.connect("clicked", lambda _button, identifier=str(item.get("id", "")): self.revoke(identifier))
+            for button in (dry, run, schedule, revoke):
+                row.add_suffix(button)
+            row.set_activatable_widget(run)
+            self.workflow_box.append(row)
+
+    def open_editor(self) -> None:
+        try:
+            subprocess.Popen(["edemint-shortcuts"], start_new_session=True)
+        except OSError as exc:
+            self.notice(str(exc))
+
+    def add_templates(self) -> None:
+        items = load_items()
+        existing = {str(item.get("name", "")).casefold() for item in items}
+        added = [item for item in templates() if item["name"].casefold() not in existing]
+        items.extend(added)
+        save_items(items)
+        self.refresh()
+        self.notice(f"Added {len(added)} reviewed templates.")
+
+    def dry_run(self, item: dict[str, Any]) -> None:
+        ok, error = validate_steps(item.get("target"))
+        if not ok:
+            self.notice(error)
+            return
+        variables = {str(key): str(value) for key, value in item.get("variables", {}).items()} if isinstance(item.get("variables"), dict) else {}
+        self.notice("Requested permissions: " + (", ".join(sorted(workflow_permissions(item["target"]))) or "none") + "\n\n" + "\n".join(plan_steps(item["target"], variables)))
+
+    def run_async(self, item: dict[str, Any]) -> None:
+        def worker() -> None:
+            ok, error = run_workflow(item, lambda message: GLib.idle_add(self.workflow_notification, str(item["id"]), message))
+            GLib.idle_add(self.notice, f"{item.get('name', 'Workflow')} completed." if ok else f"Workflow failed: {error}")
+        threading.Thread(target=worker, daemon=True, name=f"automator-{str(item.get('id',''))[:12]}").start()
+
+    def workflow_notification(self, identifier: str, message: str) -> bool:
+        notification = Gio.Notification.new("Automator")
+        notification.set_body(message[:500])
+        self.send_notification(f"automator-{identifier}", notification)
+        return False
+
+    def schedule(self, item: dict[str, Any]) -> None:
+        index = self.schedule_choice.get_selected() if self.schedule_choice else 1
+        ok, message = install_schedule(item, SCHEDULES[min(index, len(SCHEDULES) - 1)])
+        self.notice(message if ok else f"Schedule failed: {message}")
+
+    def revoke(self, identifier: str) -> None:
+        _ok, message = remove_schedule(identifier)
+        self.notice(message)
+
+    def show_history(self) -> None:
+        try:
+            rows = json.loads(history_path().read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            rows = []
+        text = "\n".join(f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(int(row.get('started', 0))))} | {row.get('name')} | {row.get('status')} | {row.get('detail','')}" for row in rows[:100]) or "No workflow executions recorded."
+        self.notice(text)
+
+    def show_timers(self) -> None:
+        try:
+            result = subprocess.run(["systemctl", "--user", "list-timers", "edemint-automator-*", "--no-pager"], check=False, capture_output=True, text=True, timeout=10)
+            text = result.stdout.strip() or result.stderr.strip() or "No Automator timers."
+        except (OSError, subprocess.SubprocessError) as exc:
+            text = str(exc)
+        self.notice(text)
+
+
+def command_mode(arguments: list[str]) -> int | None:
+    if len(arguments) == 2 and arguments[0] in {"--run", "--dry-run"}:
+        item = find_workflow(arguments[1])
+        if not item:
+            print("Automator workflow not found.", file=sys.stderr)
+            return 2
+        ok, error = validate_steps(item.get("target"))
+        if not ok:
+            print(error, file=sys.stderr)
+            return 2
+        variables = {str(key): str(value) for key, value in item.get("variables", {}).items()} if isinstance(item.get("variables"), dict) else {}
+        if arguments[0] == "--dry-run":
+            print("\n".join(plan_steps(item["target"], variables)))
+            return 0
+        success, error = run_workflow(item)
+        if not success:
+            print(error, file=sys.stderr)
+            return 1
+        return 0
+    return None
+
+
+def main() -> int:
+    handled = command_mode(sys.argv[1:])
+    if handled is not None:
+        return handled
+    return Automator().run([sys.argv[0]])
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -115,6 +115,8 @@ jobs:
             shared/includes/usr/libexec/edemint-settings-app \
             shared/includes/usr/libexec/edemint-settings-helper \
             shared/includes/usr/libexec/edemint-fullcall \
+            shared/includes/usr/libexec/edemint-phone-app \
+            shared/includes/usr/libexec/edemint-automator \
             shared/includes/usr/libexec/edemint-default-apps \
             scripts/validate-app-catalog.py \
             scripts/validate-completed-features.py
@@ -137,7 +139,9 @@ jobs:
         run: |
           sample="$(mktemp --suffix=.txt)"
           printf 'bounded preview\n' > "$sample"
-          python3 shared/includes/usr/libexec/edemint-inspector-probe "$sample" \
+          payload="$(python3 shared/includes/usr/libexec/edemint-inspector-probe "$sample")"
+          printf 'Inspector payload: %s\n' "$payload"
+          printf '%s\n' "$payload" \
             | python3 -c 'import json,sys; p=json.load(sys.stdin); assert p["ok"] and p["size"] == 16 and p["mime"].startswith("text/") and not p["mime_mismatch"]'
           ln -s "$sample" "$sample.link"
           if python3 shared/includes/usr/libexec/edemint-inspector-probe "$sample.link" >/dev/null; then

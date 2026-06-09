@@ -55,6 +55,10 @@ def main() -> int:
         if not stat.S_ISREG(metadata.st_mode):
             raise OSError("Inspector previews regular files only.")
 
+        # Detect through the already-open descriptor before consuming it. The
+        # descriptor offset is shared with /proc/self/fd and must still be zero.
+        content_mime = detect_content_mime(descriptor)
+        os.lseek(descriptor, 0, os.SEEK_SET)
         chunks: list[bytes] = []
         remaining = MAX_PREVIEW_BYTES
         while remaining:
@@ -65,7 +69,6 @@ def main() -> int:
             remaining -= len(chunk)
         raw = b"".join(chunks)
         extension_mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        content_mime = detect_content_mime(descriptor)
         mismatch = (
             extension_mime != "application/octet-stream"
             and content_mime != "application/octet-stream"
