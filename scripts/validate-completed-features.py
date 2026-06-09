@@ -63,7 +63,7 @@ def main() -> int:
     require("shared/includes/usr/libexec/edemint-phone-app", (
         "normalize_target", "external_handlers", "emergency_target", "CREATE TABLE IF NOT EXISTS contacts",
         "CREATE TABLE IF NOT EXISTS calls", "CREATE TABLE IF NOT EXISTS sip_profiles", "blocked-emergency",
-        "handoff-only", "Incoming-call state",
+        "handoff-only", "incoming-call state",
     ))
     require("shared/includes/usr/libexec/edemint-messenger", (
         "SCHEMA = 2", '"conversations"', "prepare_attachment", "import_state", "last_opened",
@@ -71,8 +71,7 @@ def main() -> int:
     ))
     require("shared/includes/usr/libexec/edemint-automator", (
         "validate_steps", "plan_steps", "install_schedule", "remove_schedule", "append_history",
-        '"--dry-run"', "MAX_REPEAT = 10", "Unsupported action" if False else "unsupported action",
-        "unreviewed executable steps are rejected",
+        '"--dry-run"', "MAX_REPEAT = 10", "unsupported action", "unreviewed executable steps are rejected",
     ))
     require("shared/includes/usr/libexec/edemint-default-apps", (
         "COMMON_TYPES", "Gio.AppInfo.get_all_for_type", "set_as_default_for_type", "reset_type_associations", "Custom MIME type or URI scheme",
@@ -98,8 +97,11 @@ def main() -> int:
         "workflow_permissions", "undo_shortcuts", "Arbitrary shell commands are never accepted",
     ))
     require("scripts/smoke-hyprland-session.sh", (
-        "AQ_DRM_DEVICES", "MESA_LOADER_DRIVER_OVERRIDE=kms_swrast", "GALLIUM_DRIVER=llvmpipe",
-        "disable_stdout_logs = false", "runtime log:", "seatd -g video", "Hyprland --config", "hyprctl -j monitors", "edemint-session-smoke",
+        "weston -B headless", "--renderer=pixman", "WAYLAND_DISPLAY=wayland-parent", "disable_stdout_logs = false",
+        "runtime log:", "Hyprland --config", "hyprctl -j monitors", "edemint-session-smoke",
+    ))
+    require(".github/workflows/hyprland-session-smoke.yml", (
+        "Nested headless login and Wayland session", "procps weston", "docker run --rm",
     ))
     require("profiles/arm64-pi/build.sh", (
         "debian-archive-keyring.gpg", "EDEMINT_DEBIAN_KEYRING", "sha256sum \"$DEBIAN_KEYRING\"",
