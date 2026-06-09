@@ -1,5 +1,5 @@
 #!/bin/sh
-# Runs in GitHub Actions only. Starts a software-rendered Weston parent,
+# Runs in GitHub Actions only. Starts a software-rendered KWin parent,
 # verifies a real nested Hyprland session, IPC, Wayland client, and clean exit.
 set -eu
 
@@ -9,6 +9,12 @@ rm -rf "$WORK"
 mkdir -p "$WORK"
 
 grep -q -- '--cmd Hyprland' "$ROOT/shared/includes/etc/greetd/config.toml"
+
+RENDER_NODE="${EDEMINT_RENDER_NODE:-}"
+[ -c "$RENDER_NODE" ] || {
+    echo "Software render node is unavailable: $RENDER_NODE" >&2
+    exit 1
+}
 
 export HOME="$WORK/h"
 export XDG_RUNTIME_DIR="$WORK/r"
@@ -21,48 +27,72 @@ export AQ_NO_MODIFIERS=1
 export AQ_MGPU_NO_EXPLICIT=1
 export AQ_TRACE=1
 export LIBGL_ALWAYS_SOFTWARE=1
+export MESA_LOADER_DRIVER_OVERRIDE=kms_swrast
 export GALLIUM_DRIVER=llvmpipe
 export WLR_RENDERER_ALLOW_SOFTWARE=1
 export HYPRLAND_NO_CRASHREPORTER=1
 export EDEMINT_SMOKE_MARKER="$WORK/client-started"
-unset DISPLAY
+unset DISPLAY WAYLAND_DISPLAY
 mkdir -p "$XDG_RUNTIME_DIR" "$XDG_CONFIG_HOME/hypr"
 chmod 0700 "$XDG_RUNTIME_DIR"
 
-WESTON_LOG="$WORK/weston.log"
+PARENT_LOG="$WORK/kwin-parent.log"
 PARENT_INFO="$WORK/parent-wayland-info.txt"
 LOG="$WORK/hyprland.log"
-export WESTON_LOG PARENT_INFO LOG
-weston -B headless --renderer=gl --socket=wayland-parent --idle-time=0 --no-config >"$WESTON_LOG" 2>&1 &
-weston_pid=$!
+export PARENT_LOG PARENT_INFO LOG
+
+dbus-run-session -- env \
+    KWIN_COMPOSE=O2 \
+    LIBGL_ALWAYS_SOFTWARE=1 \
+    MESA_LOADER_DRIVER_OVERRIDE=kms_swrast \
+    GALLIUM_DRIVER=llvmpipe \
+    kwin_wayland --virtual --width 1280 --height 720 \
+        --socket wayland-parent --no-lockscreen --no-global-shortcuts \
+        >"$PARENT_LOG" 2>&1 &
+parent_pid=$!
 cleanup_outer() {
-    kill "$weston_pid" 2>/dev/null || true
-    wait "$weston_pid" 2>/dev/null || true
+    kill "$parent_pid" 2>/dev/null || true
+    wait "$parent_pid" 2>/dev/null || true
     rm -rf "$WORK"
 }
 trap cleanup_outer EXIT INT TERM
 
-for _attempt in $(seq 1 20); do
+for _attempt in $(seq 1 30); do
     [ -S "$XDG_RUNTIME_DIR/wayland-parent" ] && break
-    if ! kill -0 "$weston_pid" 2>/dev/null; then
-        cat "$WESTON_LOG" >&2
+    if ! kill -0 "$parent_pid" 2>/dev/null; then
+        cat "$PARENT_LOG" >&2
         exit 1
     fi
     sleep 1
 done
 [ -S "$XDG_RUNTIME_DIR/wayland-parent" ] || {
-    cat "$WESTON_LOG" >&2
+    cat "$PARENT_LOG" >&2
     exit 1
 }
 export WAYLAND_DISPLAY=wayland-parent
 if ! timeout 10s wayland-info >"$PARENT_INFO" 2>&1; then
-    printf '%s\n' 'Weston parent did not expose a usable Wayland protocol endpoint.' >&2
-    printf '%s\n' '--- Weston parent log ---' >&2
-    cat "$WESTON_LOG" >&2
+    printf '%s\n' 'KWin parent did not expose a usable Wayland protocol endpoint.' >&2
+    printf '%s\n' '--- KWin parent log ---' >&2
+    cat "$PARENT_LOG" >&2
     printf '%s\n' '--- parent Wayland globals ---' >&2
     cat "$PARENT_INFO" >&2
     exit 1
 fi
+
+require_global() {
+    interface="$1"
+    minimum="$2"
+    version="$(sed -n "s/.*interface: '$interface'.*version:[[:space:]]*\([0-9][0-9]*\).*/\1/p" "$PARENT_INFO" | head -n 1)"
+    if [ -z "$version" ] || [ "$version" -lt "$minimum" ]; then
+        printf 'Parent protocol %s requires version %s, got %s.\n' "$interface" "$minimum" "${version:-missing}" >&2
+        cat "$PARENT_INFO" >&2
+        exit 1
+    fi
+}
+require_global wl_compositor 6
+require_global xdg_wm_base 6
+require_global wl_seat 9
+require_global zwp_linux_dmabuf_v1 4
 
 cat > "$XDG_CONFIG_HOME/hypr/smoke.conf" <<'EOF'
 monitor = ,preferred,auto,1
@@ -100,8 +130,8 @@ fail() {
         printf '%s\n' "--- runtime log: $runtime_log ---" >&2
         cat "$runtime_log" >&2
     done
-    printf '%s\n' '--- Weston parent log ---' >&2
-    cat "$WESTON_LOG" >&2
+    printf '%s\n' '--- KWin parent log ---' >&2
+    cat "$PARENT_LOG" >&2
     printf '%s\n' '--- parent Wayland globals ---' >&2
     cat "$PARENT_INFO" >&2
     exit 1

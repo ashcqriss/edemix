@@ -97,11 +97,13 @@ def main() -> int:
         "workflow_permissions", "undo_shortcuts", "Arbitrary shell commands are never accepted",
     ))
     require("scripts/smoke-hyprland-session.sh", (
-        "weston -B headless", "--renderer=gl", "WAYLAND_DISPLAY=wayland-parent", "wayland-info", "disable_stdout_logs = false",
-        "runtime log:", "Weston parent log", "Hyprland --config", "hyprctl -j monitors", "edemint-session-smoke",
+        "kwin_wayland --virtual", "MESA_LOADER_DRIVER_OVERRIDE=kms_swrast", "WAYLAND_DISPLAY=wayland-parent",
+        "require_global wl_compositor 6", "require_global xdg_wm_base 6", "require_global zwp_linux_dmabuf_v1 4",
+        "runtime log:", "KWin parent log", "Hyprland --config", "hyprctl -j monitors", "edemint-session-smoke",
     ))
     require(".github/workflows/hyprland-session-smoke.yml", (
-        "Nested headless login and Wayland session", "procps wayland-utils weston", "docker run --rm",
+        "Nested headless login and Wayland session", "Provision software render node", "modprobe vgem",
+        "kwin-wayland-backend-virtual", "--device", "docker run --rm",
     ))
     require("profiles/arm64-pi/build.sh", (
         "debian-archive-keyring.gpg", "EDEMINT_DEBIAN_KEYRING", "sha256sum \"$DEBIAN_KEYRING\"",

@@ -37,11 +37,32 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v5
 
+      - name: Provision software render node
+        id: render
+        shell: bash
+        run: |
+          set -euo pipefail
+          render_node="$(find /dev/dri -maxdepth 1 -type c -name 'renderD*' 2>/dev/null | sort | head -n 1 || true)"
+          if [ -z "$render_node" ]; then
+            if ! sudo modprobe vgem; then
+              sudo apt-get update -o Acquire::Languages=none
+              sudo apt-get install -y "linux-modules-extra-$(uname -r)"
+              sudo modprobe vgem
+            fi
+            sudo udevadm settle
+            render_node="$(find /dev/dri -maxdepth 1 -type c -name 'renderD*' 2>/dev/null | sort | head -n 1 || true)"
+          fi
+          test -c "$render_node"
+          echo "node=$render_node" >> "$GITHUB_OUTPUT"
+          ls -l /dev/dri
+
       - name: Start and inspect Hyprland session
         shell: bash
         run: |
           set -euo pipefail
           docker run --rm \
+            --device "${{ steps.render.outputs.node }}:${{ steps.render.outputs.node }}" \
+            -e EDEMINT_RENDER_NODE="${{ steps.render.outputs.node }}" \
             -v "$GITHUB_WORKSPACE:/workspace:ro" \
             -w /workspace \
             debian:trixie sh -eu -c '
@@ -55,6 +76,7 @@ jobs:
               apt-get update -o Acquire::Languages=none
               apt-get install -y --no-install-recommends -t trixie-backports hyprland
               apt-get install -y --no-install-recommends \
-                dbus-x11 foot jq libgl1-mesa-dri procps wayland-utils weston
+                dbus-x11 foot jq kwin-wayland kwin-wayland-backend-virtual \
+                libgl1-mesa-dri procps wayland-utils
               sh scripts/smoke-hyprland-session.sh
             '
