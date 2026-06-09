@@ -55,6 +55,6 @@ jobs:
               apt-get update -o Acquire::Languages=none
               apt-get install -y --no-install-recommends -t trixie-backports hyprland
               apt-get install -y --no-install-recommends \
-                dbus-x11 foot jq libgl1-mesa-dri procps weston
+                dbus-x11 foot jq libgl1-mesa-dri procps wayland-utils weston
               sh scripts/smoke-hyprland-session.sh
             '

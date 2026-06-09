@@ -30,9 +30,10 @@ mkdir -p "$XDG_RUNTIME_DIR" "$XDG_CONFIG_HOME/hypr"
 chmod 0700 "$XDG_RUNTIME_DIR"
 
 WESTON_LOG="$WORK/weston.log"
+PARENT_INFO="$WORK/parent-wayland-info.txt"
 LOG="$WORK/hyprland.log"
-export LOG
-weston -B headless --renderer=pixman --socket=wayland-parent --idle-time=0 --no-config >"$WESTON_LOG" 2>&1 &
+export WESTON_LOG PARENT_INFO LOG
+weston -B headless --renderer=gl --socket=wayland-parent --idle-time=0 --no-config >"$WESTON_LOG" 2>&1 &
 weston_pid=$!
 cleanup_outer() {
     kill "$weston_pid" 2>/dev/null || true
@@ -54,6 +55,14 @@ done
     exit 1
 }
 export WAYLAND_DISPLAY=wayland-parent
+if ! timeout 10s wayland-info >"$PARENT_INFO" 2>&1; then
+    printf '%s\n' 'Weston parent did not expose a usable Wayland protocol endpoint.' >&2
+    printf '%s\n' '--- Weston parent log ---' >&2
+    cat "$WESTON_LOG" >&2
+    printf '%s\n' '--- parent Wayland globals ---' >&2
+    cat "$PARENT_INFO" >&2
+    exit 1
+fi
 
 cat > "$XDG_CONFIG_HOME/hypr/smoke.conf" <<'EOF'
 monitor = ,preferred,auto,1
@@ -91,6 +100,10 @@ fail() {
         printf '%s\n' "--- runtime log: $runtime_log ---" >&2
         cat "$runtime_log" >&2
     done
+    printf '%s\n' '--- Weston parent log ---' >&2
+    cat "$WESTON_LOG" >&2
+    printf '%s\n' '--- parent Wayland globals ---' >&2
+    cat "$PARENT_INFO" >&2
     exit 1
 }
 trap cleanup EXIT INT TERM

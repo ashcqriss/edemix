@@ -95,7 +95,7 @@ jobs:
       - name: Install metadata validators
         if: matrix.arch == 'amd64'
         shell: sh
-        run: apt-get install -y --no-install-recommends desktop-file-utils python3
+        run: apt-get install -y --no-install-recommends desktop-file-utils file python3
 
       - name: Validate Edemint application suite
         if: matrix.arch == 'amd64'
