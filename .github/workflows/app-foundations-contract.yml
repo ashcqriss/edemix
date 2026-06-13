@@ -7,10 +7,12 @@ on:
       - codex/app-foundations-roadmap
     paths:
       - .github/workflows/app-foundations-contract.yml
+      - .github/workflows/hyprland-session-smoke.yml
       - apps/catalog.json
       - scripts/validate-app-catalog.py
       - scripts/validate-completed-features.py
       - scripts/verify-app-foundations.sh
+      - scripts/verify-hyprland-session-contract.sh
       - scripts/smoke-hyprland-session.sh
       - profiles/arm64-pi/build.sh
       - shared/package-lists/base.list.chroot
@@ -35,10 +37,12 @@ on:
       - main
     paths:
       - .github/workflows/app-foundations-contract.yml
+      - .github/workflows/hyprland-session-smoke.yml
       - apps/catalog.json
       - scripts/validate-app-catalog.py
       - scripts/validate-completed-features.py
       - scripts/verify-app-foundations.sh
+      - scripts/verify-hyprland-session-contract.sh
       - scripts/smoke-hyprland-session.sh
       - profiles/arm64-pi/build.sh
       - shared/package-lists/base.list.chroot
