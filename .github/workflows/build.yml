@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - name: Install lint dependencies
         run: |
           sudo apt-get update
@@ -37,14 +37,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - name: Build metapackages
         run: |
           sudo apt-get update
           sudo apt-get install -y equivs
           ./packaging/build-metapackages.sh
           test "$(find shared/includes/usr/share/edemint/metapackages -maxdepth 1 -name '*.deb' | wc -l)" -eq 4
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: edemint-metapackages
           path: shared/includes/usr/share/edemint/metapackages/*.deb
@@ -60,7 +60,7 @@ jobs:
       options: --privileged
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - name: Build dependencies
         env:
           DEBIAN_FRONTEND: noninteractive
@@ -81,7 +81,7 @@ jobs:
             tail -300 artifacts/iso-build-full.log > artifacts/iso-build-tail.log
             cat artifacts/iso-build-tail.log
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: failure()
         with:
           name: edemint-iso-build-log
@@ -92,7 +92,7 @@ jobs:
         run: |
           find profiles/amd64-iso -maxdepth 1 -name '*.iso' -exec mv {} artifacts/ \;
           test "$(find artifacts -maxdepth 1 -name '*.iso' | wc -l)" -eq 1
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: edemint-amd64-iso
           path: artifacts/*.iso
@@ -105,7 +105,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: edemint-amd64-iso
           path: artifact
@@ -132,7 +132,7 @@ jobs:
     runs-on: ${{ vars.PI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 240
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - name: Build dependencies
         run: |
           sudo apt-get update
@@ -155,7 +155,7 @@ jobs:
             tail -300 artifacts/pi-build-full.log > artifacts/pi-build-tail.log
             cat artifacts/pi-build-tail.log
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: failure()
         with:
           name: edemint-pi-build-log
@@ -167,7 +167,7 @@ jobs:
           sudo find profiles/arm64-pi/build/images -maxdepth 1 -name '*.img.zst' -exec mv {} artifacts/ \;
           sudo chown -R "$(id -u):$(id -g)" artifacts
           test "$(find artifacts -maxdepth 1 -name '*.img.zst' | wc -l)" -eq 1
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: edemint-arm64-rpi-img
           path: artifacts/*.img.zst
@@ -181,7 +181,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: edemint-arm64-rpi-img
           path: artifact
@@ -206,8 +206,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: dist
       - name: Build and sign apt repository
