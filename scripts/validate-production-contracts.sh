@@ -98,6 +98,20 @@ if grep -Eq '(^|[[:space:]])(source|eval)[[:space:]].*PRESEED' "$PROVISION"; the
     exit 1
 fi
 
+# Local actions and docker images are resolved differently. Every action fetched
+# from another repository must be immutable, reviewable, and pinned to 40 hex.
+grep -RhE '^[[:space:]]*-[[:space:]]*uses:[[:space:]]+' .github/workflows \
+    | sed -E 's/.*uses:[[:space:]]+([^[:space:]#]+).*/\1/' \
+    | while IFS= read -r action; do
+        case "$action" in
+            ./*|docker://*) continue ;;
+        esac
+        printf '%s\n' "$action" | grep -Eq '^[^@]+@[0-9a-f]{40}$' || {
+            echo "FAIL: GitHub Action is not pinned to a full commit SHA: $action" >&2
+            exit 1
+        }
+    done
+
 if command -v shellcheck >/dev/null 2>&1; then
     shellcheck "$SHARED_HOOK" "$ISO_COMPAT_HOOK" "$PI_RUNNER" "$PROVISION" "$0"
 fi
