@@ -96,14 +96,22 @@ def main() -> int:
         "record_launch", '"folders": {}', "WORKFLOW_ACTIONS", "MAX_REPEAT = 10", "if_path_exists",
         "workflow_permissions", "undo_shortcuts", "Arbitrary shell commands are never accepted",
     ))
+    require("scripts/verify-hyprland-session-contract.sh", (
+        "tuigreet .*--cmd Hyprland", "agreety --cmd Hyprland", "required-desktop.packages",
+        "Hyprland --verify-config", "--i-am-really-stupid", "Hyprland configuration and login contract passed.",
+    ))
     require("scripts/smoke-hyprland-session.sh", (
         "kwin_wayland --virtual", "MESA_LOADER_DRIVER_OVERRIDE=kms_swrast", "WAYLAND_DISPLAY=wayland-parent",
         "require_global wl_compositor 6", "require_global xdg_wm_base 6", "require_global zwp_linux_dmabuf_v1 4",
         "runtime log:", "KWin parent log", "Hyprland --config", "hyprctl -j monitors", "edemint-session-smoke",
     ))
     require(".github/workflows/hyprland-session-smoke.yml", (
-        "Nested headless login and Wayland session", "Provision software render node", "modprobe vgem",
+        "Hyprland configuration and login contract", "Detect graphical capability", "require_graphical",
+        "EDEMINT_GRAPHICAL_RUNNER", "Graphical session smoke was gated", "steps.render.outputs.available == 'true'",
         "kwin-wayland-backend-virtual", "--device", "docker run --rm",
+    ))
+    reject(".github/workflows/hyprland-session-smoke.yml", (
+        "modprobe vgem", "linux-modules-extra-",
     ))
     require("profiles/arm64-pi/build.sh", (
         "debian-archive-keyring.gpg", "EDEMINT_DEBIAN_KEYRING", "sha256sum \"$DEBIAN_KEYRING\"",
