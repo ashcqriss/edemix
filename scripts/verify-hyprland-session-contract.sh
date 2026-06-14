@@ -18,6 +18,8 @@ trap cleanup EXIT INT TERM
 for required in \
     "$HYPR_SOURCE/hyprland.conf" \
     "$HYPR_SOURCE/profile.conf" \
+    "$HYPR_SOURCE/effects.conf" \
+    "$HYPR_SOURCE/glass.conf" \
     "$HYPR_SOURCE/edemint-settings.conf" \
     "$GREETER_CONFIG" \
     "$DESKTOP_PACKAGES" \
@@ -49,4 +51,20 @@ if ! verification="$(Hyprland --verify-config \
     exit 1
 fi
 printf '%s\n' "$verification"
-printf '%s\n' 'Hyprland configuration and login contract passed.'
+
+# Also prove the "Full" frosted/liquid-glass profile parses. edemint-setup
+# enables it by repointing effects.conf at glass.conf; verify that composed
+# config too, so a bad blur/animation/layerrule keyword fails CI rather than a
+# user's first "Full" login.
+cat > "$XDG_CONFIG_HOME/hypr/effects.conf" <<'EOF'
+source = ~/.config/hypr/glass.conf
+EOF
+if ! glass_verification="$(Hyprland --verify-config \
+    --config "$XDG_CONFIG_HOME/hypr/hyprland.conf" \
+    --i-am-really-stupid 2>&1)"; then
+    printf '%s\n' 'Hyprland rejected the Edemint glass effect profile:' >&2
+    printf '%s\n' "$glass_verification" >&2
+    exit 1
+fi
+printf '%s\n' "$glass_verification"
+printf '%s\n' 'Hyprland configuration, glass profile, and login contract passed.'

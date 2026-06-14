@@ -22,6 +22,15 @@ not the complete Edemint component system.
   username, and compact password input.
 - Power menu retaining lock, log out, suspend, reboot, and shutdown actions.
 - Low-power defaults with blur, shadows, and animations disabled.
+- An opt-in frosted/liquid-glass "Full" effects profile (`hypr/glass.conf`):
+  compositor blur with vibrancy, cool drop shadows, window translucency, an
+  ultramarine -> azure -> turquoise active-border gradient, settling motion
+  curves, and layer-blur for the bars, launcher, notifications and power menu.
+  The low-power baseline (`hypr/effects.conf`) stays the shipped default; the
+  base config sources whichever profile is active, and `edemint-setup`'s "Full"
+  choice switches it on. `edemint-shell-bars` launches the status bar and dock
+  with solid or frosted Waybar stylesheets to match. The CI Hyprland contract
+  now verifies both the baseline and the glass profile parse.
 
 ## Deliberately pending
 

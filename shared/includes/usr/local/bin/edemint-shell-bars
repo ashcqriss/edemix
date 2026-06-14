@@ -1,0 +1,25 @@
+#!/bin/sh
+# Launch the Edemint status bar and pinned-app dock with the stylesheet that
+# matches the active effects profile.
+#
+# Frosted-glass panels only read well when the compositor is blurring layer
+# surfaces. On the low-power baseline (Pi, 1GB-class) there is no blur, so the
+# solid stylesheets are used to stay legible over any window. The glass profile
+# is in effect when effects.conf pulls in glass.conf (edemint-setup "Full" or a
+# hand-edited profile), so that is what we detect.
+set -eu
+
+conf_dir="${XDG_CONFIG_HOME:-$HOME/.config}"
+effects="$conf_dir/hypr/effects.conf"
+waybar_dir="$conf_dir/waybar"
+
+if grep -q 'glass.conf' "$effects" 2>/dev/null; then
+    status_style="style-glass.css"
+    dock_style="style-dock-glass.css"
+else
+    status_style="style.css"
+    dock_style="style-dock.css"
+fi
+
+waybar -c "$waybar_dir/config" -s "$waybar_dir/$status_style" &
+waybar -c "$waybar_dir/config-dock" -s "$waybar_dir/$dock_style" &

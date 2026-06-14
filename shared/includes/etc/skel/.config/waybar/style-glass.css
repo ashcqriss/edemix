@@ -1,0 +1,104 @@
+/* Edemint status bar — frosted-glass variant.
+ *
+ * Used only when the "Full" effects profile is active (the compositor is
+ * blurring the `waybar` layer; see glass.conf). The fills are translucent so
+ * that blur shows through; a bright top sheen plus a turquoise rim sell the
+ * glass. Operational colours (privacy, camera/mic, updates, battery) stay
+ * near-opaque so a safety signal can never wash out — state is never carried by
+ * translucency alone. */
+* {
+    font-family: "JetBrains Mono", sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    min-height: 0;
+    border: none;
+}
+
+window#waybar.edemint-status {
+    background: transparent;
+    color: #ffffff;
+}
+
+#clock,
+#cpu,
+#memory,
+#battery,
+#network,
+#pulseaudio,
+#tray,
+#custom-ai-privacy,
+#custom-cam-mic,
+#custom-updates {
+    min-height: 32px;
+    margin: 0 2px;
+    padding: 0 11px;
+    border-radius: 16px;
+    background: rgba(0, 44, 137, 0.45);
+    color: #ffffff;
+    border: 1px solid rgba(116, 251, 234, 0.40);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+#clock {
+    padding: 0 16px;
+    background: rgba(32, 1, 255, 0.50);
+}
+
+#network,
+#pulseaudio {
+    background: rgba(109, 88, 255, 0.50);
+}
+
+#battery.warning {
+    color: #e9de51;
+}
+
+#battery.critical {
+    color: #ffffff;
+    background: rgba(227, 21, 21, 0.92);
+    border-color: #e31515;
+}
+
+/* Privacy colours are operational signals, not decoration — kept opaque. */
+#custom-ai-privacy.disabled {
+    color: #aea3ff;
+}
+
+#custom-ai-privacy.local {
+    color: #45e289;
+}
+
+#custom-ai-privacy.cloud-idle {
+    color: #e9de51;
+}
+
+#custom-ai-privacy.cloud-active {
+    color: #ffffff;
+    background: rgba(227, 21, 21, 0.95);
+    border-color: #e31515;
+}
+
+#custom-cam-mic.camera,
+#custom-cam-mic.mic,
+#custom-cam-mic.both {
+    color: #ffffff;
+    background: rgba(227, 21, 21, 0.95);
+    border-color: #e31515;
+}
+
+#custom-updates.available {
+    color: #74fbea;
+}
+
+#custom-updates.reboot {
+    color: #171e54;
+    background: rgba(233, 222, 81, 0.95);
+    border-color: #e9de51;
+}
+
+tooltip {
+    background: rgba(23, 30, 84, 0.85);
+    color: #ffffff;
+    border: 1px solid #74fbea;
+    border-radius: 12px;
+}

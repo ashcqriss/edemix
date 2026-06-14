@@ -1,0 +1,74 @@
+/* Edemint pinned-app dock — frosted-glass variant (main_homescreen left dock).
+ *
+ * Active only under the "Full" effects profile, where glass.conf blurs the
+ * `waybar` layer. The slab and tiles are translucent ultramarine/navy so the
+ * desktop frosts through them; an inset top sheen reads as the curved top edge
+ * of a glass bar. Text labels remain placeholders until the icon theme exists. */
+* {
+    font-family: "JetBrains Mono", sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    min-height: 0;
+    border: none;
+}
+
+window#waybar.edemint-dock {
+    background: rgba(32, 1, 255, 0.42);
+    color: #ffffff;
+    border: 1px solid rgba(116, 251, 234, 0.45);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    border-radius: 28px;
+}
+
+#custom-home,
+#custom-browser,
+#custom-files,
+#custom-terminal,
+#custom-ai,
+#custom-power {
+    min-width: 52px;
+    min-height: 52px;
+    margin: 4px 10px;
+    padding: 0;
+    border-radius: 18px;
+    background: rgba(0, 44, 137, 0.55);
+    color: #ffffff;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+#custom-home:hover,
+#custom-browser:hover,
+#custom-files:hover,
+#custom-terminal:hover,
+#custom-ai:hover,
+#custom-power:hover {
+    background: rgba(109, 88, 255, 0.75);
+    color: #ffffff;
+}
+
+#custom-ai {
+    background: rgba(109, 88, 255, 0.60);
+    color: #ffffff;
+}
+
+/* The lower all-apps pill from main_homescreen. Eco-green accent kept, made
+   translucent so it reads as glass rather than a flat chip. */
+#custom-apps {
+    min-width: 52px;
+    min-height: 34px;
+    margin: 8px 10px;
+    padding: 0;
+    border-radius: 18px;
+    background: rgba(69, 226, 137, 0.65);
+    color: #06231a;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.30);
+}
+
+#custom-apps:hover {
+    background: rgba(116, 251, 234, 0.80);
+    color: #06231a;
+}
+
+#custom-power {
+    color: #f4d956;
+}

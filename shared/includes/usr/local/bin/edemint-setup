@@ -67,14 +67,45 @@ profile_choice="$(whiptail --title "Desktop effects" --notags \
     full  "Full: animations, rounded corners, blur, shadows" \
     3>&1 1>&2 2>&3)" || profile_choice=""
 
+hypr_dir="${XDG_CONFIG_HOME:-$HOME/.config}/hypr"
 case "$profile_choice" in
     full)
-        # The $low_power literal is meant for Hyprland to read, not the shell.
-        # shellcheck disable=SC2016
-        printf '%s\n' '$low_power = false' > "${XDG_CONFIG_HOME:-$HOME/.config}/hypr/profile.conf"
+        # The $low_power literal is meant for Hyprland to read, not the shell;
+        # the quoted heredoc keeps it verbatim.
+        cat > "$hypr_dir/profile.conf" <<'PROFILE'
+$low_power = false
+PROFILE
+        # Activate the frosted/liquid-glass effect layer. Hyprland sources
+        # effects.conf last, so pointing it at glass.conf turns on blur,
+        # vibrancy, shadows and motion. edemint-shell-bars then swaps the solid
+        # waybar styles for the frosted ones on the next bar launch.
+        cat > "$hypr_dir/effects.conf" <<'EFFECTS'
+source = ~/.config/hypr/glass.conf
+EFFECTS
+        # Apply live — this wizard runs inside the first graphical session.
+        hyprctl reload >/dev/null 2>&1 || true
+        pkill -x waybar 2>/dev/null || true
+        edemint-shell-bars >/dev/null 2>&1 || true
         ;;
     low|"")
-        : # default already low-power
+        # Restore the low-power baseline (also undoes a previous "Full" run).
+        cat > "$hypr_dir/effects.conf" <<'EFFECTS'
+# Low-power effects baseline (Pi, 1GB-class): no blur, shadow, or animation.
+decoration {
+    rounding = 16
+    blur {
+        enabled = false
+    }
+    shadow {
+        enabled = false
+    }
+}
+
+animations {
+    enabled = false
+}
+EFFECTS
+        hyprctl reload >/dev/null 2>&1 || true
         ;;
 esac
 
