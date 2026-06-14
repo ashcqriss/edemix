@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Camera Studio
+GenericName=Advanced Camera
+Comment=Use advanced camera and recording controls
+Exec=webcamoid
+Icon=webcamoid
+Terminal=false
+Categories=AudioVideo;Video;Photography;
+StartupNotify=true
+Keywords=camera;studio;record;exposure;professional;
+X-Edemint-Foundation=true
+X-Edemint-Upstream=webcamoid

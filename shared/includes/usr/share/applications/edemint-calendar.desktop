@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Calendar
+GenericName=Calendar
+Comment=Manage events and schedules
+Exec=gnome-calendar
+Icon=org.gnome.Calendar
+Terminal=false
+Categories=Office;Calendar;
+StartupNotify=true
+Keywords=calendar;event;schedule;
+X-Edemint-Foundation=true
+X-Edemint-Upstream=org.gnome.Calendar

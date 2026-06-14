@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<actions>
+  <action>
+    <icon>document-properties</icon>
+    <name>Open in Inspector</name>
+    <submenu></submenu>
+    <unique-id>edemint-inspector</unique-id>
+    <command>edemint-inspector %f</command>
+    <description>Preview the selected file without executing embedded content</description>
+    <range>*</range>
+    <patterns>*</patterns>
+    <directories/>
+    <audio-files/>
+    <image-files/>
+    <other-files/>
+    <text-files/>
+    <video-files/>
+  </action>
+</actions>

@@ -1,0 +1,154 @@
+name: App foundations package contract
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/app-foundations-roadmap
+    paths:
+      - .github/workflows/app-foundations-contract.yml
+      - .github/workflows/hyprland-session-smoke.yml
+      - apps/catalog.json
+      - scripts/validate-app-catalog.py
+      - scripts/validate-completed-features.py
+      - scripts/verify-app-foundations.sh
+      - scripts/verify-hyprland-session-contract.sh
+      - scripts/smoke-hyprland-session.sh
+      - profiles/arm64-pi/build.sh
+      - shared/package-lists/base.list.chroot
+      - shared/package-lists/app-foundations.candidates
+      - shared/package-lists/app-suite.list.chroot
+      - shared/package-lists/desktop.list.chroot
+      - profiles/amd64-iso/config/package-lists/app-suite.list.chroot
+      - profiles/amd64-iso/config/package-lists/apps-desktop-extra.list.chroot
+      - shared/includes/etc/locale.nopurge
+      - shared/includes/etc/skel/.config/mako/config
+      - shared/includes/etc/skel/.config/hypr/**
+      - shared/includes/usr/libexec/edemint-*
+      - shared/includes/usr/local/bin/edemint-*
+      - shared/includes/usr/share/applications/edemint-*.desktop
+      - shared/includes/usr/share/polkit-1/actions/org.edemint.settings.policy
+      - shared/includes/etc/xdg/Thunar/uca.xml
+      - shared/includes/etc/xdg/mimeapps.list
+      - packaging/edemint-app-suite/control
+      - packaging/build-metapackages.sh
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/app-foundations-contract.yml
+      - .github/workflows/hyprland-session-smoke.yml
+      - apps/catalog.json
+      - scripts/validate-app-catalog.py
+      - scripts/validate-completed-features.py
+      - scripts/verify-app-foundations.sh
+      - scripts/verify-hyprland-session-contract.sh
+      - scripts/smoke-hyprland-session.sh
+      - profiles/arm64-pi/build.sh
+      - shared/package-lists/base.list.chroot
+      - shared/package-lists/app-foundations.candidates
+      - shared/package-lists/app-suite.list.chroot
+      - shared/package-lists/desktop.list.chroot
+      - profiles/amd64-iso/config/package-lists/app-suite.list.chroot
+      - profiles/amd64-iso/config/package-lists/apps-desktop-extra.list.chroot
+      - shared/includes/etc/locale.nopurge
+      - shared/includes/etc/skel/.config/mako/config
+      - shared/includes/etc/skel/.config/hypr/**
+      - shared/includes/usr/libexec/edemint-*
+      - shared/includes/usr/local/bin/edemint-*
+      - shared/includes/usr/share/applications/edemint-*.desktop
+      - shared/includes/usr/share/polkit-1/actions/org.edemint.settings.policy
+      - shared/includes/etc/xdg/Thunar/uca.xml
+      - shared/includes/etc/xdg/mimeapps.list
+      - packaging/edemint-app-suite/control
+      - packaging/build-metapackages.sh
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-foundations-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package-contract:
+    name: Package contract (${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    container: debian:trixie-slim
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Refresh Debian package metadata
+        shell: sh
+        run: |
+          if [ "${{ matrix.arch }}" != "$(dpkg --print-architecture)" ]; then
+            dpkg --add-architecture "${{ matrix.arch }}"
+          fi
+          apt-get update -o Acquire::Languages=none
+
+      - name: Verify candidate availability
+        shell: sh
+        run: sh scripts/verify-app-foundations.sh "${{ matrix.arch }}"
+
+      - name: Install metadata validators
+        if: matrix.arch == 'amd64'
+        shell: sh
+        run: apt-get install -y --no-install-recommends desktop-file-utils file python3
+
+      - name: Validate Edemint application suite
+        if: matrix.arch == 'amd64'
+        shell: sh
+        run: |
+          python3 -m py_compile \
+            shared/includes/usr/libexec/edemint-app \
+            shared/includes/usr/libexec/edemint-activity-monitor-app \
+            shared/includes/usr/libexec/edemint-console-app \
+            shared/includes/usr/libexec/edemint-mission-control-app \
+            shared/includes/usr/libexec/edemint-sticky-notes-app \
+            shared/includes/usr/libexec/edemint-library-tools \
+            shared/includes/usr/libexec/edemint-messenger \
+            shared/includes/usr/libexec/edemint-inspector \
+            shared/includes/usr/libexec/edemint-inspector-probe \
+            shared/includes/usr/libexec/edemint-inspector-sandbox \
+            shared/includes/usr/libexec/edemint-settings-app \
+            shared/includes/usr/libexec/edemint-settings-helper \
+            shared/includes/usr/libexec/edemint-fullcall \
+            shared/includes/usr/libexec/edemint-phone-app \
+            shared/includes/usr/libexec/edemint-automator \
+            shared/includes/usr/libexec/edemint-default-apps \
+            scripts/validate-app-catalog.py \
+            scripts/validate-completed-features.py
+          python3 scripts/validate-app-catalog.py apps/catalog.json .
+          python3 scripts/validate-completed-features.py
+          for wrapper in shared/includes/usr/local/bin/edemint-*; do
+            sh -n "$wrapper"
+          done
+          desktop-file-validate shared/includes/usr/share/applications/edemint-*.desktop
+          for desktop in $(grep -o 'edemint-[A-Za-z0-9._-]*\.desktop' shared/includes/etc/xdg/mimeapps.list | sort -u); do
+            test -f "shared/includes/usr/share/applications/$desktop" || {
+              echo "missing launcher referenced by mimeapps.list: $desktop" >&2
+              exit 1
+            }
+          done
+
+      - name: Exercise bounded Inspector probe
+        if: matrix.arch == 'amd64'
+        shell: sh
+        run: |
+          sample="$(mktemp --suffix=.txt)"
+          printf 'bounded preview\n' > "$sample"
+          payload="$(python3 shared/includes/usr/libexec/edemint-inspector-probe "$sample")"
+          printf 'Inspector payload: %s\n' "$payload"
+          printf '%s\n' "$payload" \
+            | python3 -c 'import json,sys; p=json.load(sys.stdin); assert p["ok"] and p["size"] == 16 and p["mime"].startswith("text/") and not p["mime_mismatch"]'
+          ln -s "$sample" "$sample.link"
+          if python3 shared/includes/usr/libexec/edemint-inspector-probe "$sample.link" >/dev/null; then
+            echo "Inspector probe followed a symbolic link" >&2
+            exit 1
+          fi

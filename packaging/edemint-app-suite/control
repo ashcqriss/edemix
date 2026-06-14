@@ -1,0 +1,13 @@
+Section: metapackages
+Priority: optional
+Standards-Version: 4.6.2
+Package: edemint-app-suite
+Version: 0.1
+Maintainer: Edemint <noreply@github.com>
+Homepage: https://github.com/ashcqriss/edemix
+Architecture: all
+Depends: edemint-desktop, @DEPS@
+Description: Edemint integrated application suite
+ Provides the native Edemint MVP runtime, independent launchers, and the
+ maintained cross-architecture foundations used by the complete application
+ catalog. Experimental products remain labelled as such in desktop metadata.

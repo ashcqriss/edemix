@@ -1,0 +1,15 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Mail
+GenericName=Email Client
+Comment=Read and send email through the Geary foundation
+Exec=geary %U
+Icon=org.gnome.Geary
+Terminal=false
+Categories=Network;Email;
+MimeType=x-scheme-handler/mailto;
+StartupNotify=true
+Keywords=mail;email;inbox;
+X-Edemint-Foundation=true
+X-Edemint-Upstream=org.gnome.Geary

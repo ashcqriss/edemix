@@ -1,37 +1,23 @@
-# Edemint desktop — Hyprland (wlroots) on Wayland, plus the userland a
-# general-purpose desktop needs to feel normal. Everything here exists in
-# Debian 13 (Trixie) main / non-free-firmware.
+# Edemint desktop - Hyprland on Wayland, plus general-purpose desktop apps.
 
 # --- compositor + session -----------------------------------------------
-# hyprland itself is installed best-effort by 0050-extra-desktop.hook —
-# its availability in Trixie main varies between arches/snapshots, and a
-# missing one would tank both image builds. The hook treats failure as
-# "warn and continue"; the rest of the desktop still builds + boots.
 xwayland
 qt6-wayland
 qtwayland5
 dbus-user-session
 dconf-cli
+libglib2.0-bin
 
-# --- portals (screen sharing, file pickers, Flatpak integration; §8) ---
-# NOTE: xdg-desktop-portal-hyprland is installed best-effort by
-# 0050-extra-desktop.hook.chroot (may not be in Trixie main); the gtk
-# backend below is the guaranteed fallback.
+# --- portals -------------------------------------------------------------
 xdg-desktop-portal
 xdg-desktop-portal-gtk
 xdg-utils
 xdg-user-dirs
 
-# --- login / autologin manager (tiny, Wayland-native) -------------------
-# greetd is in main; the tuigreet greeter is installed best-effort by the
-# extras hook, with agreety (bundled with greetd) as the fallback greeter.
+# --- login ---------------------------------------------------------------
 greetd
 
-# --- Hyprland UX layer (§9) — functional UX; visuals deferred -----------
-# Several wlroots/Hyprland tools below are recent additions that may not be
-# in Trixie main yet; those (hyprlock, hypridle, hyprpicker, swayosd,
-# cliphist, wlogout) are installed best-effort by 0050-extra-desktop.hook.
-# The load-bearing core stays here so the image always builds and boots.
+# --- Hyprland UX layer --------------------------------------------------
 waybar
 wofi
 foot
@@ -45,24 +31,26 @@ brightnessctl
 playerctl
 kanshi
 
-# --- tray GUIs (Hyprland has no settings app, so these provide them) ----
+# --- tray GUIs ----------------------------------------------------------
 network-manager-gnome
 blueman
 pavucontrol
+upower
 
-# --- privilege prompts (GUI polkit agent autostarted in hyprland.conf) --
+# --- privilege prompts --------------------------------------------------
 polkit-kde-agent-1
+pkexec
 
-# --- input method (CJK et al; env wired in hyprland.conf) ---------------
+# --- international input ------------------------------------------------
 fcitx5
 fcitx5-chinese-addons
 fcitx5-mozc
 
-# --- automount / file dialogs back-end (§8) -----------------------------
+# --- automount / file dialogs -------------------------------------------
 gvfs
 gvfs-backends
 
-# --- baseline apps (browser + viewers + utilities; §0b) -----------------
+# --- baseline apps ------------------------------------------------------
 firefox-esr
 eog
 imv
@@ -76,29 +64,46 @@ baobab
 deja-dup
 thunar
 
-# --- Flatpak (Flathub remote registered in 0300-flatpak-flathub.hook) ---
+# --- office document viewer foundation ---------------------------------
+libreoffice-writer
+libreoffice-calc
+libreoffice-impress
+libreoffice-gtk3
+
+# --- Edemint application foundations ------------------------------------
+epiphany-browser
+gnome-calendar
+gnome-text-editor
+font-manager
+system-config-printer
+gnome-color-manager
+colord
+bubblewrap
+xdg-dbus-proxy
+cheese
+goldendict-ng
+
+# --- Flatpak ------------------------------------------------------------
 flatpak
 gnome-software
 gnome-software-plugin-flatpak
 
-# --- graphics: Mesa userland + VA-API HW video decode (§0e) -------------
+# --- graphics -----------------------------------------------------------
 mesa-vulkan-drivers
 libgl1-mesa-dri
 libva2
 mesa-va-drivers
 vainfo
 wlsunset
-# intel-media-va-driver is Intel-only (arch:amd64,i386) — ships from
-# profiles/amd64-iso/config/package-lists/amd64-firmware.list.chroot.
 
-# --- codecs (FFmpeg + GStreamer; §0f) -----------------------------------
+# --- codecs -------------------------------------------------------------
 ffmpeg
 gstreamer1.0-plugins-good
 gstreamer1.0-plugins-bad
 gstreamer1.0-plugins-ugly
 gstreamer1.0-libav
 
-# --- fonts (broad Unicode + monospace + emoji + icons; §0f) -------------
+# --- fonts --------------------------------------------------------------
 fonts-noto
 fonts-noto-color-emoji
 fonts-liberation
@@ -106,30 +111,26 @@ fonts-jetbrains-mono
 fonts-firacode
 fonts-font-awesome
 
-# --- snapshots/rollback (§0g) — assumes btrfs root from Calamares -------
-# grub-btrfs is best-effort (Trixie packaging varies); snapper alone is
-# enough for `edemint-rollback` to work from a TTY.
+# --- snapshots/rollback -------------------------------------------------
 snapper
 
-# --- VPN integration for NetworkManager (§0g) ---------------------------
+# --- VPN integration ----------------------------------------------------
 network-manager-openvpn-gnome
 network-manager-openconnect-gnome
 wireguard-tools
 
-# --- accessibility (§10) ------------------------------------------------
+# --- accessibility ------------------------------------------------------
 at-spi2-core
 orca
+speech-dispatcher
+gnome-accessibility-themes
 
-# --- glasses-as-monitor support: Wayland output tools (§7a) -------------
+# --- glasses-as-monitor support ----------------------------------------
 wlr-randr
 
-# --- gaming (gamemode flips governor + RT prio while a game is running) -
+# --- gaming -------------------------------------------------------------
 gamemode
 mangohud
 
-# --- dev containers (modern toolbox; podman is rootless) ----------------
+# --- dev containers -----------------------------------------------------
 podman
-
-# NOTE: wf-recorder, distrobox, and fastfetch are installed best-effort by
-# 0050-extra-desktop.hook.chroot (availability/naming varies across the
-# Trixie lifecycle); none are load-bearing for first boot.

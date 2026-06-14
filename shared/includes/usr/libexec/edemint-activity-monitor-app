@@ -1,0 +1,556 @@
+#!/usr/bin/python3
+"""Edemint Activity Monitor using read-only Linux kernel interfaces."""
+
+from __future__ import annotations
+
+from collections import deque
+from dataclasses import dataclass
+import csv
+import json
+import os
+from pathlib import Path
+import signal
+import time
+from typing import Any
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+
+
+APP_ID = "org.edemint.ActivityMonitor"
+HISTORY_LIMIT = 600
+PROCESS_LIMIT = 500
+
+
+def state_dir() -> Path:
+    root = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"))
+    path = root / "edemint" / "activity-monitor"
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    return path
+
+
+def read_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def human_bytes(value: float) -> str:
+    units = ("B", "KiB", "MiB", "GiB", "TiB")
+    amount = max(0.0, float(value))
+    for unit in units:
+        if amount < 1024.0 or unit == units[-1]:
+            return f"{amount:.1f} {unit}"
+        amount /= 1024.0
+    return f"{amount:.1f} TiB"
+
+
+def cpu_snapshot() -> dict[str, tuple[int, int]]:
+    values: dict[str, tuple[int, int]] = {}
+    for line in read_text(Path("/proc/stat")).splitlines():
+        fields = line.split()
+        if not fields or not fields[0].startswith("cpu"):
+            continue
+        try:
+            numbers = [int(value) for value in fields[1:]]
+        except ValueError:
+            continue
+        total = sum(numbers)
+        idle = sum(numbers[index] for index in (3, 4) if index < len(numbers))
+        values[fields[0]] = (total, idle)
+    return values
+
+
+def cpu_percentages(
+    previous: dict[str, tuple[int, int]], current: dict[str, tuple[int, int]]
+) -> dict[str, float]:
+    result: dict[str, float] = {}
+    for name, (total, idle) in current.items():
+        old_total, old_idle = previous.get(name, (total, idle))
+        total_delta = max(0, total - old_total)
+        idle_delta = max(0, idle - old_idle)
+        result[name] = 0.0 if total_delta == 0 else 100.0 * (total_delta - idle_delta) / total_delta
+    return result
+
+
+def memory_snapshot() -> dict[str, int]:
+    values: dict[str, int] = {}
+    for line in read_text(Path("/proc/meminfo")).splitlines():
+        key, separator, rest = line.partition(":")
+        if not separator:
+            continue
+        try:
+            values[key] = int(rest.strip().split()[0]) * 1024
+        except (ValueError, IndexError):
+            continue
+    total = values.get("MemTotal", 0)
+    available = values.get("MemAvailable", values.get("MemFree", 0))
+    swap_total = values.get("SwapTotal", 0)
+    swap_free = values.get("SwapFree", 0)
+    return {
+        "total": total,
+        "used": max(0, total - available),
+        "available": available,
+        "swap_total": swap_total,
+        "swap_used": max(0, swap_total - swap_free),
+    }
+
+
+def disk_totals() -> tuple[int, int]:
+    sectors_read = 0
+    sectors_written = 0
+    for line in read_text(Path("/proc/diskstats")).splitlines():
+        fields = line.split()
+        if len(fields) < 14:
+            continue
+        name = fields[2]
+        if name.startswith(("loop", "ram", "zram", "dm-")):
+            continue
+        try:
+            sectors_read += int(fields[5])
+            sectors_written += int(fields[9])
+        except ValueError:
+            continue
+    return sectors_read * 512, sectors_written * 512
+
+
+def network_totals() -> tuple[int, int]:
+    received = 0
+    transmitted = 0
+    for line in read_text(Path("/proc/net/dev")).splitlines()[2:]:
+        interface, separator, payload = line.partition(":")
+        if not separator or interface.strip() == "lo":
+            continue
+        fields = payload.split()
+        if len(fields) < 9:
+            continue
+        try:
+            received += int(fields[0])
+            transmitted += int(fields[8])
+        except ValueError:
+            continue
+    return received, transmitted
+
+
+def gpu_snapshot() -> list[dict[str, Any]]:
+    cards: list[dict[str, Any]] = []
+    for card in sorted(Path("/sys/class/drm").glob("card[0-9]*")):
+        device = card / "device"
+        if not device.exists():
+            continue
+        entry: dict[str, Any] = {"name": card.name, "busy": None, "vram_used": None, "vram_total": None}
+        for key, filename in (
+            ("busy", "gpu_busy_percent"),
+            ("vram_used", "mem_info_vram_used"),
+            ("vram_total", "mem_info_vram_total"),
+        ):
+            value = read_text(device / filename).strip()
+            if value.isdigit():
+                entry[key] = int(value)
+        cards.append(entry)
+    return cards
+
+
+def temperature_snapshot() -> list[tuple[str, float]]:
+    sensors: list[tuple[str, float]] = []
+    for zone in sorted(Path("/sys/class/thermal").glob("thermal_zone*")):
+        raw = read_text(zone / "temp").strip()
+        if not raw.lstrip("-").isdigit():
+            continue
+        label = read_text(zone / "type").strip() or zone.name
+        sensors.append((label, int(raw) / 1000.0))
+    return sensors[:16]
+
+
+@dataclass
+class ProcessInfo:
+    pid: int
+    ppid: int
+    name: str
+    user: str
+    state: str
+    cpu: float
+    memory: int
+    read_bytes: int
+    write_bytes: int
+    nice: int
+    command: str
+
+
+def uid_name(uid: int) -> str:
+    try:
+        import pwd
+
+        return pwd.getpwuid(uid).pw_name
+    except (ImportError, KeyError):
+        return str(uid)
+
+
+def process_snapshot(
+    previous: dict[int, int], total_delta: int
+) -> tuple[list[ProcessInfo], dict[int, int]]:
+    processes: list[ProcessInfo] = []
+    current_ticks: dict[int, int] = {}
+    page_size = os.sysconf("SC_PAGE_SIZE")
+    for proc in Path("/proc").iterdir():
+        if not proc.name.isdigit():
+            continue
+        pid = int(proc.name)
+        try:
+            stat_fields = read_text(proc / "stat").split()
+            if len(stat_fields) < 24:
+                continue
+            ppid = int(stat_fields[3])
+            state = stat_fields[2]
+            ticks = int(stat_fields[13]) + int(stat_fields[14])
+            nice = int(stat_fields[18])
+            rss = int(stat_fields[23]) * page_size
+            current_ticks[pid] = ticks
+            cpu = 0.0 if total_delta <= 0 else 100.0 * max(0, ticks - previous.get(pid, ticks)) / total_delta
+            status = read_text(proc / "status")
+            uid = 0
+            name = stat_fields[1].strip("()")
+            for line in status.splitlines():
+                if line.startswith("Uid:"):
+                    uid = int(line.split()[1])
+                elif line.startswith("Name:"):
+                    name = line.partition(":")[2].strip() or name
+            command = read_text(proc / "cmdline").replace("\0", " ").strip() or name
+            read_bytes = 0
+            write_bytes = 0
+            for line in read_text(proc / "io").splitlines():
+                key, separator, value = line.partition(":")
+                if not separator:
+                    continue
+                if key == "read_bytes":
+                    read_bytes = int(value.strip())
+                elif key == "write_bytes":
+                    write_bytes = int(value.strip())
+            processes.append(ProcessInfo(
+                pid=pid,
+                ppid=ppid,
+                name=name,
+                user=uid_name(uid),
+                state=state,
+                cpu=cpu,
+                memory=rss,
+                read_bytes=read_bytes,
+                write_bytes=write_bytes,
+                nice=nice,
+                command=command[:512],
+            ))
+        except (OSError, ValueError, IndexError):
+            continue
+    return processes, current_ticks
+
+
+class ActivityMonitor(Adw.Application):
+    def __init__(self) -> None:
+        super().__init__(application_id=APP_ID)
+        self.window: Adw.ApplicationWindow | None = None
+        self.summary = Gtk.Label(xalign=0, selectable=True)
+        self.core_label = Gtk.Label(xalign=0, selectable=True, wrap=True)
+        self.sensor_label = Gtk.Label(xalign=0, selectable=True, wrap=True)
+        self.process_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
+        self.search = Gtk.SearchEntry(placeholder_text="Search PID, user, name, or command")
+        self.sort = Gtk.DropDown.new_from_strings(("CPU", "Memory", "Disk I/O", "PID", "Name"))
+        self.sample = Gtk.DropDown.new_from_strings(("1 second", "2 seconds", "5 seconds", "10 seconds"))
+        self.sample.set_selected(1)
+        self.selected_pid: int | None = None
+        self.previous_cpu = cpu_snapshot()
+        self.previous_process_ticks: dict[int, int] = {}
+        self.previous_disk = disk_totals()
+        self.previous_network = network_totals()
+        self.previous_time = time.monotonic()
+        self.processes: list[ProcessInfo] = []
+        self.history: deque[dict[str, Any]] = deque(maxlen=HISTORY_LIMIT)
+        self.timer_id = 0
+        self.last_alert = 0.0
+        self.cpu_alert = 90.0
+        self.memory_alert = 90.0
+
+    def do_activate(self) -> None:
+        if self.window:
+            self.window.present()
+            return
+        self.window = Adw.ApplicationWindow(application=self)
+        self.window.set_title("Activity Monitor")
+        self.window.set_default_size(1100, 760)
+        toolbar = Adw.ToolbarView()
+        header = Adw.HeaderBar()
+        header.set_title_widget(Gtk.Label(label="Activity Monitor"))
+        export_button = Gtk.Button(label="Export")
+        export_button.connect("clicked", self.export_history)
+        header.pack_end(export_button)
+        toolbar.add_top_bar(header)
+        toolbar.set_content(self.build_content())
+        self.window.set_content(toolbar)
+        self.search.connect("search-changed", lambda _entry: self.populate_processes())
+        self.sort.connect("notify::selected", lambda *_args: self.populate_processes())
+        self.sample.connect("notify::selected", lambda *_args: self.restart_timer())
+        self.process_list.connect("row-selected", self.select_process)
+        self.window.present()
+        self.refresh()
+        self.restart_timer()
+
+    def build_content(self) -> Gtk.Widget:
+        root = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=12,
+            margin_top=14,
+            margin_bottom=14,
+            margin_start=14,
+            margin_end=14,
+        )
+        cards = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        cards.append(self.summary)
+        cards.append(self.core_label)
+        cards.append(self.sensor_label)
+        root.append(cards)
+
+        controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.search.set_hexpand(True)
+        controls.append(self.search)
+        controls.append(Gtk.Label(label="Sort"))
+        controls.append(self.sort)
+        controls.append(Gtk.Label(label="Sample"))
+        controls.append(self.sample)
+        root.append(controls)
+
+        scroll = Gtk.ScrolledWindow(vexpand=True)
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_child(self.process_list)
+        root.append(scroll)
+
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        for label, action in (
+            ("Stop", signal.SIGSTOP),
+            ("Continue", signal.SIGCONT),
+            ("End", signal.SIGTERM),
+            ("Kill", signal.SIGKILL),
+        ):
+            button = Gtk.Button(label=label)
+            if action in (signal.SIGTERM, signal.SIGKILL):
+                button.add_css_class("destructive-action")
+            button.connect("clicked", lambda _button, selected=action: self.signal_process(selected))
+            actions.append(button)
+        lower = Gtk.Button(label="Lower Priority")
+        lower.connect("clicked", lambda _button: self.change_priority(5))
+        raise_button = Gtk.Button(label="Raise Priority")
+        raise_button.connect("clicked", lambda _button: self.change_priority(-5))
+        actions.append(lower)
+        actions.append(raise_button)
+        root.append(actions)
+        return root
+
+    def restart_timer(self) -> None:
+        if self.timer_id:
+            GLib.source_remove(self.timer_id)
+        intervals = (1, 2, 5, 10)
+        self.timer_id = GLib.timeout_add_seconds(intervals[self.sample.get_selected()], self.refresh)
+
+    def refresh(self) -> bool:
+        now = time.monotonic()
+        elapsed = max(0.001, now - self.previous_time)
+        current_cpu = cpu_snapshot()
+        percentages = cpu_percentages(self.previous_cpu, current_cpu)
+        old_total = self.previous_cpu.get("cpu", current_cpu.get("cpu", (0, 0)))[0]
+        new_total = current_cpu.get("cpu", (old_total, 0))[0]
+        total_delta = max(0, new_total - old_total)
+        memory = memory_snapshot()
+        disk = disk_totals()
+        network = network_totals()
+        disk_read = max(0, disk[0] - self.previous_disk[0]) / elapsed
+        disk_write = max(0, disk[1] - self.previous_disk[1]) / elapsed
+        net_receive = max(0, network[0] - self.previous_network[0]) / elapsed
+        net_send = max(0, network[1] - self.previous_network[1]) / elapsed
+        self.processes, self.previous_process_ticks = process_snapshot(
+            self.previous_process_ticks, total_delta
+        )
+        cpu_total = percentages.get("cpu", 0.0)
+        memory_percent = 0.0 if memory["total"] == 0 else 100.0 * memory["used"] / memory["total"]
+        swap_percent = 0.0 if memory["swap_total"] == 0 else 100.0 * memory["swap_used"] / memory["swap_total"]
+        gpu = gpu_snapshot()
+        sensors = temperature_snapshot()
+        self.history.append({
+            "timestamp": time.time(),
+            "cpu_percent": round(cpu_total, 2),
+            "per_core": {key: round(value, 2) for key, value in percentages.items() if key != "cpu"},
+            "memory_used": memory["used"],
+            "memory_total": memory["total"],
+            "swap_used": memory["swap_used"],
+            "swap_total": memory["swap_total"],
+            "disk_read_per_second": round(disk_read, 2),
+            "disk_write_per_second": round(disk_write, 2),
+            "network_receive_per_second": round(net_receive, 2),
+            "network_send_per_second": round(net_send, 2),
+            "gpu": gpu,
+            "temperatures_celsius": dict(sensors),
+        })
+        self.summary.set_text(
+            f"CPU {cpu_total:.1f}% | Memory {memory_percent:.1f}% "
+            f"({human_bytes(memory['used'])} / {human_bytes(memory['total'])}) | "
+            f"Swap {swap_percent:.1f}% | Disk read {human_bytes(disk_read)}/s, "
+            f"write {human_bytes(disk_write)}/s | Network down {human_bytes(net_receive)}/s, "
+            f"up {human_bytes(net_send)}/s"
+        )
+        cores = "  ".join(
+            f"{name.replace('cpu', 'Core ')}: {value:.0f}%"
+            for name, value in percentages.items()
+            if name != "cpu"
+        )
+        self.core_label.set_text(cores or "Per-core CPU data unavailable")
+        gpu_text = "; ".join(
+            f"{item['name']}: "
+            + (f"{item['busy']}% busy" if item["busy"] is not None else "usage unavailable")
+            + (f", VRAM {human_bytes(item['vram_used'])}/{human_bytes(item['vram_total'])}" if item["vram_used"] is not None and item["vram_total"] is not None else "")
+            for item in gpu
+        ) or "GPU telemetry unavailable"
+        temp_text = ", ".join(f"{name} {value:.1f} C" for name, value in sensors) or "temperature sensors unavailable"
+        self.sensor_label.set_text(f"{gpu_text} | {temp_text}")
+        self.populate_processes()
+        self.maybe_alert(cpu_total, memory_percent)
+        self.previous_cpu = current_cpu
+        self.previous_disk = disk
+        self.previous_network = network
+        self.previous_time = now
+        return True
+
+    def process_depth(self, process: ProcessInfo, parents: dict[int, int]) -> int:
+        depth = 0
+        seen = {process.pid}
+        parent = process.ppid
+        while parent > 1 and parent not in seen and depth < 8:
+            seen.add(parent)
+            parent = parents.get(parent, 0)
+            depth += 1
+        return depth
+
+    def populate_processes(self) -> None:
+        while child := self.process_list.get_first_child():
+            self.process_list.remove(child)
+        query = self.search.get_text().strip().casefold()
+        filtered = [
+            process for process in self.processes
+            if not query or query in " ".join((
+                str(process.pid), process.user, process.name, process.command
+            )).casefold()
+        ]
+        sort_index = self.sort.get_selected()
+        keys = (
+            lambda item: (-item.cpu, item.pid),
+            lambda item: (-item.memory, item.pid),
+            lambda item: (-(item.read_bytes + item.write_bytes), item.pid),
+            lambda item: (item.pid,),
+            lambda item: (item.name.casefold(), item.pid),
+        )
+        filtered.sort(key=keys[sort_index])
+        parents = {process.pid: process.ppid for process in self.processes}
+        for process in filtered[:PROCESS_LIMIT]:
+            row = Gtk.ListBoxRow()
+            row.pid = process.pid
+            box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+            box.set_margin_top(5)
+            box.set_margin_bottom(5)
+            box.set_margin_start(8)
+            box.set_margin_end(8)
+            title = Gtk.Label(
+                label=f"{'  ' * self.process_depth(process, parents)}{process.name}",
+                xalign=0,
+                ellipsize=3,
+            )
+            title.set_hexpand(True)
+            title.set_tooltip_text(process.command)
+            box.append(title)
+            for value, width in (
+                (f"PID {process.pid}", 10),
+                (process.user, 12),
+                (f"CPU {process.cpu:.1f}%", 11),
+                (f"RAM {human_bytes(process.memory)}", 15),
+                (f"I/O {human_bytes(process.read_bytes + process.write_bytes)}", 15),
+                (f"nice {process.nice}", 9),
+                (process.state, 3),
+            ):
+                label = Gtk.Label(label=value, xalign=1, width_chars=width)
+                box.append(label)
+            row.set_child(box)
+            self.process_list.append(row)
+
+    def select_process(self, _list: Gtk.ListBox, row: Gtk.ListBoxRow | None) -> None:
+        self.selected_pid = getattr(row, "pid", None) if row else None
+
+    def signal_process(self, selected_signal: signal.Signals) -> None:
+        if self.selected_pid is None:
+            self.notice("Select a process first.")
+            return
+        if self.selected_pid in (0, 1, os.getpid()):
+            self.notice("Activity Monitor will not signal this protected process.")
+            return
+        try:
+            os.kill(self.selected_pid, selected_signal)
+        except (OSError, PermissionError) as exc:
+            self.notice(f"Could not signal PID {self.selected_pid}: {exc}")
+
+    def change_priority(self, delta: int) -> None:
+        if self.selected_pid is None:
+            self.notice("Select a process first.")
+            return
+        try:
+            current = os.getpriority(os.PRIO_PROCESS, self.selected_pid)
+            os.setpriority(os.PRIO_PROCESS, self.selected_pid, max(-20, min(19, current + delta)))
+        except (OSError, PermissionError) as exc:
+            self.notice(f"Could not change process priority: {exc}")
+
+    def maybe_alert(self, cpu: float, memory: float) -> None:
+        if time.monotonic() - self.last_alert < 60:
+            return
+        messages = []
+        if cpu >= self.cpu_alert:
+            messages.append(f"CPU usage is {cpu:.0f}%")
+        if memory >= self.memory_alert:
+            messages.append(f"memory usage is {memory:.0f}%")
+        if not messages:
+            return
+        notification = Gio.Notification.new("Activity threshold reached")
+        notification.set_body("; ".join(messages))
+        self.send_notification("resource-threshold", notification)
+        self.last_alert = time.monotonic()
+
+    def export_history(self, _button: Gtk.Button) -> None:
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        json_path = state_dir() / f"activity-{stamp}.json"
+        csv_path = state_dir() / f"activity-{stamp}.csv"
+        payload = list(self.history)
+        json_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        json_path.chmod(0o600)
+        with csv_path.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=(
+                "timestamp", "cpu_percent", "memory_used", "memory_total",
+                "swap_used", "swap_total", "disk_read_per_second",
+                "disk_write_per_second", "network_receive_per_second",
+                "network_send_per_second",
+            ))
+            writer.writeheader()
+            for item in payload:
+                writer.writerow({key: item.get(key) for key in writer.fieldnames})
+        csv_path.chmod(0o600)
+        self.notice(f"Exported JSON and CSV history to {state_dir()}")
+
+    def notice(self, message: str) -> None:
+        if not self.window:
+            return
+        dialog = Adw.AlertDialog(heading="Activity Monitor", body=message)
+        dialog.add_response("ok", "OK")
+        dialog.present(self.window)
+
+
+def main() -> int:
+    return ActivityMonitor().run([os.path.basename(__file__)])
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Activity Monitor
+GenericName=System Monitor
+Comment=Inspect CPU, memory, GPU, disk and network activity
+Exec=edemint-activity-monitor
+Icon=utilities-system-monitor
+Terminal=false
+Categories=System;Monitor;
+StartupNotify=true
+Keywords=process;cpu;memory;gpu;disk;network;activity;
+X-Edemint-Native=true
+X-Edemint-Maturity=mvp

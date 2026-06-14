@@ -1,0 +1,407 @@
+#!/usr/bin/python3
+"""Edemint Phone: contacts and capability-aware telephony handoff."""
+
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import sqlite3
+import subprocess
+import sys
+import time
+from urllib.parse import quote
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+
+APP_ID = "org.edemint.Phone"
+PHONE_DESKTOP_ID = "edemint-phone.desktop"
+TEL_ALLOWED = re.compile(r"[+0-9*#(). -]{1,80}")
+SIP_ALLOWED = re.compile(r"[A-Za-z0-9_.!~*'()%+-]{1,128}@[A-Za-z0-9.-]{1,253}")
+EMERGENCY = {"112", "911", "999", "110", "118", "119"}
+
+
+def data_dir() -> Path:
+    root = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "edemint" / "phone"
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    root.chmod(0o700)
+    return root
+
+
+def open_database() -> sqlite3.Connection:
+    path = data_dir() / "phone.db"
+    db = sqlite3.connect(path)
+    path.chmod(0o600)
+    db.execute("PRAGMA foreign_keys = ON")
+    db.execute("CREATE TABLE IF NOT EXISTS contacts (id INTEGER PRIMARY KEY, name TEXT NOT NULL, target TEXT NOT NULL, favorite INTEGER NOT NULL DEFAULT 0, note TEXT NOT NULL DEFAULT '', created INTEGER NOT NULL, UNIQUE(target))")
+    db.execute("CREATE TABLE IF NOT EXISTS calls (id INTEGER PRIMARY KEY, target TEXT NOT NULL, display_name TEXT NOT NULL DEFAULT '', direction TEXT NOT NULL, state TEXT NOT NULL, backend TEXT NOT NULL DEFAULT '', created INTEGER NOT NULL)")
+    db.execute("CREATE TABLE IF NOT EXISTS sip_profiles (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, user TEXT NOT NULL, server TEXT NOT NULL, transport TEXT NOT NULL DEFAULT 'auto', created INTEGER NOT NULL)")
+    db.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+    db.commit()
+    return db
+
+
+def read_command(argv: list[str], timeout: float = 5.0) -> tuple[int, str]:
+    if not argv or not shutil.which(argv[0]):
+        return 127, f"{argv[0] if argv else 'Command'} is not installed."
+    try:
+        result = subprocess.run(argv, check=False, capture_output=True, text=True, timeout=timeout, env={**os.environ, "LANG": "C.UTF-8"})
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return 1, str(exc)
+    return result.returncode, (result.stdout.strip() or result.stderr.strip() or "No output.")
+
+
+def normalize_target(value: str) -> tuple[str | None, str]:
+    target = value.strip()
+    if target.startswith("tel:"):
+        target = target[4:]
+    if target.startswith("sip:"):
+        sip = target[4:]
+        if SIP_ALLOWED.fullmatch(sip):
+            return f"sip:{sip}", ""
+        return None, "Enter a complete SIP address such as sip:name@example.org."
+    if "@" in target:
+        if SIP_ALLOWED.fullmatch(target):
+            return f"sip:{target}", ""
+        return None, "The SIP address is invalid."
+    if not TEL_ALLOWED.fullmatch(target):
+        return None, "Telephone numbers may contain digits, +, *, #, spaces, parentheses, dots and dashes."
+    compact = re.sub(r"[(). -]", "", target)
+    if not compact or compact.count("+") > 1 or ("+" in compact and not compact.startswith("+")):
+        return None, "The telephone number is invalid."
+    return f"tel:{compact}", ""
+
+
+def emergency_target(uri: str) -> bool:
+    if not uri.startswith("tel:"):
+        return False
+    return re.sub(r"\D", "", uri[4:]) in EMERGENCY
+
+
+def external_handlers(scheme: str) -> list[Gio.AppInfo]:
+    content_type = f"x-scheme-handler/{scheme}"
+    apps = []
+    for app in Gio.AppInfo.get_all_for_type(content_type):
+        app_id = (app.get_id() or "").casefold()
+        executable = (app.get_executable() or "").casefold()
+        if app_id == PHONE_DESKTOP_ID or executable.endswith("edemint-phone"):
+            continue
+        apps.append(app)
+    return apps
+
+
+def scrolled(child: Gtk.Widget) -> Gtk.ScrolledWindow:
+    view = Gtk.ScrolledWindow(vexpand=True)
+    view.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+    view.set_child(child)
+    return view
+
+
+def label(text: str) -> Gtk.Label:
+    return Gtk.Label(label=text, xalign=0, wrap=True, selectable=True)
+
+
+class Phone(Adw.Application):
+    def __init__(self, arguments: list[str]) -> None:
+        super().__init__(application_id=APP_ID)
+        self.arguments = arguments
+        self.db = open_database()
+        self.window: Adw.ApplicationWindow | None = None
+        self.target: Gtk.Entry | None = None
+        self.contact_search: Gtk.SearchEntry | None = None
+        self.contacts_box: Gtk.ListBox | None = None
+        self.history_box: Gtk.ListBox | None = None
+        self.status_label: Gtk.Label | None = None
+
+    def do_activate(self) -> None:
+        if self.window:
+            self.window.present()
+            return
+        self.window = Adw.ApplicationWindow(application=self)
+        self.window.set_title("Phone")
+        self.window.set_default_size(1040, 760)
+        toolbar = Adw.ToolbarView()
+        toolbar.add_top_bar(Adw.HeaderBar())
+        toolbar.set_content(self.build_content())
+        self.window.set_content(toolbar)
+        self.window.present()
+
+    def notice(self, heading: str, message: str) -> None:
+        if self.window:
+            dialog = Adw.AlertDialog(heading=heading, body=message)
+            dialog.add_response("ok", "OK")
+            dialog.present(self.window)
+
+    def build_content(self) -> Gtk.Widget:
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, margin_top=14, margin_bottom=14, margin_start=14, margin_end=14)
+        outer.append(label("Phone is an independent Edemint app for contacts, call intents, SIP profile metadata and hardware diagnostics. Actual calls are handed to a separately installed telephony backend. Emergency calling is never represented as available without validated carrier, location and regulatory support."))
+        outer.append(self.dialer_group())
+        panes = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL, wide_handle=True)
+        panes.set_start_child(self.contacts_group())
+        panes.set_end_child(self.history_group())
+        panes.set_position(520)
+        outer.append(panes)
+        diagnostics = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        for text, callback in (("Modem and SIM", self.show_modems), ("Audio routes", self.show_audio), ("SIP profiles", self.show_sip_profiles), ("Capability report", self.show_capabilities)):
+            button = Gtk.Button(label=text)
+            button.connect("clicked", lambda _button, action=callback: action())
+            diagnostics.append(button)
+        outer.append(diagnostics)
+        boundary = label("Backend boundary: incoming-call state, ringing, answer/reject, hold, mute, live DTMF, voicemail transport, Bluetooth call audio, SIM/PIN/eSIM control, cellular registration and emergency location must be supplied and tested by the selected backend and hardware. This app does not synthesize those claims.")
+        boundary.add_css_class("dim-label")
+        outer.append(boundary)
+        return outer
+
+    def dialer_group(self) -> Gtk.Widget:
+        group = Adw.PreferencesGroup(title="Dial or address")
+        row = Adw.ActionRow(title="Destination", subtitle="Telephone number or SIP address")
+        self.target = Gtk.Entry(placeholder_text="+49... or name@example.org", valign=Gtk.Align.CENTER)
+        self.target.set_input_purpose(Gtk.InputPurpose.PHONE)
+        if self.arguments:
+            self.target.set_text(self.arguments[0])
+        row.add_suffix(self.target)
+        clear = Gtk.Button(label="Clear", valign=Gtk.Align.CENTER)
+        clear.connect("clicked", lambda _button: self.target.set_text("") if self.target else None)
+        copy = Gtk.Button(label="Copy URI", valign=Gtk.Align.CENTER)
+        copy.connect("clicked", lambda _button: self.copy_uri())
+        handoff = Gtk.Button(label="Call with backend", valign=Gtk.Align.CENTER)
+        handoff.connect("clicked", lambda _button: self.place_call())
+        row.add_suffix(clear)
+        row.add_suffix(copy)
+        row.add_suffix(handoff)
+        group.add(row)
+        keypad = Gtk.Grid(column_spacing=6, row_spacing=6, halign=Gtk.Align.CENTER)
+        for index, digit in enumerate("123456789*0#"):
+            button = Gtk.Button(label=digit)
+            button.connect("clicked", lambda _button, value=digit: self.target.set_text(self.target.get_text() + value) if self.target else None)
+            keypad.attach(button, index % 3, index // 3, 1, 1)
+        keypad_row = Adw.ActionRow(title="Keypad", subtitle="Edits the destination. In-call tones require the backend.")
+        keypad_row.add_suffix(keypad)
+        group.add(keypad_row)
+        handlers = external_handlers("tel") + external_handlers("sip")
+        names = sorted({app.get_display_name() for app in handlers})
+        self.status_label = Gtk.Label(label="External handlers: " + (", ".join(names) if names else "none detected"), xalign=0, wrap=True)
+        status_row = Adw.ActionRow(title="Telephony backend")
+        status_row.add_suffix(self.status_label)
+        group.add(status_row)
+        return group
+
+    def contacts_group(self) -> Gtk.Widget:
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_end=8)
+        title = Gtk.Label(label="Contacts and favorites", xalign=0)
+        title.add_css_class("title-3")
+        box.append(title)
+        form = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        name = Gtk.Entry(placeholder_text="Name")
+        target = Gtk.Entry(placeholder_text="Telephone or SIP")
+        note = Gtk.Entry(placeholder_text="Note")
+        add = Gtk.Button(label="Add")
+        add.connect("clicked", lambda _button: self.add_contact(name, target, note))
+        form.append(name)
+        form.append(target)
+        form.append(note)
+        form.append(add)
+        box.append(form)
+        self.contact_search = Gtk.SearchEntry(placeholder_text="Search contacts")
+        self.contact_search.connect("search-changed", lambda _entry: self.refresh_contacts())
+        box.append(self.contact_search)
+        self.contacts_box = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        box.append(scrolled(self.contacts_box))
+        self.refresh_contacts()
+        return box
+
+    def history_group(self) -> Gtk.Widget:
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_start=8)
+        title = Gtk.Label(label="Recent call handoffs", xalign=0)
+        title.add_css_class("title-3")
+        box.append(title)
+        controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        clear = Gtk.Button(label="Clear history")
+        clear.connect("clicked", lambda _button: self.clear_history())
+        controls.append(clear)
+        box.append(controls)
+        self.history_box = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        box.append(scrolled(self.history_box))
+        self.refresh_history()
+        return box
+
+    def add_contact(self, name_widget: Gtk.Entry, target_widget: Gtk.Entry, note_widget: Gtk.Entry) -> None:
+        name = name_widget.get_text().strip()
+        uri, error = normalize_target(target_widget.get_text())
+        note = note_widget.get_text().strip()
+        if not name or len(name) > 120:
+            self.notice("Contact", "Enter a contact name of 1-120 characters.")
+            return
+        if not uri:
+            self.notice("Contact", error)
+            return
+        try:
+            self.db.execute("INSERT INTO contacts(name, target, note, created) VALUES(?, ?, ?, ?)", (name, uri, note[:500], int(time.time())))
+            self.db.commit()
+        except sqlite3.IntegrityError:
+            self.notice("Contact", "That destination is already in Contacts.")
+            return
+        for widget in (name_widget, target_widget, note_widget):
+            widget.set_text("")
+        self.refresh_contacts()
+
+    def refresh_contacts(self) -> None:
+        if not self.contacts_box:
+            return
+        while child := self.contacts_box.get_first_child():
+            self.contacts_box.remove(child)
+        query = self.contact_search.get_text().strip() if self.contact_search else ""
+        needle = f"%{query[:200]}%"
+        rows = self.db.execute("SELECT id, name, target, favorite, note FROM contacts WHERE name LIKE ? OR target LIKE ? OR note LIKE ? ORDER BY favorite DESC, name COLLATE NOCASE", (needle, needle, needle)).fetchall()
+        if not rows:
+            self.contacts_box.append(Adw.ActionRow(title="No matching contacts"))
+            return
+        for contact_id, name, target, favorite, note in rows:
+            row = Adw.ActionRow(title=("Favorite: " if favorite else "") + name, subtitle=f"{target}" + (f" - {note}" if note else ""))
+            star = Gtk.Button(label="Unfavorite" if favorite else "Favorite", valign=Gtk.Align.CENTER)
+            star.connect("clicked", lambda _button, item=contact_id, value=not favorite: self.set_favorite(item, value))
+            dial = Gtk.Button(label="Use", valign=Gtk.Align.CENTER)
+            dial.connect("clicked", lambda _button, value=target: self.use_target(value))
+            remove = Gtk.Button(label="Remove", valign=Gtk.Align.CENTER)
+            remove.add_css_class("destructive-action")
+            remove.connect("clicked", lambda _button, item=contact_id: self.remove_contact(item))
+            row.add_suffix(star)
+            row.add_suffix(dial)
+            row.add_suffix(remove)
+            row.set_activatable_widget(dial)
+            self.contacts_box.append(row)
+
+    def use_target(self, target: str) -> None:
+        if self.target:
+            self.target.set_text(target)
+            self.target.grab_focus()
+
+    def set_favorite(self, contact_id: int, value: bool) -> None:
+        self.db.execute("UPDATE contacts SET favorite = ? WHERE id = ?", (1 if value else 0, contact_id))
+        self.db.commit()
+        self.refresh_contacts()
+
+    def remove_contact(self, contact_id: int) -> None:
+        self.db.execute("DELETE FROM contacts WHERE id = ?", (contact_id,))
+        self.db.commit()
+        self.refresh_contacts()
+
+    def copy_uri(self) -> None:
+        if not self.target:
+            return
+        uri, error = normalize_target(self.target.get_text())
+        if not uri:
+            self.notice("Destination", error)
+            return
+        clipboard = self.window.get_clipboard() if self.window else None
+        if clipboard:
+            clipboard.set(uri)
+            self.notice("Destination", f"Copied {uri}")
+
+    def select_backend(self, uri: str) -> Gio.AppInfo | None:
+        scheme = uri.split(":", 1)[0]
+        handlers = external_handlers(scheme)
+        default = Gio.AppInfo.get_default_for_uri_scheme(scheme)
+        if default and all((default.get_id() or "") != (item.get_id() or "") for item in handlers):
+            default = None
+        return default or (handlers[0] if handlers else None)
+
+    def place_call(self) -> None:
+        if not self.target:
+            return
+        uri, error = normalize_target(self.target.get_text())
+        if not uri:
+            self.notice("Call", error)
+            return
+        if emergency_target(uri):
+            self.record_call(uri, "blocked-emergency", "none")
+            self.notice("Emergency calling unavailable", "Edemint cannot safely hand off this emergency number because carrier registration, location, regulatory routing and backend readiness are not proven. Use a validated telephone.")
+            return
+        backend = self.select_backend(uri)
+        if not backend:
+            self.record_call(uri, "no-backend", "none")
+            self.notice("No telephony backend", "Install and configure a reviewed cellular or SIP calling application. Modem detection alone is not enough to place a safe call.")
+            return
+        try:
+            backend.launch_uris([uri], None)
+            self.record_call(uri, "handed-off", backend.get_display_name())
+            self.notice("Call handed off", f"{backend.get_display_name()} now owns call state, audio, credentials and signaling.")
+        except GLib.Error as exc:
+            self.record_call(uri, "handoff-failed", backend.get_display_name())
+            self.notice("Call failed", str(exc))
+
+    def record_call(self, target: str, state: str, backend: str) -> None:
+        name_row = self.db.execute("SELECT name FROM contacts WHERE target = ?", (target,)).fetchone()
+        self.db.execute("INSERT INTO calls(target, display_name, direction, state, backend, created) VALUES(?, ?, 'outgoing', ?, ?, ?)", (target, name_row[0] if name_row else "", state, backend, int(time.time())))
+        self.db.commit()
+        self.refresh_history()
+
+    def refresh_history(self) -> None:
+        if not self.history_box:
+            return
+        while child := self.history_box.get_first_child():
+            self.history_box.remove(child)
+        rows = self.db.execute("SELECT target, display_name, state, backend, created FROM calls ORDER BY id DESC LIMIT 200").fetchall()
+        if not rows:
+            self.history_box.append(Adw.ActionRow(title="No call handoffs yet"))
+            return
+        for target, name, state, backend, created in rows:
+            row = Adw.ActionRow(title=name or target, subtitle=f"{target} - {state} via {backend or 'none'} - {time.strftime('%Y-%m-%d %H:%M', time.localtime(created))}")
+            use = Gtk.Button(label="Use", valign=Gtk.Align.CENTER)
+            use.connect("clicked", lambda _button, value=target: self.use_target(value))
+            row.add_suffix(use)
+            self.history_box.append(row)
+
+    def clear_history(self) -> None:
+        self.db.execute("DELETE FROM calls")
+        self.db.commit()
+        self.refresh_history()
+
+    def show_output(self, heading: str, output: str) -> None:
+        self.notice(heading, output[:12000])
+
+    def show_modems(self) -> None:
+        _code, listing = read_command(["mmcli", "-L"], 8)
+        details = listing
+        if "/Modem/" in listing:
+            _code, details = read_command(["mmcli", "-m", "any", "--output-json"], 12)
+        self.show_output("Modem and SIM diagnostics", details)
+
+    def show_audio(self) -> None:
+        _code, output = read_command(["wpctl", "status"], 8)
+        self.show_output("PipeWire audio routes", output)
+
+    def show_sip_profiles(self) -> None:
+        rows = self.db.execute("SELECT name, user, server, transport FROM sip_profiles ORDER BY name").fetchall()
+        text = "\n".join(f"{name}: sip:{user}@{server} ({transport})" for name, user, server, transport in rows) or "No SIP profile metadata saved. Credentials are intentionally not stored by Phone."
+        self.show_output("SIP profiles", text)
+
+    def show_capabilities(self) -> None:
+        tel = [app.get_display_name() for app in external_handlers("tel")]
+        sip = [app.get_display_name() for app in external_handlers("sip")]
+        modem_code, modem = read_command(["mmcli", "-L"], 8)
+        report = {
+            "telephone_handlers": tel,
+            "sip_handlers": sip,
+            "modemmanager_query_ok": modem_code == 0,
+            "modemmanager": modem,
+            "pipewire_tools": bool(shutil.which("wpctl")),
+            "incoming_call_monitor": False,
+            "emergency_calling_validated": False,
+            "edemint_backend": "handoff-only",
+        }
+        self.show_output("Phone capability report", json.dumps(report, indent=2, ensure_ascii=True))
+
+
+def main() -> int:
+    return Phone(sys.argv[1:]).run([sys.argv[0]])
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

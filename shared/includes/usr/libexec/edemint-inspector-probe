@@ -1,0 +1,101 @@
+#!/usr/bin/python3
+"""Read bounded Inspector metadata/content in a killable helper process."""
+
+from __future__ import annotations
+
+import base64
+import json
+import mimetypes
+import os
+from pathlib import Path
+import stat
+import subprocess
+import sys
+
+MAX_PREVIEW_BYTES = 65536
+
+
+def emit(payload: dict[str, object]) -> None:
+    print(json.dumps(payload, ensure_ascii=True, separators=(",", ":")))
+
+
+def detect_content_mime(descriptor: int) -> str:
+    try:
+        completed = subprocess.run(
+            ["file", "--dereference", "--brief", "--mime-type", "--", f"/proc/self/fd/{descriptor}"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2,
+            pass_fds=(descriptor,),
+            env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"},
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "application/octet-stream"
+    detected = completed.stdout.strip()
+    if completed.returncode != 0 or "/" not in detected:
+        return "application/octet-stream"
+    return detected[:200]
+
+
+def main() -> int:
+    if len(sys.argv) != 2:
+        emit({"ok": False, "error": "Exactly one file path is required."})
+        return 2
+
+    path = Path(sys.argv[1]).expanduser()
+    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NONBLOCK
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+
+    descriptor = -1
+    try:
+        descriptor = os.open(path, flags)
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise OSError("Inspector previews regular files only.")
+
+        # Detect through the already-open descriptor before consuming it. The
+        # descriptor offset is shared with /proc/self/fd and must still be zero.
+        content_mime = detect_content_mime(descriptor)
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        chunks: list[bytes] = []
+        remaining = MAX_PREVIEW_BYTES
+        while remaining:
+            chunk = os.read(descriptor, min(remaining, 16384))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        raw = b"".join(chunks)
+        extension_mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        mismatch = (
+            extension_mime != "application/octet-stream"
+            and content_mime != "application/octet-stream"
+            and extension_mime != content_mime
+        )
+        emit({
+            "ok": True,
+            "name": path.name,
+            "path": os.path.realpath(path),
+            "mime": content_mime,
+            "extension_mime": extension_mime,
+            "mime_mismatch": mismatch,
+            "size": metadata.st_size,
+            "modified": metadata.st_mtime,
+            "device": metadata.st_dev,
+            "inode": metadata.st_ino,
+            "truncated": metadata.st_size > len(raw),
+            "data": base64.b64encode(raw).decode("ascii"),
+        })
+        return 0
+    except OSError as exc:
+        emit({"ok": False, "error": str(exc)})
+        return 1
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

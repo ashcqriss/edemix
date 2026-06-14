@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Print Control
+GenericName=Printer Settings
+Comment=Add printers and manage CUPS queues
+Exec=system-config-printer
+Icon=printer
+Terminal=false
+Categories=Settings;HardwareSettings;Printing;
+StartupNotify=true
+Keywords=printer;print;cups;queue;
+X-Edemint-Foundation=true
+X-Edemint-Upstream=system-config-printer

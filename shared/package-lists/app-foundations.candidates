@@ -1,0 +1,39 @@
+# Candidate application and system-management foundations for Debian 13.
+# Format: package|capability|profile|status
+
+epiphany-browser|WebKitGTK browser foundation|desktop|candidate
+gnome-calendar|Calendar|desktop|candidate
+gnome-maps|Maps|desktop|candidate
+geary|Mail|desktop|candidate
+gnome-text-editor|Noterer text-editor foundation|desktop|candidate
+font-manager|Font management|desktop|candidate
+system-config-printer|Print control frontend|desktop|candidate
+gnome-color-manager|Color control frontend|desktop|candidate
+colord|Color management service|desktop|candidate
+bubblewrap|Inspector process sandbox|core|candidate
+xdg-dbus-proxy|Inspector D-Bus boundary|core|candidate
+file|Inspector content type detection|core|candidate
+evince|Inspector PDF viewer|desktop|candidate
+imv|Inspector image viewer|desktop|candidate
+mpv|Inspector media viewer|desktop|candidate
+file-roller|Inspector archive viewer|desktop|candidate
+libreoffice-writer|Inspector document viewer and office suite|desktop|candidate
+libreoffice-calc|Inspector spreadsheet viewer and office suite|desktop|candidate
+libreoffice-impress|Inspector presentation viewer and office suite|desktop|candidate
+libreoffice-gtk3|LibreOffice desktop integration|desktop|candidate
+speech-dispatcher|Speech accessibility service|desktop|candidate
+gnome-accessibility-themes|High contrast accessibility themes|desktop|candidate
+smartmontools|Storage health diagnostics|core|candidate
+upower|Battery capability diagnostics|desktop|candidate
+libglib2.0-bin|GSettings system controls|desktop|candidate
+pkexec|Authenticated Settings helper boundary|desktop|candidate
+cheese|Standard camera foundation|desktop|candidate
+webcamoid|Optional Camera Studio foundation|optional|candidate
+goldendict-ng|Dictionary foundation|desktop|candidate
+python3|Edemint native app runtime|core|candidate
+python3-gi|GObject bindings for native apps|core|candidate
+gir1.2-gtk-4.0|GTK4 introspection for native apps|core|candidate
+gir1.2-adw-1|libadwaita introspection for native apps|core|candidate
+gir1.2-webkit-6.0|WebKitGTK introspection for Adventurer|desktop|candidate
+nheko|Messenger Matrix foundation|desktop|candidate
+gnome-contacts|Contacts foundation and interoperability|desktop|candidate

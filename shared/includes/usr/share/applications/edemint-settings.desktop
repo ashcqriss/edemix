@@ -1,0 +1,15 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Settings
+GenericName=System Settings
+Comment=Configure Edemint hardware, services, privacy, updates and recovery
+Exec=edemint-settings %u
+Icon=preferences-system
+Terminal=false
+Categories=Settings;System;
+StartupNotify=true
+MimeType=x-scheme-handler/edemint-settings;
+Keywords=settings;network;sound;display;power;bluetooth;privacy;accounts;updates;storage;backup;recovery;accessibility;
+X-Edemint-Native=true
+X-Edemint-Maturity=mvp

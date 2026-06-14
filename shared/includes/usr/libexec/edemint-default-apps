@@ -1,0 +1,221 @@
+#!/usr/bin/python3
+"""User-level default application and file-association manager."""
+
+from __future__ import annotations
+
+import sys
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+
+APP_ID = "org.edemint.DefaultApps"
+COMMON_TYPES = (
+    ("Web links", "x-scheme-handler/http", True),
+    ("Secure web links", "x-scheme-handler/https", True),
+    ("Email links", "x-scheme-handler/mailto", True),
+    ("Telephone links", "x-scheme-handler/tel", True),
+    ("Matrix links", "x-scheme-handler/matrix", True),
+    ("Folders", "inode/directory", False),
+    ("Plain text", "text/plain", False),
+    ("HTML documents", "text/html", False),
+    ("PDF documents", "application/pdf", False),
+    ("JPEG images", "image/jpeg", False),
+    ("PNG images", "image/png", False),
+    ("Audio", "audio/mpeg", False),
+    ("Video", "video/mp4", False),
+    ("Calendar files", "text/calendar", False),
+    ("Contact cards", "text/vcard", False),
+    ("Archives", "application/zip", False),
+)
+
+
+def app_identity(app: Gio.AppInfo) -> str:
+    return app.get_id() or app.get_executable() or app.get_display_name()
+
+
+def available_apps(content_type: str) -> list[Gio.AppInfo]:
+    found: dict[str, Gio.AppInfo] = {}
+    current = Gio.AppInfo.get_default_for_type(content_type, True)
+    if current:
+        found[app_identity(current)] = current
+    for app in Gio.AppInfo.get_all_for_type(content_type):
+        if app.should_show():
+            found[app_identity(app)] = app
+    return sorted(found.values(), key=lambda app: app.get_display_name().casefold())
+
+
+class AssociationRow(Adw.ActionRow):
+    def __init__(
+        self, owner: "DefaultApps", title: str, content_type: str, uri: bool
+    ) -> None:
+        super().__init__(title=title, subtitle=content_type)
+        self.owner = owner
+        self.content_type = content_type
+        self.uri = uri
+        self.apps = available_apps(content_type)
+        names = ["No compatible application"] + [
+            app.get_display_name() for app in self.apps
+        ]
+        self.model = Gtk.StringList.new(names)
+        self.selector = Gtk.DropDown(model=self.model, valign=Gtk.Align.CENTER)
+        self.selector.set_enable_search(True)
+        current = Gio.AppInfo.get_default_for_type(content_type, uri)
+        if current:
+            current_id = app_identity(current)
+            for index, app in enumerate(self.apps, 1):
+                if app_identity(app) == current_id:
+                    self.selector.set_selected(index)
+                    break
+        apply_button = Gtk.Button(label="Set", valign=Gtk.Align.CENTER)
+        apply_button.connect("clicked", self.apply)
+        reset_button = Gtk.Button(label="Reset", valign=Gtk.Align.CENTER)
+        reset_button.connect("clicked", self.reset)
+        self.add_suffix(self.selector)
+        self.add_suffix(reset_button)
+        self.add_suffix(apply_button)
+
+    def apply(self, _button: Gtk.Button) -> None:
+        selected = self.selector.get_selected()
+        if selected == 0 or selected > len(self.apps):
+            self.owner.notice("Select a compatible application first.")
+            return
+        app = self.apps[selected - 1]
+        try:
+            if not app.set_as_default_for_type(self.content_type):
+                raise RuntimeError("The desktop rejected the association change.")
+        except (GLib.Error, RuntimeError) as exc:
+            self.owner.notice(str(exc))
+            return
+        self.owner.notice(
+            f"{app.get_display_name()} is now the default for {self.content_type}."
+        )
+
+    def reset(self, _button: Gtk.Button) -> None:
+        Gio.AppInfo.reset_type_associations(self.content_type)
+        self.owner.notice(f"Reset user associations for {self.content_type}.")
+
+
+class DefaultApps(Adw.Application):
+    def __init__(self) -> None:
+        super().__init__(application_id=APP_ID)
+        self.window: Adw.ApplicationWindow | None = None
+
+    def do_activate(self) -> None:
+        if self.window:
+            self.window.present()
+            return
+        self.window = Adw.ApplicationWindow(application=self)
+        self.window.set_title("Default Apps")
+        self.window.set_default_size(1040, 760)
+        toolbar = Adw.ToolbarView()
+        toolbar.add_top_bar(Adw.HeaderBar())
+        toolbar.set_content(self.build_content())
+        self.window.set_content(toolbar)
+        self.window.present()
+
+    def notice(self, message: str) -> None:
+        if self.window:
+            dialog = Adw.AlertDialog(heading="Default Apps", body=message)
+            dialog.add_response("ok", "OK")
+            dialog.present(self.window)
+
+    def build_content(self) -> Gtk.Widget:
+        box = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=18,
+            margin_top=20,
+            margin_bottom=20,
+            margin_start=20,
+            margin_end=20,
+        )
+        intro = Gtk.Label(
+            label=(
+                "Choose user-level defaults for common links and document types. "
+                "Changes use the freedesktop MIME application API and require no root access."
+            ),
+            xalign=0,
+            wrap=True,
+        )
+        box.append(intro)
+        common = Adw.PreferencesGroup(title="Common defaults")
+        for title, content_type, uri in COMMON_TYPES:
+            common.add(AssociationRow(self, title, content_type, uri))
+        box.append(common)
+
+        custom = Adw.PreferencesGroup(
+            title="Custom MIME type or URI scheme",
+            description=(
+                "Examples: application/epub+zip or x-scheme-handler/ssh. "
+                "Only applications advertising support for the type are offered."
+            ),
+        )
+        custom_row = Adw.ActionRow(title="Content type")
+        type_entry = Gtk.Entry(placeholder_text="application/epub+zip")
+        open_button = Gtk.Button(label="Manage", valign=Gtk.Align.CENTER)
+        open_button.connect(
+            "clicked", lambda _button: self.open_custom(type_entry.get_text())
+        )
+        custom_row.add_suffix(type_entry)
+        custom_row.add_suffix(open_button)
+        custom.add(custom_row)
+        box.append(custom)
+        scroller = Gtk.ScrolledWindow(vexpand=True)
+        scroller.set_child(box)
+        return scroller
+
+    def open_custom(self, value: str) -> None:
+        content_type = value.strip().lower()
+        if (
+            not content_type
+            or len(content_type) > 240
+            or any(character.isspace() for character in content_type)
+            or "/" not in content_type
+        ):
+            self.notice("Enter a valid MIME type or x-scheme-handler/type value.")
+            return
+        apps = available_apps(content_type)
+        if not apps:
+            self.notice(f"No installed application advertises support for {content_type}.")
+            return
+        dialog = Adw.AlertDialog(
+            heading=f"Default for {content_type}",
+            body="Select an installed compatible application.",
+        )
+        model = Gtk.StringList.new([app.get_display_name() for app in apps])
+        selector = Gtk.DropDown(model=model)
+        selector.set_enable_search(True)
+        dialog.set_extra_child(selector)
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("set", "Set Default")
+        dialog.set_response_appearance("set", Adw.ResponseAppearance.SUGGESTED)
+
+        def response(_dialog: Adw.AlertDialog, name: str) -> None:
+            if name != "set":
+                return
+            app = apps[selector.get_selected()]
+            try:
+                success = app.set_as_default_for_type(content_type)
+            except GLib.Error as exc:
+                self.notice(str(exc))
+                return
+            if success:
+                self.notice(
+                    f"{app.get_display_name()} is now the default for {content_type}."
+                )
+            else:
+                self.notice("The desktop rejected the association change.")
+
+        dialog.connect("response", response)
+        if self.window:
+            dialog.present(self.window)
+
+
+def main() -> int:
+    return DefaultApps().run([sys.argv[0]])
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

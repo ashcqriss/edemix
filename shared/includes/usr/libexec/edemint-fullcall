@@ -1,0 +1,616 @@
+#!/usr/bin/python3
+"""Fullcall local collaboration app with explicitly gated network services."""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import mimetypes
+import os
+from pathlib import Path
+import re
+import shutil
+import sqlite3
+import sys
+import time
+import uuid
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+
+APP_ID = "org.edemint.Fullcall"
+USERNAME = re.compile(r"[a-z0-9][a-z0-9._-]{2,31}")
+SLUG = re.compile(r"[a-z0-9][a-z0-9-]{0,62}")
+PBKDF2_ROUNDS = 310000
+MAX_MESSAGE = 10000
+MAX_ATTACHMENT = 25 * 1024 * 1024
+ROLES = ("member", "admin", "owner")
+
+
+def root_dir() -> Path:
+    root = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "edemint" / "fullcall"
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    root.chmod(0o700)
+    return root
+
+
+def database_path() -> Path:
+    return root_dir() / "fullcall.db"
+
+
+def open_database() -> sqlite3.Connection:
+    path = database_path()
+    db = sqlite3.connect(path)
+    path.chmod(0o600)
+    db.execute("PRAGMA foreign_keys = ON")
+    db.execute("PRAGMA journal_mode = WAL")
+    db.execute("CREATE TABLE IF NOT EXISTS accounts (id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE, display_name TEXT NOT NULL, salt BLOB NOT NULL, password_hash BLOB NOT NULL, created INTEGER NOT NULL)")
+    db.execute("CREATE TABLE IF NOT EXISTS teams (id INTEGER PRIMARY KEY, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE COLLATE NOCASE, owner_id INTEGER NOT NULL REFERENCES accounts(id), retention_days INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL)")
+    db.execute("CREATE TABLE IF NOT EXISTS team_members (team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE, account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, role TEXT NOT NULL CHECK(role IN ('member','admin','owner')), joined INTEGER NOT NULL, PRIMARY KEY(team_id, account_id))")
+    db.execute("CREATE TABLE IF NOT EXISTS channels (id INTEGER PRIMARY KEY, team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE, name TEXT NOT NULL, slug TEXT NOT NULL, topic TEXT NOT NULL DEFAULT '', created_by INTEGER NOT NULL REFERENCES accounts(id), archived INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL, UNIQUE(team_id, slug))")
+    db.execute("CREATE TABLE IF NOT EXISTS fc_messages (id INTEGER PRIMARY KEY, channel_id INTEGER NOT NULL REFERENCES channels(id) ON DELETE CASCADE, author_id INTEGER NOT NULL REFERENCES accounts(id), parent_id INTEGER REFERENCES fc_messages(id) ON DELETE SET NULL, body TEXT NOT NULL, attachment_id INTEGER, created INTEGER NOT NULL, updated INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0)")
+    db.execute("CREATE TABLE IF NOT EXISTS reactions (message_id INTEGER NOT NULL REFERENCES fc_messages(id) ON DELETE CASCADE, account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, reaction TEXT NOT NULL, created INTEGER NOT NULL, PRIMARY KEY(message_id, account_id, reaction))")
+    db.execute("CREATE TABLE IF NOT EXISTS attachments (id INTEGER PRIMARY KEY, owner_id INTEGER NOT NULL REFERENCES accounts(id), original_name TEXT NOT NULL, stored_name TEXT NOT NULL UNIQUE, mime TEXT NOT NULL, size INTEGER NOT NULL, created INTEGER NOT NULL)")
+    db.execute("CREATE TABLE IF NOT EXISTS contacts (owner_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, contact_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, label TEXT NOT NULL DEFAULT '', created INTEGER NOT NULL, PRIMARY KEY(owner_id, contact_id))")
+    db.execute("CREATE TABLE IF NOT EXISTS audit_log (id INTEGER PRIMARY KEY, team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE, actor_id INTEGER REFERENCES accounts(id), action TEXT NOT NULL, detail TEXT NOT NULL, created INTEGER NOT NULL)")
+    db.execute("CREATE INDEX IF NOT EXISTS fc_messages_channel_created ON fc_messages(channel_id, created)")
+    db.execute("CREATE INDEX IF NOT EXISTS fc_messages_body ON fc_messages(body)")
+    db.commit()
+    return db
+
+
+def password_digest(password: str, salt: bytes) -> bytes:
+    return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, PBKDF2_ROUNDS)
+
+
+def entry(placeholder: str, password: bool = False) -> Gtk.Entry:
+    widget = Gtk.Entry(placeholder_text=placeholder)
+    if password:
+        widget.set_visibility(False)
+        widget.set_input_purpose(Gtk.InputPurpose.PASSWORD)
+    return widget
+
+
+def scrolled(child: Gtk.Widget) -> Gtk.ScrolledWindow:
+    view = Gtk.ScrolledWindow(vexpand=True)
+    view.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+    view.set_child(child)
+    return view
+
+
+def safe_slug(value: str) -> str:
+    return re.sub(r"-+", "-", re.sub(r"[^a-z0-9-]", "-", value.strip().lower())).strip("-")[:63]
+
+
+class Fullcall(Adw.Application):
+    def __init__(self) -> None:
+        super().__init__(application_id=APP_ID)
+        self.db = open_database()
+        self.window: Adw.ApplicationWindow | None = None
+        self.content: Gtk.Box | None = None
+        self.current_account: tuple[int, str, str] | None = None
+        self.teams: list[tuple[int, str, str]] = []
+        self.channels: list[tuple[int, str]] = []
+        self.current_team_id = 0
+        self.current_channel_id = 0
+        self.team_dropdown: Gtk.DropDown | None = None
+        self.channel_dropdown: Gtk.DropDown | None = None
+        self.timeline: Gtk.ListBox | None = None
+        self.search: Gtk.SearchEntry | None = None
+        self.composer: Gtk.Entry | None = None
+        self.mode_label: Gtk.Label | None = None
+        self.reply_to = 0
+        self.edit_message = 0
+        self.pending_attachment = 0
+        self.failed_logins = 0
+
+    def do_activate(self) -> None:
+        if self.window:
+            self.window.present()
+            return
+        self.window = Adw.ApplicationWindow(application=self)
+        self.window.set_title("Fullcall")
+        self.window.set_default_size(1100, 760)
+        toolbar = Adw.ToolbarView()
+        toolbar.add_top_bar(Adw.HeaderBar())
+        self.content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        toolbar.set_content(self.content)
+        self.window.set_content(toolbar)
+        self.show_accounts()
+        self.window.present()
+
+    def notice(self, message: str) -> None:
+        if self.window:
+            dialog = Adw.AlertDialog(heading="Fullcall", body=message)
+            dialog.add_response("ok", "OK")
+            dialog.present(self.window)
+
+    def confirm(self, heading: str, body: str, callback) -> None:
+        if not self.window:
+            return
+        dialog = Adw.AlertDialog(heading=heading, body=body)
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("confirm", "Continue")
+        dialog.set_response_appearance("confirm", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.connect("response", lambda _dialog, response: callback() if response == "confirm" else None)
+        dialog.present(self.window)
+
+    def replace_content(self, child: Gtk.Widget) -> None:
+        if not self.content:
+            return
+        while old := self.content.get_first_child():
+            self.content.remove(old)
+        self.content.append(child)
+
+    def show_accounts(self) -> None:
+        self.current_account = None
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18, margin_top=24, margin_bottom=24, margin_start=24, margin_end=24)
+        label = Gtk.Label(label="Fullcall is an independent Edemint collaboration app. This build provides private local accounts, teams, channels and files. Network sync, federation, encryption, meetings and calling remain disabled until reviewed server and WebRTC backends exist.", xalign=0, wrap=True)
+        box.append(label)
+        sign = Adw.PreferencesGroup(title="Sign in")
+        user = entry("Username")
+        password = entry("Password", True)
+        row = Adw.ActionRow(title="Existing local account")
+        row.add_suffix(user)
+        row.add_suffix(password)
+        button = Gtk.Button(label="Sign in", valign=Gtk.Align.CENTER)
+        button.connect("clicked", lambda _button: self.sign_in(user.get_text(), password.get_text()))
+        row.add_suffix(button)
+        sign.add(row)
+        box.append(sign)
+        create = Adw.PreferencesGroup(title="Create local account")
+        new_user = entry("username")
+        display = entry("Display name")
+        new_password = entry("Password (10+ characters)", True)
+        confirmation = entry("Confirm password", True)
+        new_row = Adw.ActionRow(title="New account")
+        for widget in (new_user, display, new_password, confirmation):
+            new_row.add_suffix(widget)
+        create_button = Gtk.Button(label="Create", valign=Gtk.Align.CENTER)
+        create_button.connect("clicked", lambda _button: self.create_account(new_user.get_text(), display.get_text(), new_password.get_text(), confirmation.get_text()))
+        new_row.add_suffix(create_button)
+        create.add(new_row)
+        box.append(create)
+        known = Adw.PreferencesGroup(title="Accounts on this device")
+        rows = self.db.execute("SELECT username, display_name, created FROM accounts ORDER BY username").fetchall()
+        if not rows:
+            known.add(Adw.ActionRow(title="No accounts yet"))
+        for username, display_name, created in rows:
+            known.add(Adw.ActionRow(title=display_name, subtitle=f"@{username} - created {time.strftime('%Y-%m-%d', time.localtime(created))}"))
+        box.append(known)
+        self.replace_content(scrolled(box))
+
+    def create_account(self, username: str, display_name: str, password: str, confirmation: str) -> None:
+        username = username.strip().lower()
+        display_name = display_name.strip()
+        if not USERNAME.fullmatch(username):
+            self.notice("Use 3-32 lowercase letters, numbers, dots, dashes or underscores.")
+            return
+        if not display_name or len(display_name) > 80:
+            self.notice("Enter a display name of 1-80 characters.")
+            return
+        if len(password) < 10 or password != confirmation:
+            self.notice("Use a matching password of at least 10 characters.")
+            return
+        salt = os.urandom(16)
+        try:
+            cursor = self.db.execute("INSERT INTO accounts(username, display_name, salt, password_hash, created) VALUES(?, ?, ?, ?, ?)", (username, display_name, salt, password_digest(password, salt), int(time.time())))
+            self.db.commit()
+        except sqlite3.IntegrityError:
+            self.notice("That username already exists on this device.")
+            return
+        self.current_account = (int(cursor.lastrowid), username, display_name)
+        self.ensure_workspace()
+        self.show_workspace()
+
+    def sign_in(self, username: str, password: str) -> None:
+        row = self.db.execute("SELECT id, username, display_name, salt, password_hash FROM accounts WHERE username = ?", (username.strip().lower(),)).fetchone()
+        valid = bool(row) and hmac.compare_digest(password_digest(password, row[3]), row[4])
+        if not valid:
+            self.failed_logins += 1
+            if self.failed_logins >= 5:
+                time.sleep(min(self.failed_logins - 4, 3))
+            self.notice("Username or password is incorrect.")
+            return
+        self.failed_logins = 0
+        self.current_account = (row[0], row[1], row[2])
+        self.ensure_workspace()
+        self.show_workspace()
+
+    def audit(self, action: str, detail: str, team_id: int | None = None) -> None:
+        actor = self.current_account[0] if self.current_account else None
+        self.db.execute("INSERT INTO audit_log(team_id, actor_id, action, detail, created) VALUES(?, ?, ?, ?, ?)", (team_id or self.current_team_id or None, actor, action[:80], detail[:500], int(time.time())))
+        self.db.commit()
+
+    def ensure_workspace(self) -> None:
+        if not self.current_account:
+            return
+        account_id, username, display = self.current_account
+        existing = self.db.execute("SELECT team_id FROM team_members WHERE account_id = ? LIMIT 1", (account_id,)).fetchone()
+        if existing:
+            return
+        slug = safe_slug(f"{username}-workspace")
+        suffix = 1
+        base = slug
+        while self.db.execute("SELECT 1 FROM teams WHERE slug = ?", (slug,)).fetchone():
+            suffix += 1
+            slug = f"{base[:58]}-{suffix}"
+        now = int(time.time())
+        cursor = self.db.execute("INSERT INTO teams(name, slug, owner_id, created) VALUES(?, ?, ?, ?)", (f"{display}'s team", slug, account_id, now))
+        team_id = int(cursor.lastrowid)
+        self.db.execute("INSERT INTO team_members(team_id, account_id, role, joined) VALUES(?, ?, 'owner', ?)", (team_id, account_id, now))
+        self.db.execute("INSERT INTO channels(team_id, name, slug, topic, created_by, created) VALUES(?, 'General', 'general', 'Team-wide conversation', ?, ?)", (team_id, account_id, now))
+        self.db.commit()
+        self.audit("team-created", f"Created initial team {slug}", team_id)
+
+    def show_workspace(self) -> None:
+        if not self.current_account:
+            self.show_accounts()
+            return
+        account_id, username, display = self.current_account
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin_top=12, margin_bottom=12, margin_start=12, margin_end=12)
+        identity = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        who = Gtk.Label(label=f"Signed in as {display} (@{username})", xalign=0, hexpand=True)
+        sign_out = Gtk.Button(label="Sign out")
+        sign_out.connect("clicked", lambda _button: self.show_accounts())
+        identity.append(who)
+        identity.append(sign_out)
+        outer.append(identity)
+        controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.team_dropdown = Gtk.DropDown()
+        self.team_dropdown.connect("notify::selected", self.team_changed)
+        self.channel_dropdown = Gtk.DropDown()
+        self.channel_dropdown.connect("notify::selected", self.channel_changed)
+        new_team = entry("New team")
+        team_button = Gtk.Button(label="Create team")
+        team_button.connect("clicked", lambda _button: self.create_team(new_team))
+        new_channel = entry("New channel")
+        channel_button = Gtk.Button(label="Create channel")
+        channel_button.connect("clicked", lambda _button: self.create_channel(new_channel))
+        controls.append(self.team_dropdown)
+        controls.append(self.channel_dropdown)
+        controls.append(new_team)
+        controls.append(team_button)
+        controls.append(new_channel)
+        controls.append(channel_button)
+        outer.append(controls)
+        member_controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        member = entry("Add local username")
+        role = Gtk.DropDown.new_from_strings(("Member", "Admin"))
+        add_member = Gtk.Button(label="Add member")
+        add_member.connect("clicked", lambda _button: self.add_member(member, role))
+        export = Gtk.Button(label="Export team")
+        export.connect("clicked", lambda _button: self.export_team())
+        audit = Gtk.Button(label="Audit log")
+        audit.connect("clicked", lambda _button: self.show_audit())
+        member_controls.append(member)
+        member_controls.append(role)
+        member_controls.append(add_member)
+        member_controls.append(export)
+        member_controls.append(audit)
+        outer.append(member_controls)
+        self.search = Gtk.SearchEntry(placeholder_text="Search this channel")
+        self.search.connect("search-changed", lambda _entry: self.refresh_messages())
+        outer.append(self.search)
+        self.timeline = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        outer.append(scrolled(self.timeline))
+        self.mode_label = Gtk.Label(label="New message", xalign=0)
+        outer.append(self.mode_label)
+        compose = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.composer = entry("Write a message")
+        self.composer.set_hexpand(True)
+        attach = Gtk.Button(label="Attach")
+        attach.connect("clicked", self.choose_attachment)
+        cancel = Gtk.Button(label="Cancel mode")
+        cancel.connect("clicked", lambda _button: self.clear_mode())
+        send = Gtk.Button(label="Send")
+        send.connect("clicked", self.send_message)
+        compose.append(self.composer)
+        compose.append(attach)
+        compose.append(cancel)
+        compose.append(send)
+        outer.append(compose)
+        boundary = Gtk.Label(label="Local collaboration is functional. Network synchronization, federation, hosted identity, end-to-end encryption, voice/video meetings, recording, captions and screen sharing are not claimed without external services and security review.", xalign=0, wrap=True)
+        boundary.add_css_class("dim-label")
+        outer.append(boundary)
+        self.replace_content(outer)
+        self.refresh_teams(account_id)
+
+    def refresh_teams(self, account_id: int, select_id: int = 0) -> None:
+        self.teams = self.db.execute("SELECT teams.id, teams.name, team_members.role FROM teams JOIN team_members ON team_members.team_id = teams.id WHERE team_members.account_id = ? ORDER BY teams.name", (account_id,)).fetchall()
+        if not self.teams:
+            self.ensure_workspace()
+            self.teams = self.db.execute("SELECT teams.id, teams.name, team_members.role FROM teams JOIN team_members ON team_members.team_id = teams.id WHERE team_members.account_id = ? ORDER BY teams.name", (account_id,)).fetchall()
+        if self.team_dropdown:
+            self.team_dropdown.set_model(Gtk.StringList.new([f"{name} ({role})" for _team_id, name, role in self.teams]))
+            index = next((i for i, item in enumerate(self.teams) if item[0] == select_id), 0)
+            self.team_dropdown.set_selected(index)
+        self.team_changed()
+
+    def team_changed(self, *_args) -> None:
+        if not self.team_dropdown or not self.teams:
+            return
+        index = min(self.team_dropdown.get_selected(), len(self.teams) - 1)
+        self.current_team_id = self.teams[index][0]
+        self.channels = self.db.execute("SELECT id, name FROM channels WHERE team_id = ? AND archived = 0 ORDER BY name", (self.current_team_id,)).fetchall()
+        if self.channel_dropdown:
+            self.channel_dropdown.set_model(Gtk.StringList.new([name for _channel_id, name in self.channels]))
+            self.channel_dropdown.set_selected(0)
+        self.channel_changed()
+
+    def channel_changed(self, *_args) -> None:
+        if not self.channel_dropdown or not self.channels:
+            self.current_channel_id = 0
+            self.refresh_messages()
+            return
+        index = min(self.channel_dropdown.get_selected(), len(self.channels) - 1)
+        self.current_channel_id = self.channels[index][0]
+        self.clear_mode()
+        self.refresh_messages()
+
+    def current_role(self) -> str:
+        if not self.current_account or not self.current_team_id:
+            return ""
+        row = self.db.execute("SELECT role FROM team_members WHERE team_id = ? AND account_id = ?", (self.current_team_id, self.current_account[0])).fetchone()
+        return row[0] if row else ""
+
+    def create_team(self, widget: Gtk.Entry) -> None:
+        if not self.current_account:
+            return
+        name = widget.get_text().strip()
+        slug = safe_slug(name)
+        if not name or len(name) > 80 or not SLUG.fullmatch(slug):
+            self.notice("Enter a team name that produces a valid 1-63 character slug.")
+            return
+        now = int(time.time())
+        try:
+            cursor = self.db.execute("INSERT INTO teams(name, slug, owner_id, created) VALUES(?, ?, ?, ?)", (name, slug, self.current_account[0], now))
+            team_id = int(cursor.lastrowid)
+            self.db.execute("INSERT INTO team_members(team_id, account_id, role, joined) VALUES(?, ?, 'owner', ?)", (team_id, self.current_account[0], now))
+            self.db.execute("INSERT INTO channels(team_id, name, slug, topic, created_by, created) VALUES(?, 'General', 'general', 'Team-wide conversation', ?, ?)", (team_id, self.current_account[0], now))
+            self.db.commit()
+        except sqlite3.IntegrityError:
+            self.notice("A team with that identifier already exists.")
+            return
+        widget.set_text("")
+        self.audit("team-created", f"Created team {slug}", team_id)
+        self.refresh_teams(self.current_account[0], team_id)
+
+    def create_channel(self, widget: Gtk.Entry) -> None:
+        if not self.current_account or self.current_role() not in {"owner", "admin"}:
+            self.notice("Only team owners and admins can create channels.")
+            return
+        name = widget.get_text().strip()
+        slug = safe_slug(name)
+        if not name or len(name) > 80 or not SLUG.fullmatch(slug):
+            self.notice("Enter a valid channel name.")
+            return
+        try:
+            self.db.execute("INSERT INTO channels(team_id, name, slug, created_by, created) VALUES(?, ?, ?, ?, ?)", (self.current_team_id, name, slug, self.current_account[0], int(time.time())))
+            self.db.commit()
+        except sqlite3.IntegrityError:
+            self.notice("That channel already exists in this team.")
+            return
+        widget.set_text("")
+        self.audit("channel-created", f"Created channel {slug}")
+        self.team_changed()
+
+    def add_member(self, widget: Gtk.Entry, role_widget: Gtk.DropDown) -> None:
+        if not self.current_account or self.current_role() not in {"owner", "admin"}:
+            self.notice("Only team owners and admins can add members.")
+            return
+        username = widget.get_text().strip().lower()
+        account = self.db.execute("SELECT id, display_name FROM accounts WHERE username = ?", (username,)).fetchone()
+        if not account:
+            self.notice("That local Fullcall account does not exist on this device.")
+            return
+        role = "member" if role_widget.get_selected() == 0 else "admin"
+        self.db.execute("INSERT INTO team_members(team_id, account_id, role, joined) VALUES(?, ?, ?, ?) ON CONFLICT(team_id, account_id) DO UPDATE SET role = excluded.role", (self.current_team_id, account[0], role, int(time.time())))
+        self.db.commit()
+        widget.set_text("")
+        self.audit("member-updated", f"Set @{username} role to {role}")
+        self.notice(f"{account[1]} is now a {role}.")
+
+    def refresh_messages(self) -> None:
+        if not self.timeline:
+            return
+        while child := self.timeline.get_first_child():
+            self.timeline.remove(child)
+        if not self.current_channel_id:
+            self.timeline.append(Adw.ActionRow(title="No channel available"))
+            return
+        query = self.search.get_text().strip() if self.search else ""
+        sql = "SELECT m.id, m.body, m.created, m.updated, m.deleted, m.author_id, a.display_name, a.username, m.parent_id, att.original_name, att.size FROM fc_messages m JOIN accounts a ON a.id = m.author_id LEFT JOIN attachments att ON att.id = m.attachment_id WHERE m.channel_id = ?"
+        values: list[object] = [self.current_channel_id]
+        if query:
+            sql += " AND (m.body LIKE ? OR a.display_name LIKE ? OR a.username LIKE ?)"
+            needle = f"%{query[:200]}%"
+            values.extend((needle, needle, needle))
+        sql += " ORDER BY m.id DESC LIMIT 250"
+        rows = self.db.execute(sql, values).fetchall()
+        if not rows:
+            self.timeline.append(Adw.ActionRow(title="No messages", subtitle="Start the conversation or change the search."))
+            return
+        for message_id, body, created, updated, deleted, author_id, author, username, parent_id, attachment_name, attachment_size in reversed(rows):
+            reaction_rows = self.db.execute("SELECT reaction, COUNT(*) FROM reactions WHERE message_id = ? GROUP BY reaction ORDER BY reaction", (message_id,)).fetchall()
+            reactions = " ".join(f"{value} {count}" for value, count in reaction_rows)
+            subtitle = f"{author} (@{username}) - {time.strftime('%Y-%m-%d %H:%M', time.localtime(created))}"
+            if updated != created and not deleted:
+                subtitle += " - edited"
+            if parent_id:
+                subtitle += f" - reply to #{parent_id}"
+            if attachment_name:
+                subtitle += f" - attachment {attachment_name} ({attachment_size} bytes)"
+            if reactions:
+                subtitle += f" - {reactions}"
+            row = Adw.ActionRow(title="Message removed" if deleted else body, subtitle=subtitle)
+            if not deleted:
+                react = Gtk.Button(label="+1", valign=Gtk.Align.CENTER)
+                react.connect("clicked", lambda _button, item=message_id: self.toggle_reaction(item, "+1"))
+                reply = Gtk.Button(label="Reply", valign=Gtk.Align.CENTER)
+                reply.connect("clicked", lambda _button, item=message_id: self.start_reply(item))
+                row.add_suffix(react)
+                row.add_suffix(reply)
+                if attachment_name:
+                    open_file = Gtk.Button(label="Open file", valign=Gtk.Align.CENTER)
+                    open_file.connect("clicked", lambda _button, item=message_id: self.open_attachment(item))
+                    row.add_suffix(open_file)
+                if self.current_account and author_id == self.current_account[0]:
+                    edit = Gtk.Button(label="Edit", valign=Gtk.Align.CENTER)
+                    edit.connect("clicked", lambda _button, item=message_id, text=body: self.start_edit(item, text))
+                    delete = Gtk.Button(label="Delete", valign=Gtk.Align.CENTER)
+                    delete.add_css_class("destructive-action")
+                    delete.connect("clicked", lambda _button, item=message_id: self.confirm("Delete message?", "The message body will be removed while its audit event remains.", lambda: self.delete_message(item)))
+                    row.add_suffix(edit)
+                    row.add_suffix(delete)
+            self.timeline.append(row)
+
+    def clear_mode(self) -> None:
+        self.reply_to = 0
+        self.edit_message = 0
+        self.pending_attachment = 0
+        if self.mode_label:
+            self.mode_label.set_label("New message")
+        if self.composer:
+            self.composer.set_text("")
+
+    def start_reply(self, message_id: int) -> None:
+        self.reply_to = message_id
+        self.edit_message = 0
+        if self.mode_label:
+            self.mode_label.set_label(f"Replying to message #{message_id}")
+        if self.composer:
+            self.composer.grab_focus()
+
+    def start_edit(self, message_id: int, text: str) -> None:
+        self.edit_message = message_id
+        self.reply_to = 0
+        if self.mode_label:
+            self.mode_label.set_label(f"Editing message #{message_id}")
+        if self.composer:
+            self.composer.set_text(text)
+            self.composer.grab_focus()
+
+    def send_message(self, _button: Gtk.Button) -> None:
+        if not self.current_account or not self.composer or not self.current_channel_id:
+            return
+        body = self.composer.get_text().strip()
+        if not body or len(body) > MAX_MESSAGE:
+            self.notice(f"Messages must contain 1-{MAX_MESSAGE} characters.")
+            return
+        now = int(time.time())
+        if self.edit_message:
+            owned = self.db.execute("SELECT 1 FROM fc_messages WHERE id = ? AND author_id = ? AND deleted = 0", (self.edit_message, self.current_account[0])).fetchone()
+            if not owned:
+                self.notice("That message can no longer be edited.")
+                self.clear_mode()
+                return
+            self.db.execute("UPDATE fc_messages SET body = ?, updated = ? WHERE id = ?", (body, now, self.edit_message))
+            self.audit("message-edited", f"Edited message {self.edit_message}")
+        else:
+            cursor = self.db.execute("INSERT INTO fc_messages(channel_id, author_id, parent_id, body, attachment_id, created, updated) VALUES(?, ?, ?, ?, ?, ?, ?)", (self.current_channel_id, self.current_account[0], self.reply_to or None, body, self.pending_attachment or None, now, now))
+            self.audit("message-sent", f"Created message {cursor.lastrowid}")
+            notification = Gio.Notification.new("Fullcall message saved")
+            notification.set_body("The message is available to local members of this device workspace.")
+            self.send_notification(f"fullcall-{cursor.lastrowid}", notification)
+        self.db.commit()
+        self.clear_mode()
+        self.refresh_messages()
+
+    def delete_message(self, message_id: int) -> None:
+        if not self.current_account:
+            return
+        self.db.execute("UPDATE fc_messages SET body = '', deleted = 1, updated = ? WHERE id = ? AND author_id = ?", (int(time.time()), message_id, self.current_account[0]))
+        self.db.commit()
+        self.audit("message-deleted", f"Removed message {message_id}")
+        self.refresh_messages()
+
+    def toggle_reaction(self, message_id: int, reaction: str) -> None:
+        if not self.current_account:
+            return
+        key = (message_id, self.current_account[0], reaction)
+        if self.db.execute("SELECT 1 FROM reactions WHERE message_id = ? AND account_id = ? AND reaction = ?", key).fetchone():
+            self.db.execute("DELETE FROM reactions WHERE message_id = ? AND account_id = ? AND reaction = ?", key)
+        else:
+            self.db.execute("INSERT INTO reactions(message_id, account_id, reaction, created) VALUES(?, ?, ?, ?)", (*key, int(time.time())))
+        self.db.commit()
+        self.refresh_messages()
+
+    def choose_attachment(self, _button: Gtk.Button) -> None:
+        if not self.window or not self.current_account:
+            return
+        dialog = Gtk.FileDialog(title="Attach a file")
+        dialog.open(self.window, None, self.attachment_chosen)
+
+    def attachment_chosen(self, dialog: Gtk.FileDialog, result: Gio.AsyncResult) -> None:
+        if not self.current_account:
+            return
+        try:
+            selected = dialog.open_finish(result)
+            source = Path(selected.get_path() or "")
+            metadata = source.stat()
+            if not source.is_file() or metadata.st_size > MAX_ATTACHMENT:
+                raise OSError(f"Attachments must be regular files no larger than {MAX_ATTACHMENT // (1024 * 1024)} MiB.")
+            directory = root_dir() / "attachments"
+            directory.mkdir(mode=0o700, exist_ok=True)
+            stored = f"{uuid.uuid4().hex}-{source.name[:120]}"
+            destination = directory / stored
+            shutil.copyfile(source, destination)
+            destination.chmod(0o600)
+            cursor = self.db.execute("INSERT INTO attachments(owner_id, original_name, stored_name, mime, size, created) VALUES(?, ?, ?, ?, ?, ?)", (self.current_account[0], source.name[:240], stored, mimetypes.guess_type(source.name)[0] or "application/octet-stream", metadata.st_size, int(time.time())))
+            self.db.commit()
+            self.pending_attachment = int(cursor.lastrowid)
+            if self.mode_label:
+                self.mode_label.set_label(f"Attachment ready: {source.name}")
+        except (GLib.Error, OSError, sqlite3.Error) as exc:
+            self.notice(str(exc))
+
+    def open_attachment(self, message_id: int) -> None:
+        row = self.db.execute("SELECT attachments.stored_name FROM fc_messages JOIN attachments ON attachments.id = fc_messages.attachment_id WHERE fc_messages.id = ?", (message_id,)).fetchone()
+        if not row:
+            self.notice("Attachment is unavailable.")
+            return
+        path = (root_dir() / "attachments" / row[0]).resolve()
+        try:
+            path.relative_to((root_dir() / "attachments").resolve())
+            Gio.AppInfo.launch_default_for_uri(path.as_uri(), None)
+        except (ValueError, GLib.Error) as exc:
+            self.notice(str(exc))
+
+    def export_team(self) -> None:
+        if not self.current_team_id:
+            return
+        team = self.db.execute("SELECT name, slug, retention_days, created FROM teams WHERE id = ?", (self.current_team_id,)).fetchone()
+        members = self.db.execute("SELECT accounts.username, accounts.display_name, team_members.role, team_members.joined FROM team_members JOIN accounts ON accounts.id = team_members.account_id WHERE team_members.team_id = ? ORDER BY accounts.username", (self.current_team_id,)).fetchall()
+        channels = self.db.execute("SELECT id, name, slug, topic, archived, created FROM channels WHERE team_id = ? ORDER BY name", (self.current_team_id,)).fetchall()
+        messages = self.db.execute("SELECT channels.slug, accounts.username, fc_messages.id, fc_messages.parent_id, fc_messages.body, fc_messages.created, fc_messages.updated, fc_messages.deleted FROM fc_messages JOIN channels ON channels.id = fc_messages.channel_id JOIN accounts ON accounts.id = fc_messages.author_id WHERE channels.team_id = ? ORDER BY fc_messages.id", (self.current_team_id,)).fetchall()
+        payload = {"schema": 1, "exported": int(time.time()), "team": team, "members": members, "channels": channels, "messages": messages, "boundary": "Local export; no credentials or password hashes."}
+        export_dir = root_dir() / "exports"
+        export_dir.mkdir(mode=0o700, exist_ok=True)
+        path = export_dir / f"{team[1]}-{int(time.time())}.json"
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+        temporary.chmod(0o600)
+        temporary.replace(path)
+        self.audit("team-exported", f"Exported team data to {path.name}")
+        self.notice(f"Exported local team data to {path}")
+
+    def show_audit(self) -> None:
+        rows = self.db.execute("SELECT COALESCE(accounts.display_name, 'System'), action, detail, audit_log.created FROM audit_log LEFT JOIN accounts ON accounts.id = audit_log.actor_id WHERE audit_log.team_id = ? ORDER BY audit_log.id DESC LIMIT 200", (self.current_team_id,)).fetchall()
+        text = "\n".join(f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(created))} | {actor} | {action} | {detail}" for actor, action, detail, created in rows) or "No audit events."
+        if self.window:
+            dialog = Adw.AlertDialog(heading="Team audit log", body=text)
+            dialog.add_response("ok", "Close")
+            dialog.present(self.window)
+
+
+def main() -> int:
+    return Fullcall().run([sys.argv[0]])
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

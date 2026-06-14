@@ -1,0 +1,1001 @@
+#!/usr/bin/python3
+"""Edemint App Library and safe Shortcuts workflow runtime."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, asdict
+from datetime import datetime
+import configparser
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import threading
+import time
+from typing import Any, Callable
+from urllib.parse import urlparse
+import uuid
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+
+
+MODES = {
+    "library": ("App Library", "org.edemint.AppLibrary"),
+    "shortcuts": ("Shortcuts", "org.edemint.Shortcuts"),
+}
+SCHEMA = 2
+PAGE_SIZE = 80
+MAX_SHORTCUTS = 500
+MAX_WORKFLOW_STEPS = 40
+MAX_REPEAT = 10
+MAX_DELAY = 30.0
+SHORTCUT_KINDS = ("application", "web", "folder", "workflow")
+TRIGGERS = ("manual", "on-open")
+WORKFLOW_ACTIONS = (
+    "launch_application",
+    "open_uri",
+    "open_folder",
+    "delay",
+    "notify",
+    "if_path_exists",
+    "repeat",
+)
+FOLDER_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]{0,63}$")
+
+
+def xdg_path(variable: str, fallback: Path) -> Path:
+    return Path(os.environ.get(variable, fallback)).expanduser()
+
+
+def data_dir() -> Path:
+    path = xdg_path("XDG_DATA_HOME", Path.home() / ".local/share") / "edemint" / "library"
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    return path
+
+
+def cache_dir() -> Path:
+    path = xdg_path("XDG_CACHE_HOME", Path.home() / ".cache") / "edemint" / "library"
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    return path
+
+
+def atomic_json(path: Path, payload: Any) -> None:
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    with temporary.open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=True, indent=2, sort_keys=True)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    temporary.chmod(0o600)
+    temporary.replace(path)
+
+
+def body_label(text: str) -> Gtk.Label:
+    label = Gtk.Label(label=text, xalign=0, wrap=True, selectable=True)
+    return label
+
+
+def scrolled(child: Gtk.Widget, minimum_height: int = -1) -> Gtk.ScrolledWindow:
+    view = Gtk.ScrolledWindow(vexpand=True)
+    view.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+    if minimum_height > 0:
+        view.set_min_content_height(minimum_height)
+    view.set_child(child)
+    return view
+
+
+@dataclass
+class DesktopApplication:
+    desktop_id: str
+    name: str
+    generic_name: str
+    comment: str
+    icon: str
+    categories: list[str]
+    keywords: list[str]
+    permissions: list[str]
+    integration: str
+    source: str
+
+
+def application_roots() -> list[Path]:
+    roots = [
+        Path.home() / ".local/share/applications",
+        Path("/usr/local/share/applications"),
+        Path("/usr/share/applications"),
+    ]
+    return [root for root in roots if root.is_dir()]
+
+
+def infer_permissions(entry: configparser.SectionProxy) -> list[str]:
+    combined = ";".join((
+        entry.get("Categories", ""),
+        entry.get("Keywords", ""),
+        entry.get("MimeType", ""),
+        entry.get("Exec", ""),
+    )).casefold()
+    permissions = []
+    rules = (
+        ("network", ("network", "web", "http", "mail", "chat", "map")),
+        ("files", ("file", "folder", "%f", "%u", "inode/directory", "texteditor")),
+        ("camera", ("camera", "photography", "video")),
+        ("microphone", ("audio", "call", "conference", "record")),
+        ("location", ("map", "geography", "location")),
+        ("system", ("settings", "system", "hardware", "package", "monitor")),
+    )
+    for permission, needles in rules:
+        if any(needle in combined for needle in needles):
+            permissions.append(permission)
+    return permissions
+
+
+def integration_badge(entry: configparser.SectionProxy) -> str:
+    if entry.get("X-Edemint-Native", "").casefold() == "true":
+        return "Edemint native"
+    if entry.get("X-Edemint-Foundation", "").casefold() == "true":
+        return "Integrated foundation"
+    return "System application"
+
+
+def parse_desktop(path: Path) -> DesktopApplication | None:
+    parser = configparser.ConfigParser(interpolation=None, strict=False)
+    try:
+        parser.read(path, encoding="utf-8")
+        entry = parser["Desktop Entry"]
+    except (OSError, KeyError, configparser.Error):
+        return None
+    if entry.get("Type", "Application") != "Application":
+        return None
+    if entry.get("NoDisplay", "false").casefold() == "true" or entry.get("Hidden", "false").casefold() == "true":
+        return None
+    name = entry.get("Name", path.stem).strip()
+    if not name:
+        return None
+    return DesktopApplication(
+        desktop_id=path.stem,
+        name=name[:200],
+        generic_name=entry.get("GenericName", "").strip()[:200],
+        comment=entry.get("Comment", "").strip()[:500],
+        icon=entry.get("Icon", "application-x-executable").strip() or "application-x-executable",
+        categories=[item for item in entry.get("Categories", "").split(";") if item][:20],
+        keywords=[item for item in entry.get("Keywords", "").split(";") if item][:40],
+        permissions=infer_permissions(entry),
+        integration=integration_badge(entry),
+        source=str(path),
+    )
+
+
+def root_signature() -> dict[str, int]:
+    signature = {}
+    for root in application_roots():
+        try:
+            signature[str(root)] = root.stat().st_mtime_ns
+        except OSError:
+            signature[str(root)] = 0
+    return signature
+
+
+def desktop_apps(force: bool = False) -> list[DesktopApplication]:
+    cache_path = cache_dir() / "desktop-index.json"
+    signature = root_signature()
+    if not force:
+        try:
+            cached = json.loads(cache_path.read_text(encoding="utf-8"))
+            if cached.get("schema") == SCHEMA and cached.get("signature") == signature:
+                return [DesktopApplication(**item) for item in cached.get("apps", [])]
+        except (OSError, ValueError, TypeError):
+            pass
+    found: dict[str, DesktopApplication] = {}
+    for root in application_roots():
+        for path in root.glob("*.desktop"):
+            app = parse_desktop(path)
+            if app:
+                found[path.name] = app
+    apps = sorted(found.values(), key=lambda item: item.name.casefold())
+    atomic_json(cache_path, {
+        "schema": SCHEMA,
+        "signature": signature,
+        "indexed_at": int(time.time()),
+        "apps": [asdict(app) for app in apps],
+    })
+    return apps
+
+
+def library_state_path() -> Path:
+    return data_dir() / "library-state.json"
+
+
+def load_library_state() -> dict[str, Any]:
+    default = {"schema": SCHEMA, "usage": {}, "folders": {}}
+    try:
+        payload = json.loads(library_state_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return default
+    if not isinstance(payload, dict):
+        return default
+    usage = payload.get("usage") if isinstance(payload.get("usage"), dict) else {}
+    folders = payload.get("folders") if isinstance(payload.get("folders"), dict) else {}
+    clean_folders = {
+        str(name)[:64]: [str(item)[:240] for item in members if isinstance(item, str)][:500]
+        for name, members in folders.items()
+        if isinstance(name, str) and FOLDER_PATTERN.fullmatch(name) and isinstance(members, list)
+    }
+    return {"schema": SCHEMA, "usage": usage, "folders": clean_folders}
+
+
+def save_library_state(state: dict[str, Any]) -> None:
+    atomic_json(library_state_path(), state)
+
+
+def record_launch(desktop_id: str) -> None:
+    state = load_library_state()
+    item = state["usage"].get(desktop_id, {})
+    state["usage"][desktop_id] = {
+        "count": max(0, int(item.get("count", 0))) + 1,
+        "last": int(time.time()),
+    }
+    save_library_state(state)
+
+
+def fuzzy_score(query: str, values: list[str]) -> int:
+    needle = query.strip().casefold()
+    if not needle:
+        return 1
+    haystack = " ".join(values).casefold()
+    direct = haystack.find(needle)
+    if direct >= 0:
+        return 1000 - min(direct, 500)
+    position = 0
+    gaps = 0
+    for character in needle:
+        found = haystack.find(character, position)
+        if found < 0:
+            return 0
+        gaps += found - position
+        position = found + 1
+    return max(1, 500 - gaps)
+
+
+def shortcuts_path() -> Path:
+    return data_dir() / "shortcuts.json"
+
+
+def history_path() -> Path:
+    return data_dir() / "shortcuts-history.json"
+
+
+def normalize_shortcut(item: Any) -> dict[str, Any] | None:
+    if not isinstance(item, dict):
+        return None
+    identifier = item.get("id")
+    name = item.get("name")
+    kind = item.get("kind")
+    if not isinstance(identifier, str) or not identifier or not isinstance(name, str) or not name.strip():
+        return None
+    if kind not in SHORTCUT_KINDS:
+        return None
+    target = item.get("target")
+    if kind == "workflow":
+        if not isinstance(target, list):
+            return None
+    elif not isinstance(target, str) or not target.strip():
+        return None
+    trigger = item.get("trigger", "manual")
+    variables = item.get("variables") if isinstance(item.get("variables"), dict) else {}
+    return {
+        "id": identifier[:240],
+        "name": name.strip()[:120],
+        "kind": kind,
+        "target": target if kind == "workflow" else target.strip()[:4096],
+        "category": str(item.get("category", "General")).strip()[:64] or "General",
+        "icon": str(item.get("icon", "system-run")).strip()[:160] or "system-run",
+        "trigger": trigger if trigger in TRIGGERS else "manual",
+        "variables": {
+            str(key)[:64]: str(value)[:1024]
+            for key, value in variables.items()
+            if isinstance(key, str) and isinstance(value, (str, int, float))
+        },
+        "created": int(item.get("created", time.time())),
+        "modified": int(item.get("modified", time.time())),
+    }
+
+
+def load_shortcuts() -> list[dict[str, Any]]:
+    try:
+        payload = json.loads(shortcuts_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return []
+    raw = payload if isinstance(payload, list) else payload.get("items", []) if isinstance(payload, dict) else []
+    return [item for value in raw[:MAX_SHORTCUTS] if (item := normalize_shortcut(value))]
+
+
+def snapshot_shortcuts(items: list[dict[str, Any]]) -> None:
+    try:
+        history = json.loads(history_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        history = []
+    if not isinstance(history, list):
+        history = []
+    history.insert(0, {"saved_at": int(time.time()), "items": items})
+    atomic_json(history_path(), history[:20])
+
+
+def save_shortcuts(items: list[dict[str, Any]], keep_history: bool = True) -> None:
+    if keep_history and shortcuts_path().exists():
+        snapshot_shortcuts(load_shortcuts())
+    atomic_json(shortcuts_path(), {"schema": SCHEMA, "items": items[:MAX_SHORTCUTS]})
+
+
+def undo_shortcuts() -> bool:
+    try:
+        history = json.loads(history_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return False
+    if not isinstance(history, list) or not history:
+        return False
+    snapshot = history.pop(0)
+    items = snapshot.get("items") if isinstance(snapshot, dict) else None
+    if not isinstance(items, list):
+        return False
+    atomic_json(shortcuts_path(), {"schema": SCHEMA, "items": items})
+    atomic_json(history_path(), history)
+    return True
+
+
+def app_ids() -> set[str]:
+    return {app.desktop_id for app in desktop_apps()}
+
+
+def validate_uri(value: str) -> bool:
+    parsed = urlparse(value)
+    return (
+        parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+    ) or (
+        parsed.scheme in {"mailto", "tel"} and bool(parsed.path)
+    )
+
+
+def workflow_permissions(steps: list[Any]) -> set[str]:
+    permissions: set[str] = set()
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        action = step.get("action")
+        if action == "launch_application":
+            permissions.add("launch applications")
+        elif action == "open_uri":
+            permissions.add("open network or communication links")
+        elif action in {"open_folder", "if_path_exists"}:
+            permissions.add("read selected file paths")
+        elif action == "notify":
+            permissions.add("show notifications")
+        elif action == "delay":
+            permissions.add("use timers")
+        for nested in (step.get("steps"), step.get("then"), step.get("else")):
+            if isinstance(nested, list):
+                permissions.update(workflow_permissions(nested))
+    return permissions
+
+
+def validate_steps(steps: Any, depth: int = 0) -> tuple[bool, str]:
+    if not isinstance(steps, list) or not steps:
+        return False, "A workflow needs at least one step."
+    if len(steps) > MAX_WORKFLOW_STEPS or depth > 4:
+        return False, "The workflow is too large or deeply nested."
+    for index, step in enumerate(steps, 1):
+        if not isinstance(step, dict) or step.get("action") not in WORKFLOW_ACTIONS:
+            return False, f"Step {index} has an unsupported action."
+        action = step["action"]
+        if action == "launch_application" and str(step.get("target", "")).removesuffix(".desktop") not in app_ids():
+            return False, f"Step {index} references an unavailable application."
+        if action == "open_uri" and not validate_uri(str(step.get("target", ""))):
+            return False, f"Step {index} needs a complete HTTP, HTTPS, mail, or telephone URI."
+        if action in {"open_folder", "if_path_exists"} and not isinstance(step.get("path"), str):
+            return False, f"Step {index} needs a path."
+        if action == "delay":
+            try:
+                seconds = float(step.get("seconds", 0))
+            except (ValueError, TypeError):
+                return False, f"Step {index} has an invalid delay."
+            if seconds < 0 or seconds > MAX_DELAY:
+                return False, f"Step {index} delay must be 0-{MAX_DELAY:g} seconds."
+        if action == "notify" and not isinstance(step.get("message"), str):
+            return False, f"Step {index} needs a notification message."
+        if action == "repeat":
+            try:
+                count = int(step.get("count", 0))
+            except (ValueError, TypeError):
+                return False, f"Step {index} has an invalid repeat count."
+            if count < 1 or count > MAX_REPEAT:
+                return False, f"Step {index} repeat count must be 1-{MAX_REPEAT}."
+            ok, error = validate_steps(step.get("steps"), depth + 1)
+            if not ok:
+                return False, error
+        if action == "if_path_exists":
+            for branch in ("then", "else"):
+                nested = step.get(branch, [])
+                if nested:
+                    ok, error = validate_steps(nested, depth + 1)
+                    if not ok:
+                        return False, error
+    return True, ""
+
+
+def validate_shortcut(item: dict[str, Any]) -> tuple[bool, str]:
+    kind = item["kind"]
+    target = item["target"]
+    if kind == "application":
+        desktop_id = str(target).removesuffix(".desktop")
+        return (True, "") if desktop_id in app_ids() else (False, f"Application unavailable: {desktop_id}")
+    if kind == "web":
+        return (True, "") if validate_uri(str(target)) else (False, "Use a complete HTTP, HTTPS, mail, or telephone URI.")
+    if kind == "folder":
+        folder = Path(str(target)).expanduser()
+        return (True, "") if folder.is_dir() else (False, f"Folder unavailable: {folder}")
+    return validate_steps(target)
+
+
+def substitute(value: str, variables: dict[str, str]) -> str:
+    builtins = {
+        "HOME": str(Path.home()),
+        "DATE": datetime.now().astimezone().strftime("%Y-%m-%d"),
+        "TIME": datetime.now().astimezone().strftime("%H:%M"),
+    }
+    resolved = {**builtins, **variables}
+    output = value
+    for key, replacement in resolved.items():
+        output = output.replace("${" + key + "}", str(replacement))
+    return output
+
+
+def launch_application(desktop_id: str) -> None:
+    if not shutil.which("gtk-launch"):
+        raise RuntimeError("gtk-launch is unavailable")
+    subprocess.Popen(["gtk-launch", desktop_id.removesuffix(".desktop")], start_new_session=True)
+    record_launch(desktop_id.removesuffix(".desktop"))
+
+
+def execute_steps(steps: list[dict[str, Any]], variables: dict[str, str], notify: Callable[[str], None]) -> None:
+    for step in steps:
+        action = step["action"]
+        if action == "launch_application":
+            launch_application(substitute(str(step["target"]), variables))
+        elif action == "open_uri":
+            Gio.AppInfo.launch_default_for_uri(substitute(str(step["target"]), variables), None)
+        elif action == "open_folder":
+            path = Path(substitute(str(step["path"]), variables)).expanduser().resolve()
+            if not path.is_dir():
+                raise RuntimeError(f"Folder unavailable: {path}")
+            Gio.AppInfo.launch_default_for_uri(path.as_uri(), None)
+        elif action == "delay":
+            time.sleep(float(step.get("seconds", 0)))
+        elif action == "notify":
+            notify(substitute(str(step["message"]), variables))
+        elif action == "repeat":
+            for _iteration in range(int(step["count"])):
+                execute_steps(step["steps"], variables, notify)
+        elif action == "if_path_exists":
+            path = Path(substitute(str(step["path"]), variables)).expanduser()
+            branch = step.get("then", []) if path.exists() else step.get("else", [])
+            if branch:
+                execute_steps(branch, variables, notify)
+
+
+def shortcut_permissions(item: dict[str, Any]) -> list[str]:
+    if item["kind"] == "application":
+        return ["launch applications"]
+    if item["kind"] == "web":
+        return ["open network or communication links"]
+    if item["kind"] == "folder":
+        return ["open a selected folder"]
+    return sorted(workflow_permissions(item["target"]))
+
+
+class LibraryToolsApp(Adw.Application):
+    def __init__(self, mode: str) -> None:
+        title, app_id = MODES[mode]
+        super().__init__(application_id=app_id)
+        self.mode = mode
+        self.title = title
+        self.window: Adw.ApplicationWindow | None = None
+        self.apps = desktop_apps()
+        self.page = 0
+        self.monitors: list[Gio.FileMonitor] = []
+        self.refresh_source = 0
+        self.app_box: Gtk.ListBox | None = None
+        self.app_search: Gtk.SearchEntry | None = None
+        self.app_filter: Gtk.DropDown | None = None
+        self.app_sort: Gtk.DropDown | None = None
+        self.folder_entry: Gtk.Entry | None = None
+        self.page_label: Gtk.Label | None = None
+        self.shortcut_box: Gtk.ListBox | None = None
+        self.shortcut_search: Gtk.SearchEntry | None = None
+        self.shortcut_category: Gtk.DropDown | None = None
+
+    def do_activate(self) -> None:
+        if self.window:
+            self.window.present()
+            return
+        self.window = Adw.ApplicationWindow(application=self)
+        self.window.set_title(self.title)
+        self.window.set_default_size(1000, 700)
+        toolbar = Adw.ToolbarView()
+        header = Adw.HeaderBar()
+        header.set_title_widget(Gtk.Label(label=self.title))
+        toolbar.add_top_bar(header)
+        toolbar.set_content(self.build_library() if self.mode == "library" else self.build_shortcuts())
+        self.window.set_content(toolbar)
+        self.install_actions()
+        self.window.present()
+        if self.mode == "library":
+            self.monitor_application_roots()
+        else:
+            GLib.timeout_add(800, self.run_on_open_shortcuts)
+
+    def install_actions(self) -> None:
+        action = Gio.SimpleAction.new("focus-search", None)
+        action.connect("activate", lambda *_args: (self.app_search or self.shortcut_search).grab_focus())
+        self.add_action(action)
+        self.set_accels_for_action("app.focus-search", ("<Primary>f",))
+        if self.mode == "shortcuts":
+            export = Gio.SimpleAction.new("export", None)
+            export.connect("activate", lambda *_args: self.export_shortcuts())
+            self.add_action(export)
+            self.set_accels_for_action("app.export", ("<Primary>e",))
+            undo = Gio.SimpleAction.new("undo", None)
+            undo.connect("activate", lambda *_args: self.undo())
+            self.add_action(undo)
+            self.set_accels_for_action("app.undo", ("<Primary>z",))
+
+    def notice(self, message: str) -> None:
+        if self.window:
+            dialog = Adw.AlertDialog(heading=self.title, body=message)
+            dialog.add_response("ok", "OK")
+            dialog.present(self.window)
+
+    def monitor_application_roots(self) -> None:
+        for root in application_roots():
+            try:
+                monitor = Gio.File.new_for_path(str(root)).monitor_directory(Gio.FileMonitorFlags.NONE, None)
+                monitor.connect("changed", self.application_directory_changed)
+                self.monitors.append(monitor)
+            except GLib.Error:
+                continue
+
+    def application_directory_changed(self, *_args: object) -> None:
+        if self.refresh_source:
+            GLib.source_remove(self.refresh_source)
+        self.refresh_source = GLib.timeout_add(500, self.reindex)
+
+    def reindex(self) -> bool:
+        self.refresh_source = 0
+        self.apps = desktop_apps(force=True)
+        self.page = 0
+        self.populate_library()
+        return False
+
+    def build_library(self) -> Gtk.Widget:
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin_top=12, margin_bottom=12, margin_start=12, margin_end=12)
+        outer.append(body_label(
+            "Search cached installed-app metadata, inspect integration and permission hints, organize folders, and launch applications. Permission hints are descriptive; package sandboxing remains the app's responsibility."
+        ))
+        controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.app_search = Gtk.SearchEntry(placeholder_text="Fuzzy search applications")
+        self.app_search.set_hexpand(True)
+        self.app_filter = Gtk.DropDown.new_from_strings(("All", "Recent", "Frequent", "Edemint", "Network", "Office", "System", "Utility", "Media"))
+        self.app_sort = Gtk.DropDown.new_from_strings(("Name", "Recently used", "Most used"))
+        self.folder_entry = Gtk.Entry(placeholder_text="Folder name")
+        controls.append(self.app_search)
+        controls.append(self.app_filter)
+        controls.append(self.app_sort)
+        controls.append(self.folder_entry)
+        outer.append(controls)
+        self.app_box = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        outer.append(scrolled(self.app_box))
+        paging = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, halign=Gtk.Align.CENTER)
+        previous = Gtk.Button(label="Previous")
+        previous.connect("clicked", lambda _button: self.change_page(-1))
+        self.page_label = Gtk.Label()
+        next_button = Gtk.Button(label="Next")
+        next_button.connect("clicked", lambda _button: self.change_page(1))
+        paging.append(previous)
+        paging.append(self.page_label)
+        paging.append(next_button)
+        outer.append(paging)
+        self.app_search.connect("search-changed", lambda _entry: self.reset_library())
+        self.app_filter.connect("notify::selected", lambda *_args: self.reset_library())
+        self.app_sort.connect("notify::selected", lambda *_args: self.reset_library())
+        self.populate_library()
+        return outer
+
+    def reset_library(self) -> None:
+        self.page = 0
+        self.populate_library()
+
+    def filtered_apps(self) -> list[DesktopApplication]:
+        query = self.app_search.get_text() if self.app_search else ""
+        filter_index = self.app_filter.get_selected() if self.app_filter else 0
+        state = load_library_state()
+        usage = state["usage"]
+        scored = []
+        for app in self.apps:
+            score = fuzzy_score(query, [app.name, app.generic_name, app.comment, " ".join(app.categories), " ".join(app.keywords)])
+            if score == 0:
+                continue
+            categories = {item.casefold() for item in app.categories}
+            item_usage = usage.get(app.desktop_id, {})
+            if filter_index == 1 and int(item_usage.get("last", 0)) < int(time.time()) - 30 * 86400:
+                continue
+            if filter_index == 2 and int(item_usage.get("count", 0)) < 2:
+                continue
+            if filter_index == 3 and not app.integration.startswith("Edemint"):
+                continue
+            category_needles = {4: "network", 5: "office", 6: "system", 7: "utility", 8: "audio"}
+            if filter_index in category_needles and not any(category_needles[filter_index] in value for value in categories):
+                continue
+            scored.append((score, app))
+        sort_index = self.app_sort.get_selected() if self.app_sort else 0
+        if sort_index == 1:
+            scored.sort(key=lambda pair: (-int(usage.get(pair[1].desktop_id, {}).get("last", 0)), -pair[0], pair[1].name.casefold()))
+        elif sort_index == 2:
+            scored.sort(key=lambda pair: (-int(usage.get(pair[1].desktop_id, {}).get("count", 0)), -pair[0], pair[1].name.casefold()))
+        else:
+            scored.sort(key=lambda pair: (-pair[0], pair[1].name.casefold()))
+        return [app for _score, app in scored]
+
+    def populate_library(self) -> None:
+        if not self.app_box:
+            return
+        while child := self.app_box.get_first_child():
+            self.app_box.remove(child)
+        apps = self.filtered_apps()
+        pages = max(1, (len(apps) + PAGE_SIZE - 1) // PAGE_SIZE)
+        self.page = max(0, min(self.page, pages - 1))
+        start = self.page * PAGE_SIZE
+        for app in apps[start:start + PAGE_SIZE]:
+            badges = ", ".join(app.permissions) if app.permissions else "no broad permission hints"
+            subtitle = f"{app.integration} | {badges}"
+            if app.comment:
+                subtitle = f"{app.comment} | {subtitle}"
+            row = Adw.ActionRow(title=app.name, subtitle=subtitle)
+            row.add_prefix(Gtk.Image.new_from_icon_name(app.icon))
+            folder_button = Gtk.Button(label="Folder", valign=Gtk.Align.CENTER)
+            folder_button.connect("clicked", lambda _button, item=app: self.add_app_to_folder(item))
+            shortcut_button = Gtk.Button(label="Shortcut", valign=Gtk.Align.CENTER)
+            shortcut_button.connect("clicked", lambda _button, item=app: self.add_application_shortcut(item))
+            open_button = Gtk.Button(label="Open", valign=Gtk.Align.CENTER)
+            open_button.connect("clicked", lambda _button, item=app: self.open_application(item))
+            row.add_suffix(folder_button)
+            row.add_suffix(shortcut_button)
+            row.add_suffix(open_button)
+            row.set_activatable_widget(open_button)
+            self.app_box.append(row)
+        if not apps:
+            self.app_box.append(Adw.ActionRow(title="No matching applications", subtitle="Change the search or category filter."))
+        if self.page_label:
+            self.page_label.set_text(f"Page {self.page + 1} of {pages} | {len(apps)} apps")
+
+    def change_page(self, delta: int) -> None:
+        self.page += delta
+        self.populate_library()
+
+    def open_application(self, app: DesktopApplication) -> None:
+        try:
+            launch_application(app.desktop_id)
+            self.populate_library()
+        except (OSError, RuntimeError, GLib.Error) as exc:
+            self.notice(str(exc))
+
+    def add_app_to_folder(self, app: DesktopApplication) -> None:
+        name = self.folder_entry.get_text().strip() if self.folder_entry else ""
+        if not FOLDER_PATTERN.fullmatch(name):
+            self.notice("Enter a folder name using letters, numbers, spaces, dot, dash, or underscore.")
+            return
+        state = load_library_state()
+        members = state["folders"].setdefault(name, [])
+        if app.desktop_id not in members:
+            members.append(app.desktop_id)
+            save_library_state(state)
+        self.notice(f"Added {app.name} to the {name} folder.")
+
+    def add_application_shortcut(self, app: DesktopApplication) -> None:
+        items = load_shortcuts()
+        if any(item["kind"] == "application" and item["target"] == app.desktop_id for item in items):
+            self.notice(f"{app.name} already has a shortcut.")
+            return
+        now = int(time.time())
+        items.append({
+            "id": uuid.uuid4().hex,
+            "name": app.name,
+            "kind": "application",
+            "target": app.desktop_id,
+            "category": "Applications",
+            "icon": app.icon,
+            "trigger": "manual",
+            "variables": {},
+            "created": now,
+            "modified": now,
+        })
+        save_shortcuts(items)
+        self.notice(f"Added {app.name} to Shortcuts.")
+
+    def build_shortcuts(self) -> Gtk.Widget:
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin_top=12, margin_bottom=12, margin_start=12, margin_end=12)
+        outer.append(body_label(
+            "Shortcuts launches approved applications, links, folders, or structured workflows. Workflows support variables, conditions, bounded repeats and delays, notifications, and on-open triggers. Arbitrary shell commands are never accepted."
+        ))
+        controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.shortcut_search = Gtk.SearchEntry(placeholder_text="Search shortcuts")
+        self.shortcut_search.set_hexpand(True)
+        self.shortcut_category = Gtk.DropDown.new_from_strings(("All categories",))
+        controls.append(self.shortcut_search)
+        controls.append(self.shortcut_category)
+        for label, callback in (("Export", self.export_shortcuts), ("Import", self.import_shortcuts), ("Undo", self.undo)):
+            button = Gtk.Button(label=label)
+            button.connect("clicked", lambda _button, action=callback: action())
+            controls.append(button)
+        outer.append(controls)
+
+        form = Gtk.Grid(column_spacing=8, row_spacing=8)
+        name_entry = Gtk.Entry(placeholder_text="Shortcut name")
+        category_entry = Gtk.Entry(placeholder_text="Category", text="General")
+        icon_entry = Gtk.Entry(placeholder_text="Icon name", text="system-run")
+        kind_menu = Gtk.DropDown.new_from_strings(("Application", "Web address", "Folder", "Workflow JSON"))
+        trigger_menu = Gtk.DropDown.new_from_strings(("Manual", "When Shortcuts opens"))
+        target_buffer = Gtk.TextBuffer()
+        target_view = Gtk.TextView(buffer=target_buffer, wrap_mode=Gtk.WrapMode.WORD_CHAR)
+        target_view.set_tooltip_text(
+            'Simple target, or workflow JSON such as [{"action":"notify","message":"Hello"},{"action":"delay","seconds":1}]'
+        )
+        form.attach(name_entry, 0, 0, 1, 1)
+        form.attach(category_entry, 1, 0, 1, 1)
+        form.attach(icon_entry, 2, 0, 1, 1)
+        form.attach(kind_menu, 3, 0, 1, 1)
+        form.attach(trigger_menu, 4, 0, 1, 1)
+        form.attach(scrolled(target_view, 95), 0, 1, 5, 1)
+        add_button = Gtk.Button(label="Add Shortcut")
+        form.attach(add_button, 4, 2, 1, 1)
+        outer.append(form)
+        self.shortcut_box = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        outer.append(scrolled(self.shortcut_box))
+
+        def create(_button: Gtk.Button) -> None:
+            start, end = target_buffer.get_bounds()
+            raw_target = target_buffer.get_text(start, end, True).strip()
+            kind = SHORTCUT_KINDS[kind_menu.get_selected()]
+            name = name_entry.get_text().strip()
+            if not name or not raw_target:
+                self.notice("Enter a name and target or workflow JSON.")
+                return
+            try:
+                target: Any = json.loads(raw_target) if kind == "workflow" else raw_target.removesuffix(".desktop") if kind == "application" else raw_target
+            except (ValueError, TypeError) as exc:
+                self.notice(f"Workflow JSON is invalid: {exc}")
+                return
+            now = int(time.time())
+            candidate = {
+                "id": uuid.uuid4().hex,
+                "name": name[:120],
+                "kind": kind,
+                "target": target,
+                "category": category_entry.get_text().strip()[:64] or "General",
+                "icon": icon_entry.get_text().strip()[:160] or "system-run",
+                "trigger": TRIGGERS[trigger_menu.get_selected()],
+                "variables": {},
+                "created": now,
+                "modified": now,
+            }
+            ok, error = validate_shortcut(candidate)
+            if not ok:
+                self.notice(error)
+                return
+            items = load_shortcuts()
+            if len(items) >= MAX_SHORTCUTS:
+                self.notice(f"Shortcuts supports up to {MAX_SHORTCUTS} saved items.")
+                return
+            items.append(candidate)
+            save_shortcuts(items)
+            name_entry.set_text("")
+            target_buffer.set_text("")
+            self.refresh_shortcuts()
+
+        add_button.connect("clicked", create)
+        self.shortcut_search.connect("search-changed", lambda _entry: self.refresh_shortcuts())
+        self.refresh_shortcuts()
+        return outer
+
+    def refresh_shortcuts(self) -> None:
+        if not self.shortcut_box:
+            return
+        while child := self.shortcut_box.get_first_child():
+            self.shortcut_box.remove(child)
+        items = load_shortcuts()
+        query = self.shortcut_search.get_text().strip().casefold() if self.shortcut_search else ""
+        categories = sorted({item["category"] for item in items}, key=str.casefold)
+        model = Gtk.StringList.new(("All categories",) + tuple(categories))
+        selected_text = "All categories"
+        if self.shortcut_category:
+            selected = self.shortcut_category.get_selected_item()
+            if selected:
+                selected_text = selected.get_string()
+            self.shortcut_category.set_model(model)
+            if selected_text in ("All categories", *categories):
+                self.shortcut_category.set_selected(("All categories", *categories).index(selected_text))
+        filtered = [
+            item for item in items
+            if (not query or query in f"{item['name']} {item['category']} {item['kind']}".casefold())
+            and (selected_text == "All categories" or item["category"] == selected_text)
+        ]
+        for item in filtered:
+            permissions = ", ".join(shortcut_permissions(item)) or "no broad permissions"
+            subtitle = f"{item['category']} | {item['kind']} | trigger {item['trigger']} | {permissions}"
+            row = Adw.ActionRow(title=item["name"], subtitle=subtitle)
+            row.add_prefix(Gtk.Image.new_from_icon_name(item["icon"]))
+            for label, callback in (
+                ("Up", lambda shortcut_id=item["id"]: self.reorder(shortcut_id, -1)),
+                ("Down", lambda shortcut_id=item["id"]: self.reorder(shortcut_id, 1)),
+                ("Remove", lambda shortcut_id=item["id"]: self.remove(shortcut_id)),
+                ("Run", lambda shortcut=item: self.confirm_run(shortcut)),
+            ):
+                button = Gtk.Button(label=label, valign=Gtk.Align.CENTER)
+                if label == "Remove":
+                    button.add_css_class("destructive-action")
+                button.connect("clicked", lambda _button, action=callback: action())
+                row.add_suffix(button)
+                if label == "Run":
+                    row.set_activatable_widget(button)
+            self.shortcut_box.append(row)
+        if not filtered:
+            self.shortcut_box.append(Adw.ActionRow(title="No matching shortcuts", subtitle="Create a shortcut or change the search filter."))
+
+    def reorder(self, shortcut_id: str, delta: int) -> None:
+        items = load_shortcuts()
+        index = next((index for index, item in enumerate(items) if item["id"] == shortcut_id), None)
+        if index is None:
+            return
+        target = max(0, min(len(items) - 1, index + delta))
+        if target != index:
+            items.insert(target, items.pop(index))
+            save_shortcuts(items)
+            self.refresh_shortcuts()
+
+    def remove(self, shortcut_id: str) -> None:
+        save_shortcuts([item for item in load_shortcuts() if item["id"] != shortcut_id])
+        self.refresh_shortcuts()
+
+    def confirm_run(self, item: dict[str, Any]) -> None:
+        ok, error = validate_shortcut(item)
+        if not ok:
+            self.notice(error)
+            return
+        permissions = shortcut_permissions(item)
+        if not self.window:
+            return
+        dialog = Adw.AlertDialog(
+            heading=f"Run {item['name']}?",
+            body="This shortcut requests: " + (", ".join(permissions) if permissions else "no broad permissions") + ". Review the shortcut before approving.",
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("run", "Run")
+        dialog.set_response_appearance("run", Adw.ResponseAppearance.SUGGESTED)
+        dialog.connect("response", lambda _dialog, response: self.run_async(item) if response == "run" else None)
+        dialog.present(self.window)
+
+    def run_async(self, item: dict[str, Any]) -> None:
+        def worker() -> None:
+            try:
+                if item["kind"] == "application":
+                    launch_application(str(item["target"]))
+                elif item["kind"] == "web":
+                    Gio.AppInfo.launch_default_for_uri(str(item["target"]), None)
+                elif item["kind"] == "folder":
+                    folder = Path(str(item["target"])).expanduser().resolve()
+                    Gio.AppInfo.launch_default_for_uri(folder.as_uri(), None)
+                else:
+                    execute_steps(item["target"], item["variables"], lambda message: GLib.idle_add(self.send_workflow_notification, item["id"], message))
+                GLib.idle_add(self.workflow_finished, item["name"], "")
+            except (OSError, RuntimeError, GLib.Error, ValueError) as exc:
+                GLib.idle_add(self.workflow_finished, item["name"], str(exc))
+        threading.Thread(target=worker, daemon=True, name=f"shortcut-{item['id'][:12]}").start()
+
+    def send_workflow_notification(self, identifier: str, message: str) -> bool:
+        notification = Gio.Notification.new("Shortcut")
+        notification.set_body(message[:500])
+        self.send_notification(f"shortcut-{identifier}", notification)
+        return False
+
+    def workflow_finished(self, name: str, error: str) -> bool:
+        self.notice(f"{name} failed: {error}" if error else f"{name} completed.")
+        return False
+
+    def run_on_open_shortcuts(self) -> bool:
+        for item in load_shortcuts():
+            if item["trigger"] == "on-open":
+                self.confirm_run(item)
+        return False
+
+    def export_shortcuts(self) -> None:
+        path = data_dir() / "edemint-shortcuts-export.json"
+        atomic_json(path, {"schema": SCHEMA, "items": load_shortcuts()})
+        self.notice(f"Exported shortcuts to {path}")
+
+    def import_shortcuts(self) -> None:
+        candidates = (
+            Path.home() / "Downloads" / "edemint-shortcuts.json",
+            Path.home() / "Documents" / "edemint-shortcuts.json",
+            data_dir() / "edemint-shortcuts-import.json",
+        )
+        source = next((path for path in candidates if path.is_file()), None)
+        if source is None:
+            self.notice("Place edemint-shortcuts.json in Downloads or Documents, or edemint-shortcuts-import.json in the Edemint library data directory.")
+            return
+        try:
+            payload = json.loads(source.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError) as exc:
+            self.notice(f"Import failed: {exc}")
+            return
+        raw = payload.get("items") if isinstance(payload, dict) else payload if isinstance(payload, list) else []
+        imported = [item for value in raw if (item := normalize_shortcut(value))]
+        valid = []
+        for item in imported:
+            ok, _error = validate_shortcut(item)
+            if ok:
+                item["id"] = uuid.uuid4().hex
+                valid.append(item)
+        items = (load_shortcuts() + valid)[:MAX_SHORTCUTS]
+        save_shortcuts(items)
+        self.refresh_shortcuts()
+        self.notice(f"Imported {len(valid)} validated shortcuts from {source}")
+
+    def undo(self) -> None:
+        if undo_shortcuts():
+            self.refresh_shortcuts()
+            self.notice("Restored the previous Shortcuts version.")
+        else:
+            self.notice("No previous Shortcuts version is available.")
+
+
+def command_mode(arguments: list[str]) -> int | None:
+    if len(arguments) == 2 and arguments[0] == "--export":
+        atomic_json(Path(arguments[1]).expanduser(), {"schema": SCHEMA, "items": load_shortcuts()})
+        return 0
+    if len(arguments) == 2 and arguments[0] == "--import":
+        payload = json.loads(Path(arguments[1]).expanduser().read_text(encoding="utf-8"))
+        raw = payload.get("items") if isinstance(payload, dict) else payload
+        if not isinstance(raw, list):
+            raise ValueError("import does not contain shortcut items")
+        items = load_shortcuts()
+        for value in raw:
+            item = normalize_shortcut(value)
+            if not item:
+                continue
+            ok, _error = validate_shortcut(item)
+            if ok:
+                item["id"] = uuid.uuid4().hex
+                items.append(item)
+            if len(items) >= MAX_SHORTCUTS:
+                break
+        save_shortcuts(items)
+        return 0
+    return None
+
+
+def main() -> int:
+    handled = command_mode(sys.argv[1:])
+    if handled is not None:
+        return handled
+    if len(sys.argv) != 2 or sys.argv[1] not in MODES:
+        print(f"Usage: {Path(sys.argv[0]).name} <library|shortcuts>")
+        return 2
+    return LibraryToolsApp(sys.argv[1]).run([sys.argv[0]])
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

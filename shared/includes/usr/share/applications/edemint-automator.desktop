@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Automator
+GenericName=Workflow Automation
+Comment=Run reviewed and permission-aware Edemint actions
+Exec=edemint-automator
+Icon=system-run
+Terminal=false
+Categories=Utility;System;
+StartupNotify=true
+Keywords=automation;workflow;actions;
+X-Edemint-Native=true
+X-Edemint-Maturity=mvp

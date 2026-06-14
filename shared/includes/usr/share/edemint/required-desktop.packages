@@ -1,0 +1,12 @@
+# Package                          Suite
+# The second column is the apt target used during image construction.
+# Entries in this file are release-critical: absence must fail the build.
+hyprland                          trixie-backports
+hyprlock                          trixie-backports
+hypridle                          trixie-backports
+xdg-desktop-portal-hyprland       trixie-backports
+wlogout                           trixie
+swayosd                           trixie
+cliphist                          trixie
+wf-recorder                       trixie
+jq                                trixie

@@ -1,0 +1,16 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Noterer
+GenericName=Text Editor
+Comment=Create and edit plain-text notes
+Exec=gnome-text-editor %U
+Icon=org.gnome.TextEditor
+Terminal=false
+Categories=Utility;TextEditor;
+MimeType=text/plain;
+StartupNotify=true
+StartupWMClass=org.gnome.TextEditor
+Keywords=text;editor;notes;noterer;
+X-Edemint-Foundation=true
+X-Edemint-Upstream=org.gnome.TextEditor

@@ -1,0 +1,214 @@
+#!/usr/bin/python3
+"""Edemint Inspector with bounded probing and disposable viewer isolation."""
+
+from __future__ import annotations
+
+import base64
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import time
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gtk  # noqa: E402
+
+APP_ID = "org.edemint.Inspector"
+PROBE = "/usr/libexec/edemint-inspector-probe"
+SANDBOX = "/usr/libexec/edemint-inspector-sandbox"
+DEFAULT_TIMEOUT_SECONDS = 3.0
+MAX_TIMEOUT_SECONDS = 10.0
+
+
+def timeout_seconds() -> float:
+    try:
+        configured = float(os.environ.get(
+            "EDEMINT_INSPECTOR_TIMEOUT", str(DEFAULT_TIMEOUT_SECONDS)
+        ))
+    except ValueError:
+        configured = DEFAULT_TIMEOUT_SECONDS
+    return max(1.0, min(configured, MAX_TIMEOUT_SECONDS))
+
+
+def label(text: str, title: bool = False) -> Gtk.Label:
+    widget = Gtk.Label(label=text, xalign=0, selectable=not title)
+    widget.set_wrap(True)
+    if title:
+        widget.add_css_class("title-2")
+    return widget
+
+
+def probe(path: Path) -> tuple[dict[str, object] | None, str]:
+    try:
+        completed = subprocess.run(
+            [sys.executable, PROBE, str(path)],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds(),
+            env={
+                "PATH": "/usr/bin:/bin",
+                "LANG": os.environ.get("LANG", "C.UTF-8"),
+            },
+        )
+    except subprocess.TimeoutExpired:
+        return None, (
+            f"Preview timed out after {timeout_seconds():g} seconds. "
+            "The reader process was stopped."
+        )
+    except OSError as exc:
+        return None, str(exc)
+
+    try:
+        payload = json.loads(completed.stdout)
+    except (TypeError, ValueError):
+        return None, "Inspector received an invalid response from its file probe."
+    if not isinstance(payload, dict) or not payload.get("ok"):
+        return None, str(payload.get("error", "The file cannot be inspected."))
+    return payload, ""
+
+
+class Inspector(Adw.Application):
+    def __init__(self, arguments: list[str]) -> None:
+        super().__init__(application_id=APP_ID)
+        self.arguments = arguments
+        self.window: Adw.ApplicationWindow | None = None
+
+    def do_activate(self) -> None:
+        if self.window:
+            self.window.present()
+            return
+        self.window = Adw.ApplicationWindow(application=self)
+        self.window.set_title("Inspector")
+        self.window.set_default_size(920, 640)
+        toolbar = Adw.ToolbarView()
+        toolbar.add_top_bar(Adw.HeaderBar())
+        toolbar.set_content(self.build_content())
+        self.window.set_content(toolbar)
+        self.window.present()
+
+    def notice(self, message: str) -> None:
+        if self.window:
+            dialog = Adw.AlertDialog(heading="Inspector", body=message)
+            dialog.add_response("ok", "OK")
+            dialog.present(self.window)
+
+    def launch_sandbox(self, path: str, expected: str) -> None:
+        try:
+            preflight = subprocess.run(
+                [sys.executable, SANDBOX, "--check", "--expect", expected, path],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=4,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            self.notice(f"Sandbox preflight failed: {exc}")
+            return
+        if preflight.returncode != 0:
+            self.notice(preflight.stderr.strip() or "No isolated viewer is available.")
+            return
+        try:
+            subprocess.Popen(
+                [sys.executable, SANDBOX, "--expect", expected, path],
+                start_new_session=True,
+            )
+        except OSError as exc:
+            self.notice(str(exc))
+
+    def build_content(self) -> Gtk.Widget:
+        box = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=14,
+            margin_top=20,
+            margin_bottom=20,
+            margin_start=20,
+            margin_end=20,
+        )
+        if not self.arguments:
+            box.append(label("No file selected", True))
+            box.append(label("Open Inspector from Filer or run `edemint-inspector FILE`."))
+            return box
+
+        payload, error = probe(Path(self.arguments[0]).expanduser())
+        if not payload:
+            box.append(label("File cannot be inspected", True))
+            box.append(label(error))
+            box.append(label(
+                "Inspector refuses symbolic links and non-regular files, reads at "
+                "most 64 KiB, and terminates a reader that exceeds its timeout."
+            ))
+            return box
+
+        raw = base64.b64decode(str(payload["data"]), validate=True)
+        text = raw.decode("utf-8", errors="replace")
+        if "\x00" in text:
+            text = raw[:4096].hex(" ")
+        if payload.get("truncated"):
+            text += "\n\n[Preview truncated at 65,536 bytes]"
+
+        box.append(label(str(payload["name"]), True))
+        box.append(label(
+            f"Content type: {payload['mime']}\n"
+            f"Extension type: {payload['extension_mime']}\n"
+            f"Size: {payload['size']} bytes\n"
+            f"Modified: {time.ctime(float(payload['modified']))}\n"
+            f"Path: {payload['path']}\n"
+            f"Reader timeout: {timeout_seconds():g} seconds"
+        ))
+        if payload.get("mime_mismatch"):
+            warning = label(
+                "Warning: the file extension and detected content type disagree. "
+                "Viewer selection follows the detected content, not the filename."
+            )
+            warning.add_css_class("warning")
+            box.append(warning)
+
+        expected = f"{payload['device']}:{payload['inode']}"
+        sandbox_button = Gtk.Button(label="Open Disposable Sandboxed Viewer")
+        sandbox_button.set_halign(Gtk.Align.START)
+        sandbox_button.set_tooltip_text(
+            "Open the same file read-only without network, host D-Bus, host processes, or hardware devices"
+        )
+        sandbox_button.connect(
+            "clicked",
+            lambda _button: self.launch_sandbox(str(payload["path"]), expected),
+        )
+        sandbox_button.set_sensitive(Path(SANDBOX).is_file() and bool(shutil.which("bwrap")))
+        box.append(sandbox_button)
+
+        scanner = "available as an optional warning signal" if shutil.which("clamscan") else "not installed"
+        box.append(label(
+            "Sandbox policy: one read-only file; private temporary home; no network; "
+            "no host process namespace; no host D-Bus, SSH agent, password store, or "
+            "hardware devices; all Linux capabilities dropped; bounded CPU, memory, "
+            f"output size, process count, descriptors, and wall time. Malware scanner: {scanner}."
+        ))
+
+        buffer = Gtk.TextBuffer()
+        buffer.set_text(text)
+        view = Gtk.TextView(buffer=buffer, editable=False, monospace=True)
+        view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        scroller = Gtk.ScrolledWindow(vexpand=True)
+        scroller.set_child(view)
+        box.append(scroller)
+        box.append(label(
+            "The bounded preview never executes content or extracts archives. The optional "
+            "viewer runs in a disposable namespace and cannot bypass the current user's Unix "
+            "file permissions. Office documents use LibreOffice safe/view mode; audio is "
+            "disabled in isolated media previews so no PipeWire device is exposed."
+        ))
+        return box
+
+
+def main() -> int:
+    return Inspector(sys.argv[1:]).run([sys.argv[0]])
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

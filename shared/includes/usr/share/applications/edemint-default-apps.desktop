@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Default Apps
+GenericName=Default Application Settings
+Comment=Choose applications for links, files and MIME types
+Exec=python3 /usr/libexec/edemint-default-apps
+Icon=preferences-desktop-default-applications
+Terminal=false
+Categories=Settings;System;
+StartupNotify=true
+Keywords=default;application;file;association;mime;browser;mail;
+X-Edemint-Native=true
+X-Edemint-Maturity=mvp

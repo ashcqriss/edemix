@@ -1,0 +1,129 @@
+name: Hyprland session readiness
+
+on:
+  workflow_dispatch:
+    inputs:
+      require_graphical:
+        description: Fail unless the runner can execute the full graphical session smoke
+        required: false
+        type: boolean
+        default: false
+  push:
+    branches:
+      - codex/app-foundations-roadmap
+    paths:
+      - .github/workflows/hyprland-session-smoke.yml
+      - scripts/verify-hyprland-session-contract.sh
+      - scripts/smoke-hyprland-session.sh
+      - shared/includes/etc/greetd/config.toml
+      - shared/includes/etc/skel/.config/hypr/**
+      - shared/includes/usr/share/edemint/required-desktop.packages
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/hyprland-session-smoke.yml
+      - scripts/verify-hyprland-session-contract.sh
+      - scripts/smoke-hyprland-session.sh
+      - shared/includes/etc/greetd/config.toml
+      - shared/includes/etc/skel/.config/hypr/**
+      - shared/includes/usr/share/edemint/required-desktop.packages
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hyprland-session-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  configuration-contract:
+    name: Hyprland configuration and login contract
+    runs-on: ubuntu-latest
+    container: debian:trixie-slim
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Install Hyprland validator
+        shell: sh
+        run: |
+          cat > /etc/apt/sources.list.d/backports.sources <<'EOF'
+          Types: deb
+          URIs: http://deb.debian.org/debian
+          Suites: trixie-backports
+          Components: main
+          Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+          EOF
+          apt-get update -o Acquire::Languages=none
+          apt-get install -y --no-install-recommends -t trixie-backports hyprland
+
+      - name: Verify shipped session configuration
+        shell: sh
+        run: sh scripts/verify-hyprland-session-contract.sh
+
+  graphical-session:
+    name: Hardware-gated nested Hyprland compositor and client
+    needs: configuration-contract
+    runs-on: ${{ vars.EDEMINT_GRAPHICAL_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Detect graphical capability
+        id: render
+        shell: bash
+        env:
+          REQUIRE_GRAPHICAL: ${{ github.event_name == 'workflow_dispatch' && inputs.require_graphical || false }}
+        run: |
+          set -euo pipefail
+          render_node="$(find /dev/dri -maxdepth 1 -type c -name 'renderD*' 2>/dev/null | sort | head -n 1 || true)"
+          if [ -n "$render_node" ] && [ -c "$render_node" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "node=$render_node" >> "$GITHUB_OUTPUT"
+            printf 'Using DRM render node %s for the full session smoke.\n' "$render_node"
+            ls -l /dev/dri
+            exit 0
+          fi
+
+          echo "available=false" >> "$GITHUB_OUTPUT"
+          echo "node=" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Graphical smoke gated::This runner exposes no DRM render node. The configuration contract passed; the full compositor/client smoke requires a compatible runner."
+          {
+            echo "## Hyprland graphical capability gate"
+            echo
+            echo "Graphical session smoke was gated because this runner exposes no DRM render node."
+            echo "Set the repository variable \`EDEMINT_GRAPHICAL_RUNNER\` to a compatible runner label, or manually dispatch with \`require_graphical=true\` to require the full smoke."
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$REQUIRE_GRAPHICAL" = "true" ]; then
+            echo "A full graphical smoke was required, but this runner has no DRM render node." >&2
+            exit 1
+          fi
+
+      - name: Start and inspect Hyprland session
+        if: steps.render.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --device "${{ steps.render.outputs.node }}:${{ steps.render.outputs.node }}" \
+            -e EDEMINT_RENDER_NODE="${{ steps.render.outputs.node }}" \
+            -v "$GITHUB_WORKSPACE:/workspace:ro" \
+            -w /workspace \
+            debian:trixie sh -eu -c '
+              cat > /etc/apt/sources.list.d/backports.sources <<"EOF"
+          Types: deb
+          URIs: http://deb.debian.org/debian
+          Suites: trixie-backports
+          Components: main
+          Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+          EOF
+              apt-get update -o Acquire::Languages=none
+              apt-get install -y --no-install-recommends -t trixie-backports hyprland
+              apt-get install -y --no-install-recommends \
+                dbus-x11 foot jq kwin-wayland kwin-wayland-backend-virtual \
+                libgl1-mesa-dri procps wayland-utils
+              sh scripts/smoke-hyprland-session.sh
+            '

@@ -1,0 +1,8 @@
+# Edemint notifications. Do Not Disturb is an explicit Mako mode controlled by
+# Settings; applications can still submit notifications while presentation is
+# suppressed.
+default-timeout=7000
+max-visible=5
+
+[mode=do-not-disturb]
+invisible=1

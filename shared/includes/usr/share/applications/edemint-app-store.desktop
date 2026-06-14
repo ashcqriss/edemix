@@ -1,0 +1,15 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=App Store
+GenericName=Software Center
+Comment=Browse and manage software from configured signed sources
+Exec=gnome-software
+Icon=org.gnome.Software
+Terminal=false
+Categories=System;PackageManager;
+StartupNotify=true
+StartupWMClass=org.gnome.Software
+Keywords=apps;software;store;updates;flatpak;
+X-Edemint-Foundation=true
+X-Edemint-Upstream=org.gnome.Software
