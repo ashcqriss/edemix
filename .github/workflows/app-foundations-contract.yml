@@ -5,6 +5,8 @@ on:
   push:
     branches:
       - codex/app-foundations-roadmap
+      - "claude/**"
+      - main
     paths:
       - .github/workflows/app-foundations-contract.yml
       - .github/workflows/hyprland-session-smoke.yml
@@ -24,6 +26,9 @@ on:
       - shared/includes/etc/locale.nopurge
       - shared/includes/etc/skel/.config/mako/config
       - shared/includes/etc/skel/.config/hypr/**
+      - shared/includes/usr/share/edemint/design/**
+      - shared/includes/etc/skel/.config/gtk-4.0/**
+      - shared/includes/etc/skel/.config/gtk-3.0/**
       - shared/includes/usr/libexec/edemint-*
       - shared/includes/usr/local/bin/edemint-*
       - shared/includes/usr/share/applications/edemint-*.desktop
@@ -54,6 +59,9 @@ on:
       - shared/includes/etc/locale.nopurge
       - shared/includes/etc/skel/.config/mako/config
       - shared/includes/etc/skel/.config/hypr/**
+      - shared/includes/usr/share/edemint/design/**
+      - shared/includes/etc/skel/.config/gtk-4.0/**
+      - shared/includes/etc/skel/.config/gtk-3.0/**
       - shared/includes/usr/libexec/edemint-*
       - shared/includes/usr/local/bin/edemint-*
       - shared/includes/usr/share/applications/edemint-*.desktop
@@ -122,6 +130,7 @@ jobs:
             shared/includes/usr/libexec/edemint-phone-app \
             shared/includes/usr/libexec/edemint-automator \
             shared/includes/usr/libexec/edemint-default-apps \
+            shared/includes/usr/share/edemint/design/edemint_design.py \
             scripts/validate-app-catalog.py \
             scripts/validate-completed-features.py
           python3 scripts/validate-app-catalog.py apps/catalog.json .
@@ -136,6 +145,39 @@ jobs:
               exit 1
             }
           done
+
+      - name: Validate hydroganic design stylesheets with real GTK
+        if: matrix.arch == 'amd64'
+        shell: sh
+        run: |
+          apt-get install -y --no-install-recommends \
+            python3-gi gir1.2-gtk-4.0 gir1.2-gtk-3.0
+          python3 - <<'PY'
+          import gi
+          gi.require_version("Gtk", "4.0")
+          from gi.repository import Gtk
+
+          errors = []
+          provider = Gtk.CssProvider()
+          provider.connect(
+              "parsing-error",
+              lambda _p, section, error: errors.append(f"{section.to_string()}: {error.message}"),
+          )
+          provider.load_from_path("shared/includes/usr/share/edemint/design/hydroganic.css")
+          if errors:
+              raise SystemExit("hydroganic.css parse errors:\n" + "\n".join(errors))
+          print("hydroganic.css parses clean under GTK4")
+          PY
+          python3 - <<'PY'
+          import gi
+          gi.require_version("Gtk", "3.0")
+          from gi.repository import Gtk
+
+          provider = Gtk.CssProvider()
+          # GTK3 raises GLib.Error on any parse failure.
+          provider.load_from_path("shared/includes/etc/skel/.config/gtk-3.0/gtk.css")
+          print("gtk-3.0/gtk.css parses clean under GTK3")
+          PY
 
       - name: Exercise bounded Inspector probe
         if: matrix.arch == 'amd64'

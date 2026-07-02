@@ -126,8 +126,10 @@ jobs:
           grep -Eq '^xdg-desktop-portal-hyprland[[:space:]]' filesystem.packages
 
   pi:
+    # Deliberately independent of the ISO chain: the emulated arm64 build takes
+    # hours, so both images build in parallel after lint instead of stacking.
     name: arm64 Raspberry Pi image
-    needs: [lint, inspect-iso]
+    needs: lint
     if: github.event_name != 'pull_request'
     runs-on: ${{ vars.PI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 240

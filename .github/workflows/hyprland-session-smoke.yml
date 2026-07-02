@@ -11,6 +11,8 @@ on:
   push:
     branches:
       - codex/app-foundations-roadmap
+      - "claude/**"
+      - main
     paths:
       - .github/workflows/hyprland-session-smoke.yml
       - scripts/verify-hyprland-session-contract.sh
