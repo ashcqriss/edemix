@@ -22,6 +22,25 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
+
+def load_design():
+    """Locate the shared hydroganic design runtime; the app must run without it."""
+    for base in (os.environ.get("EDEMINT_DESIGN_DIR"),
+                 "/usr/share/edemint/design",
+                 str(Path(__file__).resolve().parents[1] / "share/edemint/design")):
+        if base and (Path(base) / "edemint_design.py").is_file():
+            if base not in sys.path:
+                sys.path.insert(0, base)
+            break
+    try:
+        import edemint_design
+        return edemint_design
+    except Exception:
+        return None
+
+
+DESIGN = load_design()
+
 APP_ID = "org.edemint.Fullcall"
 USERNAME = re.compile(r"[a-z0-9][a-z0-9._-]{2,31}")
 SLUG = re.compile(r"[a-z0-9][a-z0-9-]{0,62}")
@@ -120,6 +139,8 @@ class Fullcall(Adw.Application):
         self.content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         toolbar.set_content(self.content)
         self.window.set_content(toolbar)
+        if DESIGN:
+            DESIGN.style_window(self.window)
         self.show_accounts()
         self.window.present()
 
@@ -151,30 +172,41 @@ class Fullcall(Adw.Application):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18, margin_top=24, margin_bottom=24, margin_start=24, margin_end=24)
         label = Gtk.Label(label="Fullcall is an independent Edemint collaboration app. This build provides private local accounts, teams, channels and files. Network sync, federation, encryption, meetings and calling remain disabled until reviewed server and WebRTC backends exist.", xalign=0, wrap=True)
         box.append(label)
+        # One field per row keeps the forms symmetric at every window width.
         sign = Adw.PreferencesGroup(title="Sign in")
         user = entry("Username")
         password = entry("Password", True)
-        row = Adw.ActionRow(title="Existing local account")
-        row.add_suffix(user)
-        row.add_suffix(password)
-        button = Gtk.Button(label="Sign in", valign=Gtk.Align.CENTER)
+        for title, widget in (("Username", user), ("Password", password)):
+            row = Adw.ActionRow(title=title)
+            widget.set_valign(Gtk.Align.CENTER)
+            widget.set_size_request(240, -1)
+            row.add_suffix(widget)
+            sign.add(row)
+        button = Gtk.Button(label="Sign in", halign=Gtk.Align.END, margin_top=8)
+        button.add_css_class("suggested-action")
+        button.add_css_class("pill")
         button.connect("clicked", lambda _button: self.sign_in(user.get_text(), password.get_text()))
-        row.add_suffix(button)
-        sign.add(row)
         box.append(sign)
+        box.append(button)
         create = Adw.PreferencesGroup(title="Create local account")
         new_user = entry("username")
         display = entry("Display name")
         new_password = entry("Password (10+ characters)", True)
         confirmation = entry("Confirm password", True)
-        new_row = Adw.ActionRow(title="New account")
-        for widget in (new_user, display, new_password, confirmation):
-            new_row.add_suffix(widget)
-        create_button = Gtk.Button(label="Create", valign=Gtk.Align.CENTER)
+        for title, widget in (
+            ("Username", new_user), ("Display name", display),
+            ("Password", new_password), ("Confirm password", confirmation),
+        ):
+            row = Adw.ActionRow(title=title)
+            widget.set_valign(Gtk.Align.CENTER)
+            widget.set_size_request(240, -1)
+            row.add_suffix(widget)
+            create.add(row)
+        create_button = Gtk.Button(label="Create", halign=Gtk.Align.END, margin_top=8)
+        create_button.add_css_class("pill")
         create_button.connect("clicked", lambda _button: self.create_account(new_user.get_text(), display.get_text(), new_password.get_text(), confirmation.get_text()))
-        new_row.add_suffix(create_button)
-        create.add(new_row)
         box.append(create)
+        box.append(create_button)
         known = Adw.PreferencesGroup(title="Accounts on this device")
         rows = self.db.execute("SELECT username, display_name, created FROM accounts ORDER BY username").fetchall()
         if not rows:
@@ -260,57 +292,92 @@ class Fullcall(Adw.Application):
         identity.append(who)
         identity.append(sign_out)
         outer.append(identity)
-        controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        self.team_dropdown = Gtk.DropDown()
+        # Two balanced halves per row: selection on the left, creation on the
+        # right, so the toolbar stays symmetric as the window resizes.
+        controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10,
+                           homogeneous=True)
+        self.team_dropdown = Gtk.DropDown(hexpand=True)
         self.team_dropdown.connect("notify::selected", self.team_changed)
-        self.channel_dropdown = Gtk.DropDown()
+        self.channel_dropdown = Gtk.DropDown(hexpand=True)
         self.channel_dropdown.connect("notify::selected", self.channel_changed)
-        new_team = entry("New team")
-        team_button = Gtk.Button(label="Create team")
-        team_button.connect("clicked", lambda _button: self.create_team(new_team))
-        new_channel = entry("New channel")
-        channel_button = Gtk.Button(label="Create channel")
-        channel_button.connect("clicked", lambda _button: self.create_channel(new_channel))
         controls.append(self.team_dropdown)
         controls.append(self.channel_dropdown)
-        controls.append(new_team)
-        controls.append(team_button)
-        controls.append(new_channel)
-        controls.append(channel_button)
         outer.append(controls)
-        member_controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        creation = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10,
+                           homogeneous=True)
+        new_team = entry("New team")
+        new_team.set_hexpand(True)
+        team_button = Gtk.Button(label="Create team")
+        team_button.connect("clicked", lambda _button: self.create_team(new_team))
+        team_half = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        team_half.append(new_team)
+        team_half.append(team_button)
+        new_channel = entry("New channel")
+        new_channel.set_hexpand(True)
+        channel_button = Gtk.Button(label="Create channel")
+        channel_button.connect("clicked", lambda _button: self.create_channel(new_channel))
+        channel_half = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        channel_half.append(new_channel)
+        channel_half.append(channel_button)
+        creation.append(team_half)
+        creation.append(channel_half)
+        outer.append(creation)
+        member_controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10,
+                                  homogeneous=True)
         member = entry("Add local username")
+        member.set_hexpand(True)
         role = Gtk.DropDown.new_from_strings(("Member", "Admin"))
         add_member = Gtk.Button(label="Add member")
         add_member.connect("clicked", lambda _button: self.add_member(member, role))
-        export = Gtk.Button(label="Export team")
+        member_half = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        member_half.append(member)
+        member_half.append(role)
+        member_half.append(add_member)
+        export = Gtk.Button(label="Export team", hexpand=True)
         export.connect("clicked", lambda _button: self.export_team())
-        audit = Gtk.Button(label="Audit log")
+        audit = Gtk.Button(label="Audit log", hexpand=True)
         audit.connect("clicked", lambda _button: self.show_audit())
-        member_controls.append(member)
-        member_controls.append(role)
-        member_controls.append(add_member)
-        member_controls.append(export)
-        member_controls.append(audit)
+        tools_half = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8,
+                             homogeneous=True)
+        tools_half.append(export)
+        tools_half.append(audit)
+        member_controls.append(member_half)
+        member_controls.append(tools_half)
         outer.append(member_controls)
         self.search = Gtk.SearchEntry(placeholder_text="Search this channel")
         self.search.connect("search-changed", lambda _entry: self.refresh_messages())
         outer.append(self.search)
         self.timeline = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
-        outer.append(scrolled(self.timeline))
+        self.timeline.add_css_class("boxed-list")
+        timeline_scroll = scrolled(self.timeline)
+        timeline_scroll.add_css_class("ed-well")
+        outer.append(timeline_scroll)
         self.mode_label = Gtk.Label(label="New message", xalign=0)
+        self.mode_label.add_css_class("dim-label")
         outer.append(self.mode_label)
-        compose = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        # The composer is one glass pill: the entry fills it and the Send
+        # action matches the entry height instead of towering next to it.
+        compose = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        compose.add_css_class("ed-composer")
         self.composer = entry("Write a message")
         self.composer.set_hexpand(True)
-        attach = Gtk.Button(label="Attach")
+        self.composer.set_valign(Gtk.Align.CENTER)
+        attach = Gtk.Button(icon_name="mail-attachment-symbolic", tooltip_text="Attach a file",
+                            valign=Gtk.Align.CENTER)
+        attach.add_css_class("flat")
+        attach.add_css_class("circular")
         attach.connect("clicked", self.choose_attachment)
-        cancel = Gtk.Button(label="Cancel mode")
+        cancel = Gtk.Button(icon_name="edit-clear-symbolic", tooltip_text="Cancel reply or edit",
+                            valign=Gtk.Align.CENTER)
+        cancel.add_css_class("flat")
+        cancel.add_css_class("circular")
         cancel.connect("clicked", lambda _button: self.clear_mode())
-        send = Gtk.Button(label="Send")
+        send = Gtk.Button(label="Send", valign=Gtk.Align.CENTER)
+        send.add_css_class("suggested-action")
         send.connect("clicked", self.send_message)
-        compose.append(self.composer)
+        self.composer.connect("activate", self.send_message)
         compose.append(attach)
+        compose.append(self.composer)
         compose.append(cancel)
         compose.append(send)
         outer.append(compose)

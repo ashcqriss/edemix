@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 from typing import Any
 
 import gi
@@ -16,6 +17,25 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+
+
+def load_design():
+    """Locate the shared hydroganic design runtime; the app must run without it."""
+    for base in (os.environ.get("EDEMINT_DESIGN_DIR"),
+                 "/usr/share/edemint/design",
+                 str(Path(__file__).resolve().parents[1] / "share/edemint/design")):
+        if base and (Path(base) / "edemint_design.py").is_file():
+            if base not in sys.path:
+                sys.path.insert(0, base)
+            break
+    try:
+        import edemint_design
+        return edemint_design
+    except Exception:
+        return None
+
+
+DESIGN = load_design()
 
 
 APP_ID = "org.edemint.MissionControl"
@@ -89,8 +109,12 @@ class MissionControlApp(Adw.Application):
         self.search = Gtk.SearchEntry(placeholder_text="Search title, application, workspace, or address")
         self.workspace_entry = Gtk.Entry(placeholder_text="Workspace number or name")
         self.status = Gtk.Label(xalign=0, wrap=True)
-        self.workspace_label = Gtk.Label(xalign=0, wrap=True, selectable=True)
-        self.window_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
+        self.workspace_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        self.window_grid = Gtk.FlowBox(
+            selection_mode=Gtk.SelectionMode.SINGLE, homogeneous=True,
+            column_spacing=10, row_spacing=10, valign=Gtk.Align.START,
+            min_children_per_line=1, max_children_per_line=5,
+        )
         self.workspaces: list[dict[str, Any]] = []
         self.clients: list[dict[str, Any]] = []
         self.active_workspace: dict[str, Any] = {}
@@ -114,8 +138,12 @@ class MissionControlApp(Adw.Application):
         toolbar.add_top_bar(header)
         toolbar.set_content(self.build_content())
         self.window.set_content(toolbar)
+        if DESIGN:
+            DESIGN.style_window(self.window)
         self.search.connect("search-changed", lambda _entry: self.populate_clients())
-        self.window_list.connect("row-selected", self.select_client)
+        self.window_grid.connect("selected-children-changed", self.select_client)
+        self.window_grid.connect("child-activated",
+                                 lambda _grid, child: self.focus_address(getattr(child, "address", "")))
         self.install_actions()
         self.window.present()
         self.refresh()
@@ -143,34 +171,49 @@ class MissionControlApp(Adw.Application):
             margin_start=12,
             margin_end=12,
         )
+        # The workspace shelf reads like the macOS Spaces bar: one glass card
+        # per workspace, the active one ringed in turquoise, click to switch.
+        shelf = Gtk.ScrolledWindow(vexpand=False)
+        shelf.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.NEVER)
+        self.workspace_row.set_margin_top(2)
+        self.workspace_row.set_margin_bottom(6)
+        shelf.set_child(self.workspace_row)
+        root.append(shelf)
         workspace_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.workspace_entry.set_hexpand(True)
         workspace_bar.append(self.workspace_entry)
+        buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8,
+                          homogeneous=True)
+        buttons.add_css_class("ed-equal")
         for label, callback in (
             ("Open/Create", self.open_workspace),
             ("Remove Empty", self.remove_empty_workspace),
             ("Move Selected", self.move_selected),
         ):
-            button = Gtk.Button(label=label)
+            button = Gtk.Button(label=label, hexpand=True)
             button.connect("clicked", callback)
-            workspace_bar.append(button)
+            buttons.append(button)
+        workspace_bar.append(buttons)
         root.append(workspace_bar)
-        root.append(self.workspace_label)
         root.append(self.search)
         root.append(self.status)
         scroll = Gtk.ScrolledWindow(vexpand=True)
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        scroll.set_child(self.window_list)
+        scroll.set_child(self.window_grid)
         root.append(scroll)
-        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         focus = Gtk.Button(label="Focus Selected")
         focus.connect("clicked", self.focus_selected)
         close = Gtk.Button(label="Close Selected")
         close.add_css_class("destructive-action")
         close.connect("clicked", self.confirm_close_selected)
-        actions.append(focus)
-        actions.append(close)
-        root.append(actions)
+        if DESIGN:
+            root.append(DESIGN.equal_actions(focus, close))
+        else:
+            actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8,
+                              homogeneous=True)
+            actions.append(focus)
+            actions.append(close)
+            root.append(actions)
         return root
 
     def refresh_action(self, _action: Gio.SimpleAction, _parameter: object) -> None:
@@ -200,16 +243,7 @@ class MissionControlApp(Adw.Application):
         self.workspaces = workspaces if isinstance(workspaces, list) else []
         self.clients = clients if isinstance(clients, list) else []
         self.active_workspace = active if isinstance(active, dict) else {}
-        workspace_names = []
-        for workspace in sorted(self.workspaces, key=lambda item: int(item.get("id", 0))):
-            identifier, name = workspace_identity(workspace)
-            count = int(workspace.get("windows", 0))
-            workspace_names.append(f"{identifier if identifier is not None else '?'}:{name} ({count})")
-        active_name = self.active_workspace.get("name", self.active_workspace.get("id", "unknown"))
-        self.workspace_label.set_text(
-            f"Active workspace: {active_name} | Available: "
-            + (", ".join(workspace_names) if workspace_names else "none")
-        )
+        self.populate_workspaces()
         self.status.set_text(
             f"Connected to Hyprland. {len(self.clients)} windows across {len(self.workspaces)} workspaces. "
             "Ctrl+F searches, Enter focuses, Delete closes after confirmation."
@@ -217,9 +251,43 @@ class MissionControlApp(Adw.Application):
         self.populate_clients()
         return True
 
+    def populate_workspaces(self) -> None:
+        while child := self.workspace_row.get_first_child():
+            self.workspace_row.remove(child)
+        active_id, active_name = workspace_identity(self.active_workspace)
+        for workspace in sorted(self.workspaces, key=lambda item: int(item.get("id", 0))):
+            identifier, name = workspace_identity(workspace)
+            count = int(workspace.get("windows", 0))
+            card = Gtk.Button()
+            card.add_css_class("ed-workspace")
+            if identifier == active_id and name == active_name:
+                card.add_css_class("ed-workspace-active")
+            inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            title = Gtk.Label(label=name, halign=Gtk.Align.CENTER, ellipsize=3,
+                              max_width_chars=14)
+            title.add_css_class("heading")
+            count_label = Gtk.Label(
+                label=f"{count} window{'s' if count != 1 else ''}",
+                halign=Gtk.Align.CENTER,
+            )
+            count_label.add_css_class("dim-label")
+            inner.append(title)
+            inner.append(count_label)
+            card.set_child(inner)
+            card.set_tooltip_text(f"Switch to workspace {identifier}:{name}")
+            target = str(identifier) if identifier is not None else f"name:{name}"
+            card.connect("clicked", lambda _button, value=target: self.switch_workspace(value))
+            self.workspace_row.append(card)
+
+    def switch_workspace(self, target: str) -> None:
+        ok, error = dispatch("workspace", target)
+        if not ok:
+            self.notice(error)
+        GLib.timeout_add(250, self.refresh_once)
+
     def populate_clients(self) -> None:
-        while child := self.window_list.get_first_child():
-            self.window_list.remove(child)
+        while child := self.window_grid.get_first_child():
+            self.window_grid.remove(child)
         query = self.search.get_text().strip().casefold()
         clients = []
         for client in self.clients:
@@ -248,22 +316,32 @@ class MissionControlApp(Adw.Application):
                 flags.append("floating")
             if client.get("fullscreen"):
                 flags.append("fullscreen")
-            subtitle = (
-                f"{application} | workspace {workspace.get('id', '?')}:{workspace.get('name', '?')} "
-                f"| monitor {client.get('monitor', '?')} | {address}"
+            tile = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            tile.add_css_class("ed-tile")
+            name = Gtk.Label(label=title, halign=Gtk.Align.CENTER, ellipsize=3,
+                             max_width_chars=24)
+            name.add_css_class("heading")
+            app_label = Gtk.Label(label=application, halign=Gtk.Align.CENTER,
+                                  ellipsize=3, max_width_chars=24)
+            app_label.add_css_class("dim-label")
+            place = Gtk.Label(
+                label=f"workspace {workspace.get('id', '?')}:{workspace.get('name', '?')}"
+                + (" | " + ", ".join(flags) if flags else ""),
+                halign=Gtk.Align.CENTER, ellipsize=3, max_width_chars=28,
             )
-            if flags:
-                subtitle += " | " + ", ".join(flags)
-            row = Adw.ActionRow(title=title, subtitle=subtitle)
-            row.address = address
-            focus_button = Gtk.Button(label="Focus", valign=Gtk.Align.CENTER)
-            focus_button.connect("clicked", lambda _button, item=address: self.focus_address(item))
-            row.add_suffix(focus_button)
-            row.set_activatable_widget(focus_button)
-            self.window_list.append(row)
+            place.add_css_class("dim-label")
+            tile.append(name)
+            tile.append(app_label)
+            tile.append(place)
+            tile.set_tooltip_text(f"{application} | monitor {client.get('monitor', '?')} | {address}")
+            child = Gtk.FlowBoxChild()
+            child.set_child(tile)
+            child.address = address
+            self.window_grid.append(child)
 
-    def select_client(self, _box: Gtk.ListBox, row: Gtk.ListBoxRow | None) -> None:
-        self.selected_address = getattr(row, "address", None) if row else None
+    def select_client(self, grid: Gtk.FlowBox) -> None:
+        selected = grid.get_selected_children()
+        self.selected_address = getattr(selected[0], "address", None) if selected else None
 
     def require_selected(self) -> str | None:
         if not self.selected_address:

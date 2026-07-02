@@ -23,6 +23,25 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
+
+def load_design():
+    """Locate the shared hydroganic design runtime; the app must run without it."""
+    for base in (os.environ.get("EDEMINT_DESIGN_DIR"),
+                 "/usr/share/edemint/design",
+                 str(Path(__file__).resolve().parents[1] / "share/edemint/design")):
+        if base and (Path(base) / "edemint_design.py").is_file():
+            if base not in sys.path:
+                sys.path.insert(0, base)
+            break
+    try:
+        import edemint_design
+        return edemint_design
+    except Exception:
+        return None
+
+
+DESIGN = load_design()
+
 APP_ID = "org.edemint.Automator"
 SCHEMA = 2
 MAX_STEPS = 40
@@ -363,6 +382,8 @@ class Automator(Adw.Application):
         toolbar.add_top_bar(Adw.HeaderBar())
         toolbar.set_content(self.build_content())
         self.window.set_content(toolbar)
+        if DESIGN:
+            DESIGN.style_window(self.window, accent="eco")
         self.window.present()
 
     def notice(self, message: str) -> None:
@@ -381,12 +402,17 @@ class Automator(Adw.Application):
         self.schedule_choice = Gtk.DropDown.new_from_strings(("Hourly", "Daily", "Weekly"))
         controls.append(self.search)
         controls.append(self.schedule_choice)
-        for text, callback in (("Open editor", self.open_editor), ("Add templates", self.add_templates), ("History", self.show_history), ("Scheduled timers", self.show_timers)):
-            button = Gtk.Button(label=text)
-            button.connect("clicked", lambda _button, action=callback: action())
-            controls.append(button)
         outer.append(controls)
+        tools = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8,
+                        homogeneous=True)
+        tools.add_css_class("ed-equal")
+        for text, callback in (("Open editor", self.open_editor), ("Add templates", self.add_templates), ("History", self.show_history), ("Scheduled timers", self.show_timers)):
+            button = Gtk.Button(label=text, hexpand=True)
+            button.connect("clicked", lambda _button, action=callback: action())
+            tools.append(button)
+        outer.append(tools)
         self.workflow_box = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        self.workflow_box.add_css_class("boxed-list")
         outer.append(scrolled(self.workflow_box))
         self.refresh()
         return outer
@@ -408,6 +434,7 @@ class Automator(Adw.Application):
             dry = Gtk.Button(label="Dry run", valign=Gtk.Align.CENTER)
             dry.connect("clicked", lambda _button, workflow=item: self.dry_run(workflow))
             run = Gtk.Button(label="Run", valign=Gtk.Align.CENTER, sensitive=ok)
+            run.add_css_class("suggested-action")
             run.connect("clicked", lambda _button, workflow=item: self.run_async(workflow))
             schedule = Gtk.Button(label="Schedule", valign=Gtk.Align.CENTER, sensitive=ok)
             schedule.connect("clicked", lambda _button, workflow=item: self.schedule(workflow))

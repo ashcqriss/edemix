@@ -1,0 +1,43 @@
+/* Edemint palette for integrated GTK3 apps (Thunar, Blueman, Geary, ...).
+ * GTK3 cannot share the GTK4 stylesheet, so this recolors the GTK3 named
+ * surfaces to the same navy frost / ultramarine hierarchy from
+ * docs/PALETTE.md. Layout and widget shapes stay stock for stability.
+ */
+@define-color theme_bg_color #141A48;
+@define-color theme_base_color #10153A;
+@define-color theme_fg_color #F2F4FF;
+@define-color theme_text_color #F2F4FF;
+@define-color theme_selected_bg_color #2001FF;
+@define-color theme_selected_fg_color #FFFFFF;
+@define-color theme_unfocused_bg_color #10153A;
+@define-color theme_unfocused_fg_color #C9CEEC;
+@define-color borders rgba(255, 255, 255, 0.10);
+@define-color unfocused_borders rgba(255, 255, 255, 0.07);
+@define-color warning_color #E9DE51;
+@define-color error_color #E31515;
+@define-color success_color #45E289;
+
+headerbar {
+    background-color: #10153A;
+    background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0));
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    color: #F2F4FF;
+}
+
+/* panelv window controls: green expands, yellow hides, red closes. */
+headerbar button.titlebutton image {
+    -gtk-icon-transform: scale(0.01);
+    border-radius: 9999px;
+    min-width: 14px;
+    min-height: 14px;
+    border: 1px solid rgba(0, 0, 0, 0.35);
+}
+headerbar button.titlebutton.maximize image {
+    background-color: #5BA453;
+}
+headerbar button.titlebutton.minimize image {
+    background-color: #E9DE51;
+}
+headerbar button.titlebutton.close image {
+    background-color: #E31515;
+}

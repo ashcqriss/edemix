@@ -1,8 +1,8 @@
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Camera Studio
-GenericName=Advanced Camera
+Name=Advanced Camera
+GenericName=Camera Studio
 Comment=Use advanced camera and recording controls
 Exec=webcamoid
 Icon=webcamoid

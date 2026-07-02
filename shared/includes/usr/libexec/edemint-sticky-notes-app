@@ -30,13 +30,87 @@ REMINDER_FORMAT = "%Y-%m-%d %H:%M"
 MAX_NOTES = 1000
 MAX_TEXT = 200_000
 WORKSPACE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]{0,63}$")
+# Paper gradients and ink: a note window reads like an actual sticky note.
+# All tints stay light so one dark ink keeps text readable on every color.
 CSS = b"""
-.note-yellow { background: #f5dd57; color: #1d1d1d; }
-.note-blue { background: #4f7fe8; color: #ffffff; }
-.note-green { background: #61ad62; color: #102010; }
-.note-violet { background: #7550a8; color: #ffffff; }
-.note-neutral { background: #dedede; color: #1d1d1d; }
+window.note-yellow { background: linear-gradient(170deg, #F7E88F, #EBD152); }
+window.note-blue { background: linear-gradient(170deg, #BFDCFB, #92BAEE); }
+window.note-green { background: linear-gradient(170deg, #D2F0BE, #A9DC8F); }
+window.note-violet { background: linear-gradient(170deg, #DCCDF7, #BCA5E9); }
+window.note-neutral { background: linear-gradient(170deg, #F2F0E9, #DBD8CE); }
+window.ed-note-window { color: rgba(24, 22, 8, 0.92); }
+window.ed-note-window headerbar {
+    background: rgba(0, 0, 0, 0.07);
+    box-shadow: inset 0 -1px rgba(0, 0, 0, 0.10);
+    border: none;
+    color: rgba(24, 22, 8, 0.92);
+}
+window.ed-note-window headerbar entry {
+    background: none;
+    border: none;
+    box-shadow: none;
+    font-weight: 700;
+    color: rgba(24, 22, 8, 0.92);
+    caret-color: rgba(24, 22, 8, 0.92);
+}
+window.ed-note-window textview,
+window.ed-note-window textview > text {
+    background: none;
+    color: rgba(24, 22, 8, 0.92);
+    caret-color: rgba(24, 22, 8, 0.92);
+}
+window.ed-note-window entry {
+    background: rgba(255, 255, 255, 0.38);
+    border: 1px solid rgba(0, 0, 0, 0.18);
+    border-radius: 10px;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.12);
+    color: rgba(24, 22, 8, 0.92);
+    caret-color: rgba(24, 22, 8, 0.92);
+}
+window.ed-note-window button {
+    background: rgba(0, 0, 0, 0.12);
+    background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0));
+    border: 1px solid rgba(0, 0, 0, 0.22);
+    border-radius: 10px;
+    box-shadow: inset 0 1px rgba(255, 255, 255, 0.30);
+    color: rgba(24, 22, 8, 0.92);
+}
+window.ed-note-window button.destructive-action {
+    background: rgba(190, 30, 30, 0.85);
+    color: #ffffff;
+}
+window.ed-note-window label { color: rgba(24, 22, 8, 0.92); }
+.note-dot {
+    min-width: 16px;
+    min-height: 16px;
+    border-radius: 9999px;
+    border: 1px solid rgba(0, 0, 0, 0.30);
+}
+.note-dot-yellow { background: #EBD152; }
+.note-dot-blue { background: #92BAEE; }
+.note-dot-green { background: #A9DC8F; }
+.note-dot-violet { background: #BCA5E9; }
+.note-dot-neutral { background: #DBD8CE; }
 """
+
+
+def load_design():
+    """Locate the shared hydroganic design runtime; the app must run without it."""
+    for base in (os.environ.get("EDEMINT_DESIGN_DIR"),
+                 "/usr/share/edemint/design",
+                 str(Path(__file__).resolve().parents[1] / "share/edemint/design")):
+        if base and (Path(base) / "edemint_design.py").is_file():
+            if base not in sys.path:
+                sys.path.insert(0, base)
+            break
+    try:
+        import edemint_design
+        return edemint_design
+    except Exception:
+        return None
+
+
+DESIGN = load_design()
 
 
 def data_dir() -> Path:
@@ -178,6 +252,7 @@ class NoteWindow(Adw.ApplicationWindow):
         self.set_title(note["title"] or "Sticky Note")
         self.set_default_size(note["width"], note["height"])
         self.set_opacity(note["opacity"])
+        self.add_css_class("ed-note-window")
         self.add_css_class(f"note-{note['color']}")
         toolbar = Adw.ToolbarView()
         header = Adw.HeaderBar()
@@ -237,12 +312,13 @@ class NoteWindow(Adw.ApplicationWindow):
         scroll.set_child(view)
         root.append(scroll)
 
-        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        checkbox = Gtk.Button(label="Add Checkbox")
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8,
+                          homogeneous=True)
+        checkbox = Gtk.Button(label="Add Checkbox", hexpand=True)
         checkbox.connect("clicked", self.add_checkbox)
-        archive = Gtk.Button(label="Archive")
+        archive = Gtk.Button(label="Archive", hexpand=True)
         archive.connect("clicked", lambda _button: self.owner.set_status(self.note_id, "archived"))
-        trash = Gtk.Button(label="Move to Trash")
+        trash = Gtk.Button(label="Move to Trash", hexpand=True)
         trash.add_css_class("destructive-action")
         trash.connect("clicked", lambda _button: self.owner.set_status(self.note_id, "trash"))
         actions.append(checkbox)
@@ -368,6 +444,8 @@ class StickyNotesApp(Adw.Application):
         toolbar.add_top_bar(header)
         toolbar.set_content(self.build_manager())
         self.window.set_content(toolbar)
+        if DESIGN:
+            DESIGN.style_window(self.window)
         self.window.present()
         self.search.connect("search-changed", lambda _entry: self.refresh_manager())
         self.filter.connect("notify::selected", lambda *_args: self.refresh_manager())
@@ -387,14 +465,19 @@ class StickyNotesApp(Adw.Application):
         self.search.set_hexpand(True)
         controls.append(self.search)
         controls.append(self.filter)
-        export_button = Gtk.Button(label="Export")
+        tools = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8,
+                        homogeneous=True)
+        tools.add_css_class("ed-equal")
+        export_button = Gtk.Button(label="Export", hexpand=True)
         export_button.connect("clicked", self.export_notes)
-        import_button = Gtk.Button(label="Import")
+        import_button = Gtk.Button(label="Import", hexpand=True)
         import_button.connect("clicked", self.import_notes)
-        controls.append(export_button)
-        controls.append(import_button)
+        tools.append(export_button)
+        tools.append(import_button)
+        controls.append(tools)
         root.append(controls)
         root.append(self.status)
+        self.list_box.add_css_class("boxed-list")
         scroll = Gtk.ScrolledWindow(vexpand=True)
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scroll.set_child(self.list_box)
@@ -483,6 +566,10 @@ class StickyNotesApp(Adw.Application):
                 + (" | pinned" if note["pinned"] else "")
             )
             row = Adw.ActionRow(title=note["title"], subtitle=subtitle)
+            dot = Gtk.Box(valign=Gtk.Align.CENTER)
+            dot.add_css_class("note-dot")
+            dot.add_css_class(f"note-dot-{note['color']}")
+            row.add_prefix(dot)
             if note["status"] == "active":
                 open_button = Gtk.Button(label="Open", valign=Gtk.Align.CENTER)
                 open_button.connect("clicked", lambda _button, item=note["id"]: self.open_note(item))

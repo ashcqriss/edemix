@@ -26,6 +26,25 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 
+def load_design():
+    """Locate the shared hydroganic design runtime; the app must run without it."""
+    for base in (os.environ.get("EDEMINT_DESIGN_DIR"),
+                 "/usr/share/edemint/design",
+                 str(Path(__file__).resolve().parents[1] / "share/edemint/design")):
+        if base and (Path(base) / "edemint_design.py").is_file():
+            if base not in sys.path:
+                sys.path.insert(0, base)
+            break
+    try:
+        import edemint_design
+        return edemint_design
+    except Exception:
+        return None
+
+
+DESIGN = load_design()
+
+
 MODES = {
     "library": ("App Library", "org.edemint.AppLibrary"),
     "shortcuts": ("Shortcuts", "org.edemint.Shortcuts"),
@@ -532,6 +551,9 @@ class LibraryToolsApp(Adw.Application):
         toolbar.add_top_bar(header)
         toolbar.set_content(self.build_library() if self.mode == "library" else self.build_shortcuts())
         self.window.set_content(toolbar)
+        if DESIGN:
+            DESIGN.style_window(self.window,
+                                accent="eco" if self.mode == "shortcuts" else "ultramarine")
         self.install_actions()
         self.window.present()
         if self.mode == "library":
@@ -597,13 +619,22 @@ class LibraryToolsApp(Adw.Application):
         controls.append(self.app_sort)
         controls.append(self.folder_entry)
         outer.append(controls)
-        self.app_box = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        # A homogeneous tile grid: every app sits centered in an equal glass
+        # tile, and the grid reflows with the window width.
+        self.app_box = Gtk.FlowBox(
+            selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
+            column_spacing=10, row_spacing=10, valign=Gtk.Align.START,
+            min_children_per_line=2, max_children_per_line=6,
+        )
         outer.append(scrolled(self.app_box))
-        paging = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, halign=Gtk.Align.CENTER)
+        paging = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10, halign=Gtk.Align.CENTER)
         previous = Gtk.Button(label="Previous")
+        previous.set_size_request(110, -1)
         previous.connect("clicked", lambda _button: self.change_page(-1))
         self.page_label = Gtk.Label()
+        self.page_label.set_size_request(180, -1)
         next_button = Gtk.Button(label="Next")
+        next_button.set_size_request(110, -1)
         next_button.connect("clicked", lambda _button: self.change_page(1))
         paging.append(previous)
         paging.append(self.page_label)
@@ -650,6 +681,41 @@ class LibraryToolsApp(Adw.Application):
             scored.sort(key=lambda pair: (-pair[0], pair[1].name.casefold()))
         return [app for _score, app in scored]
 
+    def app_tile(self, app: DesktopApplication) -> Gtk.Widget:
+        badges = ", ".join(app.permissions) if app.permissions else "no broad permission hints"
+        detail = f"{app.integration} | {badges}"
+        if app.comment:
+            detail = f"{app.comment}\n{detail}"
+        tile = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        tile.add_css_class("ed-tile")
+        tile.set_tooltip_text(detail)
+        icon = Gtk.Image.new_from_icon_name(app.icon)
+        icon.set_pixel_size(48)
+        icon.set_halign(Gtk.Align.CENTER)
+        name = Gtk.Label(label=app.name, halign=Gtk.Align.CENTER,
+                         justify=Gtk.Justification.CENTER, ellipsize=3,
+                         max_width_chars=16)
+        integration = Gtk.Label(label=app.integration, halign=Gtk.Align.CENTER,
+                                ellipsize=3, max_width_chars=18)
+        integration.add_css_class("dim-label")
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4,
+                          halign=Gtk.Align.CENTER)
+        for icon_name, tooltip, callback in (
+            ("media-playback-start-symbolic", "Open", self.open_application),
+            ("folder-new-symbolic", "Add to folder", self.add_app_to_folder),
+            ("list-add-symbolic", "Create shortcut", self.add_application_shortcut),
+        ):
+            button = Gtk.Button(icon_name=icon_name, tooltip_text=tooltip)
+            button.add_css_class("flat")
+            button.add_css_class("circular")
+            button.connect("clicked", lambda _button, item=app, action=callback: action(item))
+            actions.append(button)
+        tile.append(icon)
+        tile.append(name)
+        tile.append(integration)
+        tile.append(actions)
+        return tile
+
     def populate_library(self) -> None:
         if not self.app_box:
             return
@@ -660,25 +726,14 @@ class LibraryToolsApp(Adw.Application):
         self.page = max(0, min(self.page, pages - 1))
         start = self.page * PAGE_SIZE
         for app in apps[start:start + PAGE_SIZE]:
-            badges = ", ".join(app.permissions) if app.permissions else "no broad permission hints"
-            subtitle = f"{app.integration} | {badges}"
-            if app.comment:
-                subtitle = f"{app.comment} | {subtitle}"
-            row = Adw.ActionRow(title=app.name, subtitle=subtitle)
-            row.add_prefix(Gtk.Image.new_from_icon_name(app.icon))
-            folder_button = Gtk.Button(label="Folder", valign=Gtk.Align.CENTER)
-            folder_button.connect("clicked", lambda _button, item=app: self.add_app_to_folder(item))
-            shortcut_button = Gtk.Button(label="Shortcut", valign=Gtk.Align.CENTER)
-            shortcut_button.connect("clicked", lambda _button, item=app: self.add_application_shortcut(item))
-            open_button = Gtk.Button(label="Open", valign=Gtk.Align.CENTER)
-            open_button.connect("clicked", lambda _button, item=app: self.open_application(item))
-            row.add_suffix(folder_button)
-            row.add_suffix(shortcut_button)
-            row.add_suffix(open_button)
-            row.set_activatable_widget(open_button)
-            self.app_box.append(row)
+            self.app_box.append(self.app_tile(app))
         if not apps:
-            self.app_box.append(Adw.ActionRow(title="No matching applications", subtitle="Change the search or category filter."))
+            placeholder = Gtk.Label(
+                label="No matching applications.\nChange the search or category filter.",
+                justify=Gtk.Justification.CENTER, margin_top=36, margin_bottom=36,
+            )
+            placeholder.add_css_class("dim-label")
+            self.app_box.append(placeholder)
         if self.page_label:
             self.page_label.set_text(f"Page {self.page + 1} of {pages} | {len(apps)} apps")
 
@@ -737,20 +792,30 @@ class LibraryToolsApp(Adw.Application):
         self.shortcut_category = Gtk.DropDown.new_from_strings(("All categories",))
         controls.append(self.shortcut_search)
         controls.append(self.shortcut_category)
+        tools = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8,
+                        homogeneous=True)
+        tools.add_css_class("ed-equal")
         for label, callback in (("Export", self.export_shortcuts), ("Import", self.import_shortcuts), ("Undo", self.undo)):
-            button = Gtk.Button(label=label)
+            button = Gtk.Button(label=label, hexpand=True)
             button.connect("clicked", lambda _button, action=callback: action())
-            controls.append(button)
+            tools.append(button)
+        controls.append(tools)
         outer.append(controls)
 
-        form = Gtk.Grid(column_spacing=8, row_spacing=8)
-        name_entry = Gtk.Entry(placeholder_text="Shortcut name")
-        category_entry = Gtk.Entry(placeholder_text="Category", text="General")
-        icon_entry = Gtk.Entry(placeholder_text="Icon name", text="system-run")
+        # Equal-width form columns keep the editor symmetric at any size.
+        form = Gtk.Grid(column_spacing=8, row_spacing=8, column_homogeneous=True)
+        name_entry = Gtk.Entry(placeholder_text="Shortcut name", hexpand=True)
+        category_entry = Gtk.Entry(placeholder_text="Category", text="General", hexpand=True)
+        icon_entry = Gtk.Entry(placeholder_text="Icon name", text="system-run", hexpand=True)
         kind_menu = Gtk.DropDown.new_from_strings(("Application", "Web address", "Folder", "Workflow JSON"))
         trigger_menu = Gtk.DropDown.new_from_strings(("Manual", "When Shortcuts opens"))
         target_buffer = Gtk.TextBuffer()
         target_view = Gtk.TextView(buffer=target_buffer, wrap_mode=Gtk.WrapMode.WORD_CHAR)
+        target_view.add_css_class("ed-mono")
+        target_view.set_top_margin(8)
+        target_view.set_bottom_margin(8)
+        target_view.set_left_margin(10)
+        target_view.set_right_margin(10)
         target_view.set_tooltip_text(
             'Simple target, or workflow JSON such as [{"action":"notify","message":"Hello"},{"action":"delay","seconds":1}]'
         )
@@ -759,11 +824,15 @@ class LibraryToolsApp(Adw.Application):
         form.attach(icon_entry, 2, 0, 1, 1)
         form.attach(kind_menu, 3, 0, 1, 1)
         form.attach(trigger_menu, 4, 0, 1, 1)
-        form.attach(scrolled(target_view, 95), 0, 1, 5, 1)
+        target_scroll = scrolled(target_view, 95)
+        target_scroll.add_css_class("ed-log")
+        form.attach(target_scroll, 0, 1, 5, 1)
         add_button = Gtk.Button(label="Add Shortcut")
+        add_button.add_css_class("suggested-action")
         form.attach(add_button, 4, 2, 1, 1)
         outer.append(form)
         self.shortcut_box = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        self.shortcut_box.add_css_class("boxed-list")
         outer.append(scrolled(self.shortcut_box))
 
         def create(_button: Gtk.Button) -> None:
@@ -838,19 +907,27 @@ class LibraryToolsApp(Adw.Application):
             subtitle = f"{item['category']} | {item['kind']} | trigger {item['trigger']} | {permissions}"
             row = Adw.ActionRow(title=item["name"], subtitle=subtitle)
             row.add_prefix(Gtk.Image.new_from_icon_name(item["icon"]))
-            for label, callback in (
-                ("Up", lambda shortcut_id=item["id"]: self.reorder(shortcut_id, -1)),
-                ("Down", lambda shortcut_id=item["id"]: self.reorder(shortcut_id, 1)),
-                ("Remove", lambda shortcut_id=item["id"]: self.remove(shortcut_id)),
-                ("Run", lambda shortcut=item: self.confirm_run(shortcut)),
+            for icon_name, tooltip, callback in (
+                ("go-up-symbolic", "Move up",
+                 lambda shortcut_id=item["id"]: self.reorder(shortcut_id, -1)),
+                ("go-down-symbolic", "Move down",
+                 lambda shortcut_id=item["id"]: self.reorder(shortcut_id, 1)),
+                ("user-trash-symbolic", "Remove",
+                 lambda shortcut_id=item["id"]: self.remove(shortcut_id)),
             ):
-                button = Gtk.Button(label=label, valign=Gtk.Align.CENTER)
-                if label == "Remove":
+                button = Gtk.Button(icon_name=icon_name, tooltip_text=tooltip,
+                                    valign=Gtk.Align.CENTER)
+                button.add_css_class("flat")
+                button.add_css_class("circular")
+                if icon_name == "user-trash-symbolic":
                     button.add_css_class("destructive-action")
                 button.connect("clicked", lambda _button, action=callback: action())
                 row.add_suffix(button)
-                if label == "Run":
-                    row.set_activatable_widget(button)
+            run_button = Gtk.Button(label="Run", valign=Gtk.Align.CENTER)
+            run_button.add_css_class("suggested-action")
+            run_button.connect("clicked", lambda _button, shortcut=item: self.confirm_run(shortcut))
+            row.add_suffix(run_button)
+            row.set_activatable_widget(run_button)
             self.shortcut_box.append(row)
         if not filtered:
             self.shortcut_box.append(Adw.ActionRow(title="No matching shortcuts", subtitle="Create a shortcut or change the search filter."))

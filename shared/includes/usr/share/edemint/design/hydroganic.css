@@ -1,0 +1,676 @@
+/* Edemint hydroganic design system - GTK4 / libadwaita.
+ *
+ * Two glass families, per docs/DESIGN.md and docs/PALETTE.md:
+ *   frosty glass    - translucent layered surfaces (windows, sidebars, cards)
+ *                     that stay readable; the compositor blur behind them is
+ *                     optional, so every alpha here still reads on plain navy.
+ *   hydroganic      - Edemint's liquid glass: controls with an organic top
+ *                     light, soft depth shadow and hue-matched gradients.
+ *
+ * Palette hierarchy: C1 ultramarine + C8a azure lead; C6 navy anchors the
+ * frost; C7 turquoise focuses and supports; C3/C4 greens accent selected
+ * components. Warm colors appear only where a component owns them (panelv,
+ * sticky notes, destructive actions).
+ */
+
+/* --- palette ------------------------------------------------------------ */
+@define-color ed_ultramarine_500 #2001FF;
+@define-color ed_ultramarine_400 #6D58FF;
+@define-color ed_ultramarine_200 #AEA3FF;
+@define-color ed_indigo_900 #261B67;
+@define-color ed_indigo_800 #2C2656;
+@define-color ed_eco_400 #45E289;
+@define-color ed_eco_300 #88D0A8;
+@define-color ed_eco_200 #819C8D;
+@define-color ed_plant_700 #21920F;
+@define-color ed_plant_900 #0D6300;
+@define-color ed_plant_950 #093A02;
+@define-color ed_forest_ink #162D13;
+@define-color ed_forest_charcoal #242E23;
+@define-color ed_forest_deep #253C22;
+@define-color ed_forest_muted #2C5126;
+@define-color ed_navy_700 #002C89;
+@define-color ed_navy_950 #171E54;
+@define-color ed_turquoise_200 #74FBEA;
+@define-color ed_turquoise_300 #1EE5CE;
+@define-color ed_turquoise_500 #04A89D;
+@define-color ed_turquoise_700 #007C76;
+@define-color ed_electric_blue #0007FF;
+@define-color ed_azure_500 #0080FF;
+/* panelv semantics - confirmed exceptions, never general accents. */
+@define-color ed_expand #5BA453;
+@define-color ed_hide #E9DE51;
+@define-color ed_close #E31515;
+
+/* --- libadwaita named colors --------------------------------------------- */
+@define-color accent_bg_color @ed_ultramarine_500;
+@define-color accent_fg_color #FFFFFF;
+@define-color accent_color @ed_ultramarine_200;
+@define-color destructive_bg_color @ed_close;
+@define-color destructive_fg_color #FFFFFF;
+@define-color destructive_color #FF8A80;
+@define-color success_bg_color @ed_plant_700;
+@define-color success_fg_color #FFFFFF;
+@define-color success_color @ed_eco_400;
+@define-color warning_bg_color @ed_hide;
+@define-color warning_fg_color rgba(0, 0, 0, 0.85);
+@define-color warning_color @ed_hide;
+@define-color error_bg_color @ed_close;
+@define-color error_fg_color #FFFFFF;
+@define-color error_color #FF8A80;
+
+@define-color window_bg_color rgba(18, 24, 62, 0.94);
+@define-color window_fg_color #F2F4FF;
+@define-color view_bg_color rgba(10, 14, 44, 0.55);
+@define-color view_fg_color #F2F4FF;
+@define-color headerbar_bg_color rgba(16, 21, 58, 0.72);
+@define-color headerbar_fg_color #F2F4FF;
+@define-color headerbar_backdrop_color rgba(14, 18, 50, 0.80);
+@define-color headerbar_shade_color rgba(0, 0, 0, 0.30);
+@define-color headerbar_darker_shade_color rgba(0, 0, 0, 0.45);
+@define-color sidebar_bg_color rgba(15, 20, 54, 0.62);
+@define-color sidebar_fg_color #F2F4FF;
+@define-color sidebar_backdrop_color rgba(13, 17, 47, 0.70);
+@define-color sidebar_shade_color rgba(0, 0, 0, 0.22);
+@define-color secondary_sidebar_bg_color rgba(13, 17, 47, 0.55);
+@define-color secondary_sidebar_fg_color #F2F4FF;
+@define-color secondary_sidebar_backdrop_color rgba(12, 16, 44, 0.65);
+@define-color secondary_sidebar_shade_color rgba(0, 0, 0, 0.22);
+@define-color card_bg_color rgba(255, 255, 255, 0.05);
+@define-color card_fg_color #F2F4FF;
+@define-color card_shade_color rgba(0, 0, 0, 0.28);
+@define-color dialog_bg_color rgba(21, 27, 70, 0.97);
+@define-color dialog_fg_color #F2F4FF;
+@define-color popover_bg_color rgba(24, 30, 76, 0.96);
+@define-color popover_fg_color #F2F4FF;
+@define-color popover_shade_color rgba(0, 0, 0, 0.28);
+@define-color shade_color rgba(0, 0, 0, 0.28);
+@define-color scrollbar_outline_color rgba(255, 255, 255, 0.12);
+@define-color borders rgba(255, 255, 255, 0.10);
+
+/* --- frosty glass window ------------------------------------------------- */
+/* The window carries a faint organic light: an ultramarine glow falling from
+ * the upper left and a turquoise pool at the lower right. It is subtle enough
+ * to read as depth rather than a gradient poster. */
+window.ed-frost {
+    background-color: @window_bg_color;
+    background-image:
+        radial-gradient(circle at 12% -8%, alpha(@ed_ultramarine_500, 0.20), alpha(@ed_ultramarine_500, 0) 46%),
+        radial-gradient(circle at 88% 112%, alpha(@ed_turquoise_500, 0.14), alpha(@ed_turquoise_500, 0) 42%);
+    color: @window_fg_color;
+}
+
+window.ed-frost headerbar,
+window.ed-frost .top-bar {
+    background-color: @headerbar_bg_color;
+    background-image: linear-gradient(to bottom, alpha(#FFFFFF, 0.05), alpha(#FFFFFF, 0));
+    box-shadow: inset 0 -1px alpha(#FFFFFF, 0.07);
+    border: none;
+}
+
+/* --- panelv window controls ---------------------------------------------- */
+/* Confirmed semantics: green expands, yellow hides, red closes. */
+window.ed-frost windowcontrols button > image {
+    min-width: 15px;
+    min-height: 15px;
+    padding: 0;
+    border-radius: 9999px;
+    color: transparent;
+    border: 1px solid rgba(0, 0, 0, 0.35);
+    box-shadow: inset 0 1px alpha(#FFFFFF, 0.35);
+}
+window.ed-frost windowcontrols button.maximize > image {
+    background-color: @ed_expand;
+}
+window.ed-frost windowcontrols button.minimize > image {
+    background-color: @ed_hide;
+}
+window.ed-frost windowcontrols button.close > image {
+    background-color: @ed_close;
+}
+window.ed-frost windowcontrols button:hover > image {
+    color: rgba(0, 0, 0, 0.55);
+}
+
+/* --- frosty glass surfaces ----------------------------------------------- */
+.ed-glass,
+window.ed-frost .card,
+window.ed-frost preferencesgroup > box > .boxed-list,
+window.ed-frost list.boxed-list {
+    background-color: alpha(#FFFFFF, 0.05);
+    background-image: linear-gradient(160deg, alpha(#FFFFFF, 0.045), alpha(#FFFFFF, 0.01));
+    border: 1px solid alpha(#FFFFFF, 0.10);
+    border-radius: 16px;
+    box-shadow:
+        inset 0 1px alpha(#FFFFFF, 0.10),
+        0 10px 24px rgba(0, 0, 0, 0.22);
+}
+
+window.ed-frost row.expander row,
+window.ed-frost list.boxed-list > row {
+    background-color: transparent;
+}
+window.ed-frost list.boxed-list > row:hover {
+    background-color: alpha(#FFFFFF, 0.04);
+}
+window.ed-frost list.boxed-list > row:selected {
+    background-color: alpha(@ed_ultramarine_400, 0.28);
+}
+
+/* Deeper frost for content wells: graphs, logs, previews. */
+.ed-well {
+    background-color: rgba(8, 11, 36, 0.62);
+    border: 1px solid alpha(#FFFFFF, 0.08);
+    border-radius: 14px;
+    box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.30);
+}
+
+/* --- hydroganic controls -------------------------------------------------- */
+window.ed-frost button {
+    background-color: alpha(#FFFFFF, 0.07);
+    background-image: linear-gradient(to bottom, alpha(#FFFFFF, 0.13), alpha(#FFFFFF, 0.02));
+    border: 1px solid alpha(#FFFFFF, 0.16);
+    border-radius: 12px;
+    box-shadow:
+        inset 0 1px alpha(#FFFFFF, 0.22),
+        0 2px 6px rgba(0, 0, 0, 0.20);
+    color: @window_fg_color;
+    padding: 6px 14px;
+    min-height: 24px;
+}
+window.ed-frost button:hover {
+    background-image: linear-gradient(to bottom, alpha(#FFFFFF, 0.20), alpha(#FFFFFF, 0.06));
+    border-color: alpha(#FFFFFF, 0.24);
+}
+window.ed-frost button:active {
+    background-image: linear-gradient(to bottom, alpha(#000000, 0.10), alpha(#FFFFFF, 0.04));
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.28);
+}
+window.ed-frost button:disabled {
+    opacity: 0.45;
+    box-shadow: none;
+}
+window.ed-frost button.flat,
+window.ed-frost button.circular.flat {
+    background-color: transparent;
+    background-image: none;
+    border-color: transparent;
+    box-shadow: none;
+}
+window.ed-frost button.flat:hover {
+    background-color: alpha(#FFFFFF, 0.08);
+}
+window.ed-frost button.circular {
+    border-radius: 9999px;
+}
+window.ed-frost button.pill {
+    border-radius: 9999px;
+    padding: 8px 22px;
+}
+
+/* Lead action: ultramarine falling into azure - a hue-matched, lightness-
+ * matched blue-to-blue liquid gradient with the hydroganic top light. */
+window.ed-frost button.suggested-action {
+    background-color: @ed_ultramarine_500;
+    background-image: linear-gradient(135deg, @ed_ultramarine_500, alpha(@ed_azure_500, 0.92));
+    border: 1px solid alpha(@ed_ultramarine_200, 0.55);
+    box-shadow:
+        inset 0 1px alpha(#FFFFFF, 0.38),
+        0 4px 14px alpha(@ed_electric_blue, 0.35);
+    color: #FFFFFF;
+}
+window.ed-frost button.suggested-action:hover {
+    background-image: linear-gradient(135deg, @ed_ultramarine_400, @ed_azure_500);
+}
+window.ed-frost button.destructive-action {
+    background-color: alpha(@ed_close, 0.82);
+    background-image: linear-gradient(to bottom, alpha(#FFFFFF, 0.18), alpha(#FFFFFF, 0));
+    border: 1px solid alpha(#FFFFFF, 0.20);
+    box-shadow:
+        inset 0 1px alpha(#FFFFFF, 0.30),
+        0 3px 10px alpha(@ed_close, 0.30);
+    color: #FFFFFF;
+}
+
+/* Symmetry helper: every direct button child shares one minimum size, so
+ * grouped actions line up as equal glass tiles. */
+.ed-equal button {
+    min-width: 96px;
+}
+.ed-equal-wide button {
+    min-width: 128px;
+}
+
+/* --- entries -------------------------------------------------------------- */
+window.ed-frost entry,
+window.ed-frost searchbar entry,
+window.ed-frost .ed-composer text {
+    background-color: rgba(8, 11, 36, 0.55);
+    border: 1px solid alpha(#FFFFFF, 0.12);
+    border-radius: 12px;
+    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.25);
+    color: @window_fg_color;
+    caret-color: @ed_turquoise_200;
+    min-height: 24px;
+    padding: 6px 10px;
+}
+window.ed-frost entry:focus-within {
+    border-color: alpha(@ed_turquoise_200, 0.70);
+    box-shadow:
+        inset 0 2px 6px rgba(0, 0, 0, 0.25),
+        0 0 0 2px alpha(@ed_turquoise_200, 0.22);
+}
+window.ed-frost entry > placeholder,
+window.ed-frost entry > text > placeholder {
+    color: alpha(#F2F4FF, 0.45);
+}
+
+/* --- focus ring ----------------------------------------------------------- */
+window.ed-frost *:focus-visible {
+    outline: 2px solid alpha(@ed_turquoise_200, 0.75);
+    outline-offset: 1px;
+}
+
+/* --- switches / checks / sliders ------------------------------------------ */
+window.ed-frost switch {
+    background-color: rgba(8, 11, 36, 0.60);
+    border: 1px solid alpha(#FFFFFF, 0.14);
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.30);
+}
+window.ed-frost switch:checked {
+    background-color: @ed_ultramarine_500;
+    background-image: linear-gradient(135deg, @ed_ultramarine_500, alpha(@ed_azure_500, 0.90));
+    border-color: alpha(@ed_ultramarine_200, 0.55);
+}
+window.ed-frost switch > slider {
+    background-color: #FFFFFF;
+    background-image: linear-gradient(to bottom, #FFFFFF, #DDE2F5);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
+}
+window.ed-frost checkbutton check,
+window.ed-frost checkbutton radio {
+    background-color: rgba(8, 11, 36, 0.60);
+    border: 1px solid alpha(#FFFFFF, 0.20);
+}
+window.ed-frost checkbutton check:checked,
+window.ed-frost checkbutton radio:checked {
+    background-color: @ed_ultramarine_500;
+    background-image: linear-gradient(135deg, @ed_ultramarine_500, @ed_azure_500);
+    border-color: alpha(@ed_ultramarine_200, 0.60);
+    color: #FFFFFF;
+}
+window.ed-frost scale > trough {
+    background-color: rgba(8, 11, 36, 0.60);
+    border: 1px solid alpha(#FFFFFF, 0.10);
+    box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.30);
+}
+window.ed-frost scale > trough > highlight {
+    background-image: linear-gradient(to right, @ed_azure_500, @ed_turquoise_300);
+    border: none;
+}
+window.ed-frost scale > trough > slider {
+    background-color: #FFFFFF;
+    background-image: linear-gradient(to bottom, #FFFFFF, #D8DEF3);
+    border: 1px solid alpha(#000000, 0.25);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+window.ed-frost progressbar > trough {
+    background-color: rgba(8, 11, 36, 0.60);
+    border-radius: 9999px;
+}
+window.ed-frost progressbar > trough > progress {
+    background-image: linear-gradient(to right, @ed_azure_500, @ed_turquoise_300);
+    border-radius: 9999px;
+    border: none;
+}
+window.ed-frost levelbar block.filled {
+    background-color: @ed_azure_500;
+    background-image: linear-gradient(to right, @ed_azure_500, @ed_turquoise_300);
+    border: none;
+}
+window.ed-frost levelbar block.filled.ed-level-high {
+    background-image: linear-gradient(to right, @ed_hide, @ed_close);
+}
+
+/* --- sidebars ------------------------------------------------------------- */
+window.ed-frost .navigation-sidebar {
+    background-color: transparent;
+    padding: 6px;
+}
+window.ed-frost .navigation-sidebar > row {
+    border-radius: 12px;
+    margin: 2px 4px;
+    padding: 2px 6px;
+    transition: background-color 120ms ease;
+}
+window.ed-frost .navigation-sidebar > row:hover {
+    background-color: alpha(#FFFFFF, 0.06);
+}
+window.ed-frost .navigation-sidebar > row:selected {
+    background-color: alpha(@ed_ultramarine_500, 0.42);
+    background-image: linear-gradient(135deg, alpha(@ed_ultramarine_500, 0.55), alpha(@ed_azure_500, 0.35));
+    box-shadow:
+        inset 0 1px alpha(#FFFFFF, 0.18),
+        0 2px 8px alpha(@ed_electric_blue, 0.25);
+    color: #FFFFFF;
+}
+
+/* --- lists, grids, columns ------------------------------------------------ */
+window.ed-frost listview,
+window.ed-frost gridview,
+window.ed-frost columnview {
+    background-color: transparent;
+    color: @window_fg_color;
+}
+window.ed-frost listview > row:hover,
+window.ed-frost columnview > listview > row:hover {
+    background-color: alpha(#FFFFFF, 0.05);
+}
+window.ed-frost listview > row:selected,
+window.ed-frost columnview > listview > row:selected,
+window.ed-frost gridview > child:selected {
+    background-color: alpha(@ed_ultramarine_400, 0.30);
+    border-radius: 10px;
+}
+window.ed-frost columnview > header > button {
+    background-color: alpha(#FFFFFF, 0.04);
+    background-image: none;
+    border: none;
+    border-bottom: 1px solid alpha(#FFFFFF, 0.10);
+    border-radius: 0;
+    box-shadow: none;
+    color: alpha(#F2F4FF, 0.75);
+    font-weight: 600;
+    padding: 8px 12px;
+}
+
+/* --- tab / view switchers -------------------------------------------------- */
+window.ed-frost .ed-seg,
+window.ed-frost box.linked > button {
+    border-radius: 0;
+}
+window.ed-frost box.linked > button:first-child {
+    border-top-left-radius: 12px;
+    border-bottom-left-radius: 12px;
+}
+window.ed-frost box.linked > button:last-child {
+    border-top-right-radius: 12px;
+    border-bottom-right-radius: 12px;
+}
+window.ed-frost viewswitcher button.toggle:checked,
+window.ed-frost togglebutton:checked,
+window.ed-frost button.toggle:checked {
+    background-color: alpha(@ed_ultramarine_500, 0.50);
+    background-image: linear-gradient(135deg, alpha(@ed_ultramarine_500, 0.60), alpha(@ed_azure_500, 0.40));
+    border-color: alpha(@ed_ultramarine_200, 0.45);
+    color: #FFFFFF;
+}
+
+/* --- hero headers ---------------------------------------------------------- */
+.ed-hero-title {
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: 0.2px;
+}
+.ed-hero-subtitle {
+    color: alpha(#F2F4FF, 0.62);
+    font-size: 13.5px;
+}
+
+/* --- stat tiles (Activity Monitor and friends) ----------------------------- */
+.ed-stat {
+    background-color: alpha(#FFFFFF, 0.05);
+    background-image: linear-gradient(160deg, alpha(#FFFFFF, 0.05), alpha(#FFFFFF, 0.01));
+    border: 1px solid alpha(#FFFFFF, 0.10);
+    border-radius: 16px;
+    box-shadow:
+        inset 0 1px alpha(#FFFFFF, 0.10),
+        0 8px 18px rgba(0, 0, 0, 0.20);
+    padding: 14px;
+}
+.ed-stat-value {
+    font-size: 21px;
+    font-weight: 700;
+}
+.ed-stat-caption {
+    color: alpha(#F2F4FF, 0.60);
+    font-size: 12px;
+}
+
+/* --- monospace wells (Console, Terminal previews, Inspector hex) ----------- */
+.ed-mono {
+    font-family: "JetBrainsMono Nerd Font", "JetBrains Mono", "Fira Code",
+                 "Source Code Pro", monospace;
+    font-size: 12.5px;
+}
+.ed-log {
+    background-color: rgba(6, 9, 30, 0.72);
+    border: 1px solid alpha(#FFFFFF, 0.08);
+    border-radius: 14px;
+    box-shadow: inset 0 2px 12px rgba(0, 0, 0, 0.35);
+}
+.ed-log textview,
+.ed-log textview > text,
+.ed-log listview,
+.ed-log list {
+    background: none;
+}
+.ed-severity-error {
+    color: #FF8A80;
+    font-weight: 700;
+}
+.ed-severity-warning {
+    color: @ed_hide;
+    font-weight: 600;
+}
+.ed-severity-notice {
+    color: @ed_turquoise_200;
+}
+
+/* --- composer rows (Fullcall, Messenger) ------------------------------------ */
+.ed-composer {
+    background-color: alpha(#FFFFFF, 0.05);
+    border: 1px solid alpha(#FFFFFF, 0.10);
+    border-radius: 9999px;
+    box-shadow: inset 0 1px alpha(#FFFFFF, 0.08);
+    padding: 4px;
+}
+.ed-composer entry {
+    background: none;
+    border: none;
+    box-shadow: none;
+}
+.ed-composer entry:focus-within {
+    box-shadow: none;
+    border: none;
+}
+.ed-composer button.suggested-action {
+    border-radius: 9999px;
+    min-width: 76px;
+}
+
+/* --- message bubbles -------------------------------------------------------- */
+.ed-bubble {
+    background-color: alpha(#FFFFFF, 0.07);
+    border: 1px solid alpha(#FFFFFF, 0.09);
+    border-radius: 16px;
+    padding: 10px 14px;
+}
+.ed-bubble-own {
+    background-color: alpha(@ed_ultramarine_500, 0.40);
+    background-image: linear-gradient(135deg, alpha(@ed_ultramarine_500, 0.48), alpha(@ed_azure_500, 0.34));
+    border: 1px solid alpha(@ed_ultramarine_200, 0.35);
+    border-radius: 16px;
+    padding: 10px 14px;
+}
+
+/* --- app tiles (Library, Mission Control) ----------------------------------- */
+.ed-tile {
+    background-color: alpha(#FFFFFF, 0.05);
+    background-image: linear-gradient(160deg, alpha(#FFFFFF, 0.06), alpha(#FFFFFF, 0.01));
+    border: 1px solid alpha(#FFFFFF, 0.10);
+    border-radius: 18px;
+    box-shadow:
+        inset 0 1px alpha(#FFFFFF, 0.10),
+        0 8px 18px rgba(0, 0, 0, 0.20);
+    padding: 12px;
+    transition: background-color 120ms ease, border-color 120ms ease;
+}
+.ed-tile:hover {
+    background-color: alpha(#FFFFFF, 0.09);
+    border-color: alpha(@ed_turquoise_200, 0.35);
+}
+
+/* --- workspace cards (Mission Control) --------------------------------------- */
+.ed-workspace {
+    background-color: alpha(@ed_navy_700, 0.35);
+    border: 1px solid alpha(#FFFFFF, 0.12);
+    border-radius: 16px;
+    box-shadow: inset 0 1px alpha(#FFFFFF, 0.10), 0 8px 20px rgba(0, 0, 0, 0.25);
+    padding: 10px;
+}
+.ed-workspace-active {
+    border-color: alpha(@ed_turquoise_200, 0.65);
+    box-shadow:
+        inset 0 1px alpha(#FFFFFF, 0.14),
+        0 0 0 2px alpha(@ed_turquoise_200, 0.25),
+        0 8px 20px rgba(0, 0, 0, 0.25);
+}
+
+/* --- accent subsets ----------------------------------------------------------
+ * An app claims a palette subset by putting one class on its window. Only the
+ * lead action, checked states and highlight rails move; frost stays navy so
+ * neighboring apps keep matched lightness. */
+window.ed-accent-eco button.suggested-action {
+    background-color: @ed_plant_700;
+    background-image: linear-gradient(135deg, @ed_plant_700, alpha(@ed_eco_400, 0.88));
+    border-color: alpha(@ed_eco_300, 0.55);
+    box-shadow:
+        inset 0 1px alpha(#FFFFFF, 0.35),
+        0 4px 14px alpha(@ed_plant_700, 0.40);
+}
+window.ed-accent-eco switch:checked,
+window.ed-accent-eco checkbutton check:checked {
+    background-color: @ed_plant_700;
+    background-image: linear-gradient(135deg, @ed_plant_700, @ed_eco_400);
+    border-color: alpha(@ed_eco_300, 0.55);
+}
+window.ed-accent-eco .navigation-sidebar > row:selected {
+    background-color: alpha(@ed_plant_700, 0.45);
+    background-image: linear-gradient(135deg, alpha(@ed_plant_700, 0.55), alpha(@ed_eco_400, 0.30));
+    box-shadow: inset 0 1px alpha(#FFFFFF, 0.18), 0 2px 8px alpha(@ed_plant_900, 0.35);
+}
+window.ed-accent-eco scale > trough > highlight,
+window.ed-accent-eco progressbar > trough > progress {
+    background-image: linear-gradient(to right, @ed_plant_700, @ed_eco_400);
+}
+
+window.ed-accent-turquoise button.suggested-action {
+    background-color: @ed_turquoise_700;
+    background-image: linear-gradient(135deg, @ed_turquoise_700, alpha(@ed_turquoise_300, 0.90));
+    border-color: alpha(@ed_turquoise_200, 0.55);
+    box-shadow:
+        inset 0 1px alpha(#FFFFFF, 0.35),
+        0 4px 14px alpha(@ed_turquoise_500, 0.40);
+}
+window.ed-accent-turquoise switch:checked,
+window.ed-accent-turquoise checkbutton check:checked {
+    background-color: @ed_turquoise_500;
+    background-image: linear-gradient(135deg, @ed_turquoise_700, @ed_turquoise_300);
+    border-color: alpha(@ed_turquoise_200, 0.55);
+}
+window.ed-accent-turquoise .navigation-sidebar > row:selected {
+    background-color: alpha(@ed_turquoise_700, 0.50);
+    background-image: linear-gradient(135deg, alpha(@ed_turquoise_700, 0.60), alpha(@ed_turquoise_300, 0.28));
+    box-shadow: inset 0 1px alpha(#FFFFFF, 0.18), 0 2px 8px alpha(@ed_turquoise_700, 0.35);
+}
+window.ed-accent-turquoise scale > trough > highlight,
+window.ed-accent-turquoise progressbar > trough > progress {
+    background-image: linear-gradient(to right, @ed_turquoise_700, @ed_turquoise_300);
+}
+
+/* --- sticky notes -------------------------------------------------------------
+ * The one place warm paper replaces frost: the editor should read as an actual
+ * sticky note. The window keeps a slim frosted margin; the note surface is a
+ * soft paper gradient with a curled shadow at the bottom edge. */
+window.ed-sticky {
+    background-color: rgba(18, 24, 62, 0.90);
+}
+.ed-note {
+    border-radius: 6px 6px 14px 14px;
+    box-shadow:
+        inset 0 18px 22px -18px rgba(0, 0, 0, 0.35),
+        0 12px 22px rgba(0, 0, 0, 0.35);
+    color: rgba(20, 20, 10, 0.92);
+    padding: 16px;
+}
+.ed-note entry,
+.ed-note text,
+.ed-note textview,
+.ed-note textview > text {
+    background: none;
+    border: none;
+    box-shadow: none;
+    color: rgba(20, 20, 10, 0.92);
+    caret-color: rgba(20, 20, 10, 0.92);
+}
+.ed-note checkbutton check {
+    background-color: alpha(#FFFFFF, 0.35);
+    border: 1px solid rgba(0, 0, 0, 0.35);
+}
+.ed-note-yellow {
+    background-color: #F2DE6B;
+    background-image: linear-gradient(170deg, #F7E88F, #EBD152);
+}
+.ed-note-green {
+    background-color: #BFE8A9;
+    background-image: linear-gradient(170deg, #D2F0BE, #A9DC8F);
+}
+.ed-note-blue {
+    background-color: #A9CBF5;
+    background-image: linear-gradient(170deg, #BFDCFB, #92BAEE);
+}
+.ed-note-pink {
+    background-color: #F5B8D9;
+    background-image: linear-gradient(170deg, #FBCCE5, #EFA3CB);
+}
+.ed-note-violet {
+    background-color: #CBB8F0;
+    background-image: linear-gradient(170deg, #DCCDF7, #B9A1E8);
+}
+
+/* --- misc ---------------------------------------------------------------------- */
+window.ed-frost separator {
+    background-color: alpha(#FFFFFF, 0.08);
+}
+window.ed-frost scrollbar > range > trough > slider {
+    background-color: alpha(#FFFFFF, 0.22);
+    border-radius: 9999px;
+}
+window.ed-frost scrollbar > range > trough > slider:hover {
+    background-color: alpha(#FFFFFF, 0.34);
+}
+window.ed-frost tooltip {
+    background-color: rgba(24, 30, 76, 0.96);
+    border: 1px solid alpha(#FFFFFF, 0.14);
+    border-radius: 10px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.40);
+}
+window.ed-frost .dim-label {
+    color: alpha(#F2F4FF, 0.55);
+}
+window.ed-frost statuspage > scrolledwindow > viewport > box > .icon {
+    color: alpha(@ed_ultramarine_200, 0.80);
+}
+.ed-status-ok {
+    color: @ed_eco_400;
+    font-weight: 600;
+}
+.ed-status-warn {
+    color: @ed_hide;
+    font-weight: 600;
+}
+.ed-status-bad {
+    color: #FF8A80;
+    font-weight: 600;
+}

@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import sys
 import time
 from typing import Any
 
@@ -19,6 +20,24 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
+
+def load_design():
+    """Locate the shared hydroganic design runtime; the app must run without it."""
+    for base in (os.environ.get("EDEMINT_DESIGN_DIR"),
+                 "/usr/share/edemint/design",
+                 str(Path(__file__).resolve().parents[1] / "share/edemint/design")):
+        if base and (Path(base) / "edemint_design.py").is_file():
+            if base not in sys.path:
+                sys.path.insert(0, base)
+            break
+    try:
+        import edemint_design
+        return edemint_design
+    except Exception:
+        return None
+
+
+DESIGN = load_design()
 
 APP_ID = "org.edemint.ActivityMonitor"
 HISTORY_LIMIT = 600
@@ -248,13 +267,67 @@ def process_snapshot(
     return processes, current_ticks
 
 
+class StatTile(Gtk.Box):
+    """A frosty stat card: value, caption, and a sparkline sized by its frame.
+
+    The drawing area reads its allocation at draw time, so the diagram always
+    fills exactly the space the tile grid gives it - no fixed canvas sizes.
+    """
+
+    def __init__(self, title: str) -> None:
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        self.add_css_class("ed-stat")
+        self.set_hexpand(True)
+        self.series: deque[float] = deque(maxlen=120)
+        self.value = Gtk.Label(xalign=0, ellipsize=3)
+        self.value.add_css_class("ed-stat-value")
+        self.caption = Gtk.Label(label=title, xalign=0, ellipsize=3)
+        self.caption.add_css_class("ed-stat-caption")
+        self.area = Gtk.DrawingArea(hexpand=True, content_height=42)
+        self.area.set_draw_func(self.draw)
+        self.append(self.value)
+        self.append(self.caption)
+        self.append(self.area)
+
+    def push(self, text: str, point: float | None, detail: str = "") -> None:
+        self.value.set_text(text)
+        self.set_tooltip_text(detail or None)
+        if point is not None:
+            self.series.append(max(0.0, min(1.0, point)))
+        self.area.queue_draw()
+
+    def draw(self, _area: Gtk.DrawingArea, context, width: int, height: int) -> None:
+        if width <= 2 or height <= 2 or len(self.series) < 2:
+            return
+        points = list(self.series)
+        step = width / (self.series.maxlen - 1)
+        origin = width - (len(points) - 1) * step
+        top = 3.0
+        usable = height - top - 2.0
+        context.set_line_width(1.8)
+        # turquoise support rail per the palette hierarchy
+        context.set_source_rgba(0.12, 0.90, 0.81, 0.95)
+        for index, point in enumerate(points):
+            x = origin + index * step
+            y = top + (1.0 - point) * usable
+            if index == 0:
+                context.move_to(x, y)
+            else:
+                context.line_to(x, y)
+        context.stroke_preserve()
+        context.line_to(origin + (len(points) - 1) * step, height)
+        context.line_to(origin, height)
+        context.close_path()
+        context.set_source_rgba(0.12, 0.90, 0.81, 0.16)
+        context.fill()
+
+
 class ActivityMonitor(Adw.Application):
     def __init__(self) -> None:
         super().__init__(application_id=APP_ID)
         self.window: Adw.ApplicationWindow | None = None
-        self.summary = Gtk.Label(xalign=0, selectable=True)
-        self.core_label = Gtk.Label(xalign=0, selectable=True, wrap=True)
-        self.sensor_label = Gtk.Label(xalign=0, selectable=True, wrap=True)
+        self.tiles: dict[str, StatTile] = {}
+        self.peaks: dict[str, float] = {}
         self.process_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
         self.search = Gtk.SearchEntry(placeholder_text="Search PID, user, name, or command")
         self.sort = Gtk.DropDown.new_from_strings(("CPU", "Memory", "Disk I/O", "PID", "Name"))
@@ -289,6 +362,8 @@ class ActivityMonitor(Adw.Application):
         toolbar.add_top_bar(header)
         toolbar.set_content(self.build_content())
         self.window.set_content(toolbar)
+        if DESIGN:
+            DESIGN.style_window(self.window, accent="turquoise")
         self.search.connect("search-changed", lambda _entry: self.populate_processes())
         self.sort.connect("notify::selected", lambda *_args: self.populate_processes())
         self.sample.connect("notify::selected", lambda *_args: self.restart_timer())
@@ -306,11 +381,27 @@ class ActivityMonitor(Adw.Application):
             margin_start=14,
             margin_end=14,
         )
-        cards = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        cards.append(self.summary)
-        cards.append(self.core_label)
-        cards.append(self.sensor_label)
-        root.append(cards)
+        # A wrapping grid keeps the tiles symmetric at any window width, so
+        # narrow/mobile layouts reflow instead of clipping.
+        grid = Gtk.FlowBox(
+            selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
+            column_spacing=10, row_spacing=10,
+            min_children_per_line=2, max_children_per_line=4,
+        )
+        for key, title in (
+            ("cpu", "CPU"),
+            ("memory", "Memory"),
+            ("swap", "Swap"),
+            ("disk", "Disk I/O"),
+            ("network", "Network"),
+            ("gpu", "GPU"),
+            ("temperature", "Temperature"),
+            ("processes", "Processes"),
+        ):
+            tile = StatTile(title)
+            self.tiles[key] = tile
+            grid.append(tile)
+        root.append(grid)
 
         controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.search.set_hexpand(True)
@@ -324,9 +415,10 @@ class ActivityMonitor(Adw.Application):
         scroll = Gtk.ScrolledWindow(vexpand=True)
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scroll.set_child(self.process_list)
+        scroll.add_css_class("ed-well")
         root.append(scroll)
 
-        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        buttons: list[Gtk.Button] = []
         for label, action in (
             ("Stop", signal.SIGSTOP),
             ("Continue", signal.SIGCONT),
@@ -337,14 +429,20 @@ class ActivityMonitor(Adw.Application):
             if action in (signal.SIGTERM, signal.SIGKILL):
                 button.add_css_class("destructive-action")
             button.connect("clicked", lambda _button, selected=action: self.signal_process(selected))
-            actions.append(button)
+            buttons.append(button)
         lower = Gtk.Button(label="Lower Priority")
         lower.connect("clicked", lambda _button: self.change_priority(5))
         raise_button = Gtk.Button(label="Raise Priority")
         raise_button.connect("clicked", lambda _button: self.change_priority(-5))
-        actions.append(lower)
-        actions.append(raise_button)
-        root.append(actions)
+        buttons.extend((lower, raise_button))
+        if DESIGN:
+            root.append(DESIGN.equal_actions(*buttons))
+        else:
+            actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8,
+                              homogeneous=True)
+            for button in buttons:
+                actions.append(button)
+            root.append(actions)
         return root
 
     def restart_timer(self) -> None:
@@ -352,6 +450,12 @@ class ActivityMonitor(Adw.Application):
             GLib.source_remove(self.timer_id)
         intervals = (1, 2, 5, 10)
         self.timer_id = GLib.timeout_add_seconds(intervals[self.sample.get_selected()], self.refresh)
+
+    def normalized(self, key: str, value: float) -> float:
+        """Scale a rate against its slowly-decaying session peak (0..1)."""
+        peak = max(value, self.peaks.get(key, 0.0) * 0.995, 1.0)
+        self.peaks[key] = peak
+        return value / peak
 
     def refresh(self) -> bool:
         now = time.monotonic()
@@ -391,27 +495,48 @@ class ActivityMonitor(Adw.Application):
             "gpu": gpu,
             "temperatures_celsius": dict(sensors),
         })
-        self.summary.set_text(
-            f"CPU {cpu_total:.1f}% | Memory {memory_percent:.1f}% "
-            f"({human_bytes(memory['used'])} / {human_bytes(memory['total'])}) | "
-            f"Swap {swap_percent:.1f}% | Disk read {human_bytes(disk_read)}/s, "
-            f"write {human_bytes(disk_write)}/s | Network down {human_bytes(net_receive)}/s, "
-            f"up {human_bytes(net_send)}/s"
-        )
         cores = "  ".join(
             f"{name.replace('cpu', 'Core ')}: {value:.0f}%"
             for name, value in percentages.items()
             if name != "cpu"
         )
-        self.core_label.set_text(cores or "Per-core CPU data unavailable")
         gpu_text = "; ".join(
             f"{item['name']}: "
             + (f"{item['busy']}% busy" if item["busy"] is not None else "usage unavailable")
             + (f", VRAM {human_bytes(item['vram_used'])}/{human_bytes(item['vram_total'])}" if item["vram_used"] is not None and item["vram_total"] is not None else "")
             for item in gpu
         ) or "GPU telemetry unavailable"
-        temp_text = ", ".join(f"{name} {value:.1f} C" for name, value in sensors) or "temperature sensors unavailable"
-        self.sensor_label.set_text(f"{gpu_text} | {temp_text}")
+        temp_text = ", ".join(f"{name} {value:.1f} C" for name, value in sensors)
+        self.tiles["cpu"].push(f"{cpu_total:.1f}%", cpu_total / 100.0,
+                               cores or "Per-core CPU data unavailable")
+        self.tiles["memory"].push(
+            f"{memory_percent:.1f}%", memory_percent / 100.0,
+            f"{human_bytes(memory['used'])} of {human_bytes(memory['total'])}")
+        self.tiles["swap"].push(
+            f"{swap_percent:.1f}%", swap_percent / 100.0,
+            f"{human_bytes(memory['swap_used'])} of {human_bytes(memory['swap_total'])}")
+        self.tiles["disk"].push(
+            f"{human_bytes(disk_read + disk_write)}/s",
+            self.normalized("disk", disk_read + disk_write),
+            f"Read {human_bytes(disk_read)}/s, write {human_bytes(disk_write)}/s")
+        self.tiles["network"].push(
+            f"{human_bytes(net_receive + net_send)}/s",
+            self.normalized("network", net_receive + net_send),
+            f"Down {human_bytes(net_receive)}/s, up {human_bytes(net_send)}/s")
+        busy_values = [item["busy"] for item in gpu if item["busy"] is not None]
+        self.tiles["gpu"].push(
+            f"{max(busy_values)}%" if busy_values else "n/a",
+            (max(busy_values) / 100.0) if busy_values else None,
+            gpu_text)
+        peak_temperature = max((value for _name, value in sensors), default=None)
+        self.tiles["temperature"].push(
+            f"{peak_temperature:.0f} °C" if peak_temperature is not None else "n/a",
+            (min(peak_temperature, 100.0) / 100.0) if peak_temperature is not None else None,
+            temp_text or "Temperature sensors unavailable")
+        self.tiles["processes"].push(
+            str(len(self.processes)),
+            self.normalized("processes", float(len(self.processes))),
+            "Processes visible to this user")
         self.populate_processes()
         self.maybe_alert(cpu_total, memory_percent)
         self.previous_cpu = current_cpu

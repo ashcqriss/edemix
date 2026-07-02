@@ -21,6 +21,24 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, GLib, Gtk  # noqa: E402
 
 
+def load_design():
+    """Locate the shared hydroganic design runtime; the app must run without it."""
+    for base in (os.environ.get("EDEMINT_DESIGN_DIR"),
+                 "/usr/share/edemint/design",
+                 str(Path(__file__).resolve().parents[1] / "share/edemint/design")):
+        if base and (Path(base) / "edemint_design.py").is_file():
+            if base not in sys.path:
+                sys.path.insert(0, base)
+            break
+    try:
+        import edemint_design
+        return edemint_design
+    except Exception:
+        return None
+
+
+DESIGN = load_design()
+
 APP_ID = "org.edemint.Console"
 MAX_RECORDS = 2000
 PRIORITIES = ("Emergency", "Alert", "Critical", "Error", "Warning", "Notice", "Info", "Debug")
@@ -176,6 +194,8 @@ class ConsoleApp(Adw.Application):
         toolbar.add_top_bar(header)
         toolbar.set_content(self.build_content())
         self.window.set_content(toolbar)
+        if DESIGN:
+            DESIGN.style_window(self.window, accent="turquoise")
         for widget, signal_name in (
             (self.search, "search-changed"),
             (self.unit, "changed"),
@@ -198,22 +218,31 @@ class ConsoleApp(Adw.Application):
             margin_start=12,
             margin_end=12,
         )
-        filters = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        # Two symmetric filter rows: the search line, then evenly spaced
+        # controls that wrap cleanly instead of crowding one row.
+        search_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.search.set_hexpand(True)
-        self.unit.set_width_chars(18)
-        filters.append(self.search)
-        filters.append(self.unit)
-        filters.append(self.severity)
-        filters.append(self.time_range)
-        filters.append(self.boot)
-        filters.append(self.follow)
+        search_row.append(self.search)
+        search_row.append(self.follow)
+        search_row.append(self.redaction)
+        root.append(search_row)
+        filters = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8,
+                          homogeneous=True)
+        self.unit.set_width_chars(14)
+        for widget in (self.unit, self.severity, self.time_range, self.boot):
+            widget.set_hexpand(True)
+            filters.append(widget)
         root.append(filters)
         root.append(self.status)
+        table = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        table.add_css_class("ed-log")
+        table.append(self.header_row())
         scroll = Gtk.ScrolledWindow(vexpand=True)
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scroll.set_child(self.log_list)
-        root.append(scroll)
-        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        table.append(scroll)
+        root.append(table)
+        buttons = []
         for label, callback in (
             ("Details", self.show_details),
             ("Copy", self.copy_selected),
@@ -224,10 +253,33 @@ class ConsoleApp(Adw.Application):
         ):
             button = Gtk.Button(label=label)
             button.connect("clicked", callback)
-            actions.append(button)
-        actions.append(self.redaction)
-        root.append(actions)
+            buttons.append(button)
+        if DESIGN:
+            root.append(DESIGN.equal_actions(*buttons))
+        else:
+            actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8,
+                              homogeneous=True)
+            for button in buttons:
+                actions.append(button)
+            root.append(actions)
         return root
+
+    @staticmethod
+    def header_row() -> Gtk.Widget:
+        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10,
+                         margin_top=8, margin_bottom=8, margin_start=8, margin_end=8)
+        for text, width, expand in (
+            ("TIME", 20, False), ("SEVERITY", 9, False),
+            ("UNIT", 22, False), ("MESSAGE", -1, True),
+        ):
+            label = Gtk.Label(label=text, xalign=0)
+            if width > 0:
+                label.set_width_chars(width)
+            label.set_hexpand(expand)
+            label.add_css_class("dim-label")
+            label.add_css_class("caption-heading")
+            header.append(label)
+        return header
 
     def periodic_refresh(self) -> bool:
         if self.follow.get_active():
@@ -274,6 +326,18 @@ class ConsoleApp(Adw.Application):
     def populate(self) -> None:
         while child := self.log_list.get_first_child():
             self.log_list.remove(child)
+        if not self.filtered:
+            placeholder = Gtk.Label(
+                label=("No user-session records match the current filters.\n"
+                       "Widen the time range, clear the search, or check that the "
+                       "user journal is retained on this device."),
+                justify=Gtk.Justification.CENTER, wrap=True,
+                margin_top=42, margin_bottom=42,
+            )
+            placeholder.add_css_class("dim-label")
+            empty = Gtk.ListBoxRow(selectable=False, activatable=False)
+            empty.set_child(placeholder)
+            self.log_list.append(empty)
         for record in self.filtered[-1000:]:
             row = Gtk.ListBoxRow()
             row.record = record
@@ -283,10 +347,18 @@ class ConsoleApp(Adw.Application):
             box.set_margin_start(8)
             box.set_margin_end(8)
             timestamp = Gtk.Label(label=record_time(record), xalign=0, width_chars=20)
+            timestamp.add_css_class("ed-mono")
             priority = record_priority(record)
             severity = Gtk.Label(label=PRIORITIES[priority], xalign=0, width_chars=9)
+            if priority <= 3:
+                severity.add_css_class("ed-severity-error")
+            elif priority == 4:
+                severity.add_css_class("ed-severity-warning")
+            elif priority == 5:
+                severity.add_css_class("ed-severity-notice")
             unit = Gtk.Label(label=record_unit(record), xalign=0, width_chars=22, ellipsize=3)
             message = Gtk.Label(label=record_message(record), xalign=0, ellipsize=3)
+            message.add_css_class("ed-mono")
             message.set_hexpand(True)
             message.set_tooltip_text(record_message(record))
             box.append(timestamp)

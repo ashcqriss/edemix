@@ -1,7 +1,7 @@
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Font Manager
+Name=Fontbook
 GenericName=Font Management
 Comment=Preview and manage installed fonts
 Exec=font-manager
@@ -9,6 +9,6 @@ Icon=preferences-desktop-font
 Terminal=false
 Categories=Settings;Utility;
 StartupNotify=true
-Keywords=font;typeface;preview;
+Keywords=font;typeface;preview;fontbook;
 X-Edemint-Foundation=true
 X-Edemint-Upstream=font-manager

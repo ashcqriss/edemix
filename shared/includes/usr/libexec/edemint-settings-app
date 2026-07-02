@@ -20,6 +20,25 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
+
+def load_design():
+    """Locate the shared hydroganic design runtime; the app must run without it."""
+    for base in (os.environ.get("EDEMINT_DESIGN_DIR"),
+                 "/usr/share/edemint/design",
+                 str(Path(__file__).resolve().parents[1] / "share/edemint/design")):
+        if base and (Path(base) / "edemint_design.py").is_file():
+            if base not in sys.path:
+                sys.path.insert(0, base)
+            break
+    try:
+        import edemint_design
+        return edemint_design
+    except Exception:
+        return None
+
+
+DESIGN = load_design()
+
 APP_ID = "org.edemint.Settings"
 HELPER = "/usr/libexec/edemint-settings-helper"
 STATE_FILE = Path.home() / ".config/edemint/settings.json"
@@ -32,24 +51,40 @@ SESSION_KEYS = (
     "XDG_SESSION_ID", "WAYLAND_DISPLAY", "DISPLAY", "DBUS_SESSION_BUS_ADDRESS",
 )
 PAGES = [
-    ("overview", "Overview", "system hardware identity diagnostics health"),
-    ("connections", "Connections", "network wifi ethernet vpn bluetooth radio"),
-    ("sound", "Sound", "volume microphone input output mute pipewire"),
-    ("display", "Display", "brightness monitor scale rotation refresh arrangement"),
-    ("power", "Power", "battery profile performance balanced saver"),
-    ("notifications", "Notifications", "history do not disturb dnd alerts"),
-    ("privacy", "Privacy", "permissions camera microphone portal flatpak history"),
-    ("accounts", "Accounts", "users password fingerprint identity"),
-    ("language", "Language and Region", "locale timezone keyboard input date time"),
-    ("accessibility", "Accessibility", "screen reader contrast large text motion keyboard"),
-    ("updates", "Updates", "packages sources trust release notes upgrade"),
-    ("defaults", "Default Applications", "file association mime browser mail"),
-    ("storage", "Storage", "disk smart space cleanup encryption removable"),
-    ("backup", "Backup", "deja dup restore snapshots"),
-    ("recovery", "Recovery", "snapper rollback snapshot repair"),
-    ("security", "Security", "apparmor firewall keys sandbox status"),
+    ("overview", "Overview", "computer-symbolic",
+     "system hardware identity diagnostics health"),
+    ("connections", "Connections", "network-wireless-signal-excellent-symbolic",
+     "network wifi ethernet vpn bluetooth radio"),
+    ("sound", "Sound", "audio-volume-high-symbolic",
+     "volume microphone input output mute pipewire"),
+    ("display", "Display", "video-display-symbolic",
+     "brightness monitor scale rotation refresh arrangement"),
+    ("power", "Power", "battery-good-symbolic",
+     "battery profile performance balanced saver"),
+    ("notifications", "Notifications", "dialog-information-symbolic",
+     "history do not disturb dnd alerts"),
+    ("privacy", "Privacy", "security-high-symbolic",
+     "permissions camera microphone portal flatpak history"),
+    ("accounts", "Accounts", "system-users-symbolic",
+     "users password fingerprint identity"),
+    ("language", "Language and Region", "preferences-desktop-locale-symbolic",
+     "locale timezone keyboard input date time"),
+    ("accessibility", "Accessibility", "preferences-desktop-accessibility-symbolic",
+     "screen reader contrast large text motion keyboard"),
+    ("updates", "Updates", "software-update-available-symbolic",
+     "packages sources trust release notes upgrade"),
+    ("defaults", "Default Applications", "emblem-default-symbolic",
+     "file association mime browser mail"),
+    ("storage", "Storage", "drive-harddisk-symbolic",
+     "disk smart space cleanup encryption removable"),
+    ("backup", "Backup", "document-save-symbolic",
+     "deja dup restore snapshots"),
+    ("recovery", "Recovery", "edit-undo-symbolic",
+     "snapper rollback snapshot repair"),
+    ("security", "Security", "dialog-password-symbolic",
+     "apparmor firewall keys sandbox status"),
 ]
-PAGE_NAMES = {key for key, _title, _keywords in PAGES}
+PAGE_NAMES = {key for key, _title, _icon, _keywords in PAGES}
 
 
 def session_env() -> dict[str, str]:
@@ -136,7 +171,9 @@ class Settings(Adw.Application):
         super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.NON_UNIQUE)
         self.arguments = arguments
         self.window: Adw.ApplicationWindow | None = None
-        self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE, hexpand=True)
+        self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE,
+                               hexpand=True, vexpand=True)
+        self.split: Adw.OverlaySplitView | None = None
         self.sidebar = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
         self.rows: dict[Gtk.ListBoxRow, tuple[str, str]] = {}
         self.status = Gtk.Label(xalign=0)
@@ -149,9 +186,20 @@ class Settings(Adw.Application):
         self.window.set_title("Settings")
         self.window.set_default_size(1120, 760)
         toolbar = Adw.ToolbarView()
-        toolbar.add_top_bar(Adw.HeaderBar())
+        header = Adw.HeaderBar()
+        sidebar_toggle = Gtk.ToggleButton(icon_name="sidebar-show-symbolic", active=True)
+        sidebar_toggle.add_css_class("flat")
+        header.pack_start(sidebar_toggle)
+        toolbar.add_top_bar(header)
         toolbar.set_content(self.build_shell())
+        sidebar_toggle.bind_property(
+            "active", self.split, "show-sidebar",
+            GLib.BindingFlags.BIDIRECTIONAL | GLib.BindingFlags.SYNC_CREATE,
+        )
         self.window.set_content(toolbar)
+        if DESIGN:
+            DESIGN.style_window(self.window)
+            DESIGN.breakpoint_collapse(self.window, self.split)
         self.window.present()
         self.select_page(self.requested_page())
 
@@ -167,26 +215,25 @@ class Settings(Adw.Application):
         return "overview"
 
     def build_shell(self) -> Gtk.Widget:
-        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        body = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, vexpand=True)
         sidebar_box = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL, spacing=8,
             margin_top=12, margin_bottom=12, margin_start=12, margin_end=12,
         )
-        sidebar_box.set_size_request(270, -1)
         search = Gtk.SearchEntry(placeholder_text="Search settings")
         search.connect("search-changed", self.on_search)
         sidebar_box.append(search)
         self.sidebar.add_css_class("navigation-sidebar")
-        for key, title, keywords in PAGES:
+        for key, title, icon, keywords in PAGES:
             row = Gtk.ListBoxRow()
-            row.set_child(Gtk.Label(label=title, xalign=0, margin_top=9, margin_bottom=9))
+            line = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12,
+                           margin_top=9, margin_bottom=9)
+            line.append(Gtk.Image.new_from_icon_name(icon))
+            line.append(Gtk.Label(label=title, xalign=0))
+            row.set_child(line)
             self.sidebar.append(row)
             self.rows[row] = (key, f"{title} {keywords}".casefold())
         self.sidebar.connect("row-activated", self.on_page_row)
         sidebar_box.append(scrolled(self.sidebar))
-        body.append(sidebar_box)
-        body.append(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL))
         builders: dict[str, Callable[[], Gtk.Widget]] = {
             "overview": self.page_overview, "connections": self.page_connections,
             "sound": self.page_sound, "display": self.page_display,
@@ -197,25 +244,31 @@ class Settings(Adw.Application):
             "storage": self.page_storage, "backup": self.page_backup,
             "recovery": self.page_recovery, "security": self.page_security,
         }
-        for key, _title, _keywords in PAGES:
+        for key, _title, _icon, _keywords in PAGES:
             self.stack.add_named(builders[key](), key)
-        body.append(self.stack)
-        root.append(body)
-        status_box = Gtk.Box(margin_start=12, margin_end=12, margin_top=6, margin_bottom=8)
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        content.append(self.stack)
+        status_box = Gtk.Box(margin_start=16, margin_end=16, margin_top=6, margin_bottom=8)
         self.status.set_hexpand(True)
         status_box.append(self.status)
-        root.append(status_box)
-        return root
+        content.append(status_box)
+        self.split = Adw.OverlaySplitView(sidebar=sidebar_box, content=content, vexpand=True)
+        self.split.set_min_sidebar_width(232)
+        self.split.set_max_sidebar_width(280)
+        return self.split
 
     def page_box(self, title: str, summary: str) -> Gtk.Box:
         box = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL, spacing=18,
             margin_top=24, margin_bottom=24, margin_start=28, margin_end=28,
         )
-        heading = Gtk.Label(label=title, xalign=0)
-        heading.add_css_class("title-1")
-        box.append(heading)
-        box.append(label(summary))
+        if DESIGN:
+            box.append(DESIGN.hero(title, summary))
+        else:
+            heading = Gtk.Label(label=title, xalign=0)
+            heading.add_css_class("title-1")
+            box.append(heading)
+            box.append(label(summary))
         return box
 
     @staticmethod
@@ -379,7 +432,8 @@ class Settings(Adw.Application):
         scale.set_value(value)
         scale.set_draw_value(True)
         scale.set_value_pos(Gtk.PositionType.RIGHT)
-        scale.set_size_request(330, -1)
+        scale.set_size_request(240, -1)
+        scale.set_hexpand(True)
         scale.connect("value-changed", lambda widget: self.debounce(target, lambda: self.task(f"Setting {title.lower()}", ["wpctl", "set-volume", "-l", str(maximum / 100.0), target, f"{int(widget.get_value())}%"])))
         row.add_suffix(scale)
         group.add(row)
@@ -415,7 +469,8 @@ class Settings(Adw.Application):
         brightness = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 1, 100, 1)
         brightness.set_value(float(match.group(1)) if match else 50.0)
         brightness.set_draw_value(True)
-        brightness.set_size_request(330, -1)
+        brightness.set_size_request(240, -1)
+        brightness.set_hexpand(True)
         brightness.set_sensitive(match is not None)
         brightness.connect("value-changed", lambda widget: self.debounce("brightness", lambda: self.task("Setting brightness", ["brightnessctl", "set", f"{int(widget.get_value())}%"])))
         brightness_row.add_suffix(brightness)

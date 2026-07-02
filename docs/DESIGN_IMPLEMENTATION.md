@@ -23,6 +23,36 @@ not the complete Edemint component system.
 - Power menu retaining lock, log out, suspend, reboot, and shutdown actions.
 - Low-power defaults with blur, shadows, and animations disabled.
 
+## Hydroganic app design system (bp_des_5 pass)
+
+Edemint's liquid glass is named **hydroganic**; translucent layered surfaces
+are **frosty glass**. Both are implemented for the first-party GTK4 apps:
+
+- `/usr/share/edemint/design/hydroganic.css` defines the palette tokens from
+  `PALETTE.md`, frosty-glass windows/cards/wells, hydroganic buttons and
+  controls (organic top light, hue-and-lightness-matched blue-to-blue and
+  green gradients), turquoise focus rings, `panelv` window-control colors,
+  and per-app accent subsets (`ed-accent-eco`, `ed-accent-turquoise`).
+- `/usr/share/edemint/design/edemint_design.py` is the shared runtime every
+  first-party app loads: stylesheet installation, `ed-frost` window marking,
+  hero headers, symmetric equal-width action rows, and `Adw.Breakpoint`
+  helpers for narrow/mobile collapsing. Apps degrade gracefully without it.
+- All first-party apps (Settings, Activity Monitor, Console, Fullcall,
+  Messenger, Phone, Inspector, App Library, Shortcuts, Automator, Default
+  Apps, Mission Control, Sticky Notes) load the system. Layout corrections in
+  the same pass: Settings sidebar icons and collapsing split view, Activity
+  Monitor stat tiles with allocation-sized sparklines, Console column headers
+  with an explicit empty state, composer pills whose primary button matches
+  the entry height (Fullcall, Messenger, Phone), a centered App Library tile
+  grid, a macOS-style Mission Control with a workspace shelf and window
+  tiles, and paper-gradient Sticky Note windows.
+- Frost never depends on compositor effects: every surface alpha reads on
+  plain navy. `$ed_glass` in Hyprland gates blur for capable profiles, and
+  waybar/notification layers blur with it so glass reads as one system.
+- Integrated apps inherit the palette through skel `gtk-4.0/gtk.css`
+  (importing the shared stylesheet) and a GTK3 recolor for Thunar-class
+  apps; `gtk-decoration-layout` applies the `panelv` order system-wide.
+
 ## Deliberately pending
 
 - Final logo, profile picture, wallpapers, fonts, production icon theme, and

@@ -20,6 +20,25 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
+
+def load_design():
+    """Locate the shared hydroganic design runtime; the app must run without it."""
+    for base in (os.environ.get("EDEMINT_DESIGN_DIR"),
+                 "/usr/share/edemint/design",
+                 str(Path(__file__).resolve().parents[1] / "share/edemint/design")):
+        if base and (Path(base) / "edemint_design.py").is_file():
+            if base not in sys.path:
+                sys.path.insert(0, base)
+            break
+    try:
+        import edemint_design
+        return edemint_design
+    except Exception:
+        return None
+
+
+DESIGN = load_design()
+
 APP_ID = "org.edemint.Messenger"
 SCHEMA = 2
 PROFILE_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
@@ -168,6 +187,8 @@ class Messenger(Adw.Application):
         toolbar.add_top_bar(Adw.HeaderBar())
         toolbar.set_content(self.build_content())
         self.window.set_content(toolbar)
+        if DESIGN:
+            DESIGN.style_window(self.window)
         self.install_actions()
         self.window.present()
         target = next((argument for argument in self.arguments if argument.startswith(("matrix:", "https://matrix.to/", "@", "#", "!"))), "")
@@ -258,24 +279,44 @@ class Messenger(Adw.Application):
         self.send_notification("messenger-test", notification)
 
     def conversation_group(self) -> Gtk.Widget:
-        group = Adw.PreferencesGroup(title="Conversation handoff")
-        self.profile_dropdown = Gtk.DropDown()
+        # One glass pill: the destination fills it and Open matches its
+        # height, so the entry no longer towers over the button.
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        title = Gtk.Label(label="Conversation handoff", xalign=0)
+        title.add_css_class("heading")
+        subtitle = Gtk.Label(label="User, room, matrix: URI or matrix.to link", xalign=0)
+        subtitle.add_css_class("dim-label")
+        box.append(title)
+        box.append(subtitle)
+        pill = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        pill.add_css_class("ed-composer")
+        self.profile_dropdown = Gtk.DropDown(valign=Gtk.Align.CENTER)
         self.refresh_profile_model()
-        self.target_entry = Gtk.Entry(placeholder_text="@person:server or #room:server", valign=Gtk.Align.CENTER)
-        row = Adw.ActionRow(title="Destination", subtitle="User, room, matrix: URI or matrix.to link")
-        row.add_suffix(self.target_entry)
-        row.add_suffix(self.profile_dropdown)
-        copy_button = Gtk.Button(label="Copy", valign=Gtk.Align.CENTER)
-        copy_button.connect("clicked", lambda _button: self.copy_target())
-        attach_button = Gtk.Button(label="Prepare attachment", valign=Gtk.Align.CENTER)
-        attach_button.connect("clicked", self.prepare_attachment)
+        self.target_entry = Gtk.Entry(
+            placeholder_text="@person:server or #room:server",
+            hexpand=True, valign=Gtk.Align.CENTER,
+        )
         open_button = Gtk.Button(label="Open", valign=Gtk.Align.CENTER)
+        open_button.add_css_class("suggested-action")
         open_button.connect("clicked", lambda _button: self.launch(self.target_entry.get_text() if self.target_entry else ""))
-        row.add_suffix(copy_button)
-        row.add_suffix(attach_button)
-        row.add_suffix(open_button)
-        group.add(row)
-        return group
+        self.target_entry.connect("activate", lambda _entry: self.launch(self.target_entry.get_text() if self.target_entry else ""))
+        pill.append(self.target_entry)
+        pill.append(self.profile_dropdown)
+        pill.append(open_button)
+        box.append(pill)
+        copy_button = Gtk.Button(label="Copy destination")
+        copy_button.connect("clicked", lambda _button: self.copy_target())
+        attach_button = Gtk.Button(label="Prepare attachment")
+        attach_button.connect("clicked", self.prepare_attachment)
+        if DESIGN:
+            box.append(DESIGN.equal_actions(copy_button, attach_button))
+        else:
+            tools = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8,
+                            homogeneous=True)
+            tools.append(copy_button)
+            tools.append(attach_button)
+            box.append(tools)
+        return box
 
     def copy_target(self) -> None:
         if not self.target_entry or not self.window:
@@ -307,21 +348,30 @@ class Messenger(Adw.Application):
 
     def saved_group(self) -> Gtk.Widget:
         group = Adw.PreferencesGroup(title="Saved conversations", description="Store local labels, tags, notes and profile bindings without reading message content.")
-        form = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        self.name_entry = Gtk.Entry(placeholder_text="Name")
-        target = Gtk.Entry(placeholder_text="Matrix destination")
-        self.tags_entry = Gtk.Entry(placeholder_text="tags, comma separated")
-        self.note_entry = Gtk.Entry(placeholder_text="Local note")
+        # A balanced two-column editor grid instead of six widgets in one row.
+        form = Gtk.Grid(column_spacing=10, row_spacing=8, column_homogeneous=True,
+                        margin_top=6, margin_bottom=6)
+        self.name_entry = Gtk.Entry(placeholder_text="Name", hexpand=True)
+        target = Gtk.Entry(placeholder_text="Matrix destination", hexpand=True)
+        self.tags_entry = Gtk.Entry(placeholder_text="tags, comma separated", hexpand=True)
+        self.note_entry = Gtk.Entry(placeholder_text="Local note", hexpand=True)
+        form.attach(self.name_entry, 0, 0, 1, 1)
+        form.attach(target, 1, 0, 1, 1)
+        form.attach(self.tags_entry, 0, 1, 1, 1)
+        form.attach(self.note_entry, 1, 1, 1, 1)
         save = Gtk.Button(label="Save")
+        save.add_css_class("suggested-action")
         save.connect("clicked", lambda _button: self.save_conversation(target))
         cancel = Gtk.Button(label="Cancel edit")
         cancel.connect("clicked", lambda _button: self.clear_editor(target))
-        for widget in (self.name_entry, target, self.tags_entry, self.note_entry, save, cancel):
-            form.append(widget)
-        row = Adw.ActionRow(title="Add or edit")
-        row.add_suffix(form)
-        group.add(row)
-        tools = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        editor_actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8,
+                                 homogeneous=True)
+        editor_actions.append(cancel)
+        editor_actions.append(save)
+        form.attach(editor_actions, 1, 2, 1, 1)
+        group.add(form)
+        tools = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8,
+                        margin_top=6, margin_bottom=6)
         self.search = Gtk.SearchEntry(placeholder_text="Search name, target, tags or notes")
         self.search.set_hexpand(True)
         self.search.connect("search-changed", lambda _entry: self.refresh_conversations())
@@ -332,10 +382,9 @@ class Messenger(Adw.Application):
         tools.append(self.search)
         tools.append(export)
         tools.append(import_button)
-        tool_row = Adw.ActionRow(title="Organize")
-        tool_row.add_suffix(tools)
-        group.add(tool_row)
+        group.add(tools)
         self.saved_box = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        self.saved_box.add_css_class("boxed-list")
         group.add(self.saved_box)
         self.refresh_conversations()
         self._editor_target = target
@@ -440,6 +489,7 @@ class Messenger(Adw.Application):
         row.add_suffix(add)
         group.add(row)
         self.profile_box = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        self.profile_box.add_css_class("boxed-list")
         group.add(self.profile_box)
         self.refresh_profiles()
         return group

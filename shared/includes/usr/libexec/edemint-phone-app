@@ -20,6 +20,25 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
+
+def load_design():
+    """Locate the shared hydroganic design runtime; the app must run without it."""
+    for base in (os.environ.get("EDEMINT_DESIGN_DIR"),
+                 "/usr/share/edemint/design",
+                 str(Path(__file__).resolve().parents[1] / "share/edemint/design")):
+        if base and (Path(base) / "edemint_design.py").is_file():
+            if base not in sys.path:
+                sys.path.insert(0, base)
+            break
+    try:
+        import edemint_design
+        return edemint_design
+    except Exception:
+        return None
+
+
+DESIGN = load_design()
+
 APP_ID = "org.edemint.Phone"
 PHONE_DESKTOP_ID = "edemint-phone.desktop"
 TEL_ALLOWED = re.compile(r"[+0-9*#(). -]{1,80}")
@@ -130,6 +149,8 @@ class Phone(Adw.Application):
         toolbar.add_top_bar(Adw.HeaderBar())
         toolbar.set_content(self.build_content())
         self.window.set_content(toolbar)
+        if DESIGN:
+            DESIGN.style_window(self.window, accent="eco")
         self.window.present()
 
     def notice(self, heading: str, message: str) -> None:
@@ -147,9 +168,11 @@ class Phone(Adw.Application):
         panes.set_end_child(self.history_group())
         panes.set_position(520)
         outer.append(panes)
-        diagnostics = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        diagnostics = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8,
+                              homogeneous=True)
+        diagnostics.add_css_class("ed-equal")
         for text, callback in (("Modem and SIM", self.show_modems), ("Audio routes", self.show_audio), ("SIP profiles", self.show_sip_profiles), ("Capability report", self.show_capabilities)):
-            button = Gtk.Button(label=text)
+            button = Gtk.Button(label=text, hexpand=True)
             button.connect("clicked", lambda _button, action=callback: action())
             diagnostics.append(button)
         outer.append(diagnostics)
@@ -159,38 +182,53 @@ class Phone(Adw.Application):
         return outer
 
     def dialer_group(self) -> Gtk.Widget:
-        group = Adw.PreferencesGroup(title="Dial or address")
-        row = Adw.ActionRow(title="Destination", subtitle="Telephone number or SIP address")
-        self.target = Gtk.Entry(placeholder_text="+49... or name@example.org", valign=Gtk.Align.CENTER)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        title = Gtk.Label(label="Dial or address", xalign=0)
+        title.add_css_class("heading")
+        box.append(title)
+        # Destination pill: the entry fills it and Call matches its height.
+        pill = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        pill.add_css_class("ed-composer")
+        self.target = Gtk.Entry(placeholder_text="+49... or name@example.org",
+                                hexpand=True, valign=Gtk.Align.CENTER)
         self.target.set_input_purpose(Gtk.InputPurpose.PHONE)
         if self.arguments:
             self.target.set_text(self.arguments[0])
-        row.add_suffix(self.target)
-        clear = Gtk.Button(label="Clear", valign=Gtk.Align.CENTER)
+        clear = Gtk.Button(icon_name="edit-clear-symbolic", tooltip_text="Clear",
+                           valign=Gtk.Align.CENTER)
+        clear.add_css_class("flat")
+        clear.add_css_class("circular")
         clear.connect("clicked", lambda _button: self.target.set_text("") if self.target else None)
         copy = Gtk.Button(label="Copy URI", valign=Gtk.Align.CENTER)
         copy.connect("clicked", lambda _button: self.copy_uri())
-        handoff = Gtk.Button(label="Call with backend", valign=Gtk.Align.CENTER)
+        handoff = Gtk.Button(label="Call", valign=Gtk.Align.CENTER,
+                             tooltip_text="Hand the destination to the telephony backend")
+        handoff.add_css_class("suggested-action")
         handoff.connect("clicked", lambda _button: self.place_call())
-        row.add_suffix(clear)
-        row.add_suffix(copy)
-        row.add_suffix(handoff)
-        group.add(row)
-        keypad = Gtk.Grid(column_spacing=6, row_spacing=6, halign=Gtk.Align.CENTER)
+        self.target.connect("activate", lambda _entry: self.place_call())
+        pill.append(self.target)
+        pill.append(clear)
+        pill.append(copy)
+        pill.append(handoff)
+        box.append(pill)
+        # A centered, evenly sized keypad reads like a phone, not a toolbar.
+        keypad = Gtk.Grid(column_spacing=8, row_spacing=8, halign=Gtk.Align.CENTER)
         for index, digit in enumerate("123456789*0#"):
             button = Gtk.Button(label=digit)
+            button.add_css_class("circular")
+            button.set_size_request(56, 56)
             button.connect("clicked", lambda _button, value=digit: self.target.set_text(self.target.get_text() + value) if self.target else None)
             keypad.attach(button, index % 3, index // 3, 1, 1)
-        keypad_row = Adw.ActionRow(title="Keypad", subtitle="Edits the destination. In-call tones require the backend.")
-        keypad_row.add_suffix(keypad)
-        group.add(keypad_row)
+        box.append(keypad)
         handlers = external_handlers("tel") + external_handlers("sip")
         names = sorted({app.get_display_name() for app in handlers})
-        self.status_label = Gtk.Label(label="External handlers: " + (", ".join(names) if names else "none detected"), xalign=0, wrap=True)
-        status_row = Adw.ActionRow(title="Telephony backend")
-        status_row.add_suffix(self.status_label)
-        group.add(status_row)
-        return group
+        self.status_label = Gtk.Label(
+            label="Telephony backend: " + (", ".join(names) if names else "none detected"),
+            xalign=0, wrap=True,
+        )
+        self.status_label.add_css_class("dim-label")
+        box.append(self.status_label)
+        return box
 
     def contacts_group(self) -> Gtk.Widget:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_end=8)
@@ -198,10 +236,11 @@ class Phone(Adw.Application):
         title.add_css_class("title-3")
         box.append(title)
         form = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        name = Gtk.Entry(placeholder_text="Name")
-        target = Gtk.Entry(placeholder_text="Telephone or SIP")
-        note = Gtk.Entry(placeholder_text="Note")
+        name = Gtk.Entry(placeholder_text="Name", hexpand=True)
+        target = Gtk.Entry(placeholder_text="Telephone or SIP", hexpand=True)
+        note = Gtk.Entry(placeholder_text="Note", hexpand=True)
         add = Gtk.Button(label="Add")
+        add.add_css_class("suggested-action")
         add.connect("clicked", lambda _button: self.add_contact(name, target, note))
         form.append(name)
         form.append(target)
@@ -212,6 +251,7 @@ class Phone(Adw.Application):
         self.contact_search.connect("search-changed", lambda _entry: self.refresh_contacts())
         box.append(self.contact_search)
         self.contacts_box = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        self.contacts_box.add_css_class("boxed-list")
         box.append(scrolled(self.contacts_box))
         self.refresh_contacts()
         return box
@@ -227,6 +267,7 @@ class Phone(Adw.Application):
         controls.append(clear)
         box.append(controls)
         self.history_box = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        self.history_box.add_css_class("boxed-list")
         box.append(scrolled(self.history_box))
         self.refresh_history()
         return box

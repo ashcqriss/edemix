@@ -1,0 +1,6 @@
+/* Edemint: integrated GTK4/libadwaita apps inherit the hydroganic palette.
+ * Widget-level glass stays scoped to first-party windows (.ed-frost inside
+ * the shared stylesheet); this import only recolors named surfaces, so stock
+ * apps keep their layouts while matching the navy frost and ultramarine lead.
+ */
+@import url("file:///usr/share/edemint/design/hydroganic.css");

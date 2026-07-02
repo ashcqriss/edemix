@@ -18,6 +18,25 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gtk  # noqa: E402
 
+
+def load_design():
+    """Locate the shared hydroganic design runtime; the app must run without it."""
+    for base in (os.environ.get("EDEMINT_DESIGN_DIR"),
+                 "/usr/share/edemint/design",
+                 str(Path(__file__).resolve().parents[1] / "share/edemint/design")):
+        if base and (Path(base) / "edemint_design.py").is_file():
+            if base not in sys.path:
+                sys.path.insert(0, base)
+            break
+    try:
+        import edemint_design
+        return edemint_design
+    except Exception:
+        return None
+
+
+DESIGN = load_design()
+
 APP_ID = "org.edemint.Inspector"
 PROBE = "/usr/libexec/edemint-inspector-probe"
 SANDBOX = "/usr/libexec/edemint-inspector-sandbox"
@@ -90,6 +109,8 @@ class Inspector(Adw.Application):
         toolbar.add_top_bar(Adw.HeaderBar())
         toolbar.set_content(self.build_content())
         self.window.set_content(toolbar)
+        if DESIGN:
+            DESIGN.style_window(self.window, accent="turquoise")
         self.window.present()
 
     def notice(self, message: str) -> None:
@@ -131,8 +152,12 @@ class Inspector(Adw.Application):
             margin_end=20,
         )
         if not self.arguments:
-            box.append(label("No file selected", True))
-            box.append(label("Open Inspector from Filer or run `edemint-inspector FILE`."))
+            if DESIGN:
+                box.append(DESIGN.hero("No file selected",
+                                       "Open Inspector from Filer or run `edemint-inspector FILE`."))
+            else:
+                box.append(label("No file selected", True))
+                box.append(label("Open Inspector from Filer or run `edemint-inspector FILE`."))
             return box
 
         payload, error = probe(Path(self.arguments[0]).expanduser())
@@ -152,26 +177,33 @@ class Inspector(Adw.Application):
         if payload.get("truncated"):
             text += "\n\n[Preview truncated at 65,536 bytes]"
 
-        box.append(label(str(payload["name"]), True))
-        box.append(label(
-            f"Content type: {payload['mime']}\n"
-            f"Extension type: {payload['extension_mime']}\n"
-            f"Size: {payload['size']} bytes\n"
-            f"Modified: {time.ctime(float(payload['modified']))}\n"
-            f"Path: {payload['path']}\n"
-            f"Reader timeout: {timeout_seconds():g} seconds"
-        ))
+        if DESIGN:
+            box.append(DESIGN.hero(str(payload["name"]), str(payload["path"])))
+        else:
+            box.append(label(str(payload["name"]), True))
+        facts = Adw.PreferencesGroup()
+        for title, value in (
+            ("Content type", str(payload["mime"])),
+            ("Extension type", str(payload["extension_mime"])),
+            ("Size", f"{payload['size']} bytes"),
+            ("Modified", time.ctime(float(payload["modified"]))),
+            ("Reader timeout", f"{timeout_seconds():g} seconds"),
+        ):
+            facts.add(Adw.ActionRow(title=title, subtitle=value))
+        box.append(facts)
         if payload.get("mime_mismatch"):
             warning = label(
                 "Warning: the file extension and detected content type disagree. "
                 "Viewer selection follows the detected content, not the filename."
             )
-            warning.add_css_class("warning")
+            warning.add_css_class("ed-status-warn")
             box.append(warning)
 
         expected = f"{payload['device']}:{payload['inode']}"
         sandbox_button = Gtk.Button(label="Open Disposable Sandboxed Viewer")
-        sandbox_button.set_halign(Gtk.Align.START)
+        sandbox_button.add_css_class("suggested-action")
+        sandbox_button.add_css_class("pill")
+        sandbox_button.set_halign(Gtk.Align.CENTER)
         sandbox_button.set_tooltip_text(
             "Open the same file read-only without network, host D-Bus, host processes, or hardware devices"
         )
@@ -183,26 +215,36 @@ class Inspector(Adw.Application):
         box.append(sandbox_button)
 
         scanner = "available as an optional warning signal" if shutil.which("clamscan") else "not installed"
-        box.append(label(
+        policy = label(
             "Sandbox policy: one read-only file; private temporary home; no network; "
             "no host process namespace; no host D-Bus, SSH agent, password store, or "
             "hardware devices; all Linux capabilities dropped; bounded CPU, memory, "
             f"output size, process count, descriptors, and wall time. Malware scanner: {scanner}."
-        ))
+        )
+        policy.add_css_class("dim-label")
+        box.append(policy)
 
         buffer = Gtk.TextBuffer()
         buffer.set_text(text)
         view = Gtk.TextView(buffer=buffer, editable=False, monospace=True)
         view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        view.add_css_class("ed-mono")
+        view.set_top_margin(10)
+        view.set_bottom_margin(10)
+        view.set_left_margin(12)
+        view.set_right_margin(12)
         scroller = Gtk.ScrolledWindow(vexpand=True)
         scroller.set_child(view)
+        scroller.add_css_class("ed-log")
         box.append(scroller)
-        box.append(label(
+        footnote = label(
             "The bounded preview never executes content or extracts archives. The optional "
             "viewer runs in a disposable namespace and cannot bypass the current user's Unix "
             "file permissions. Office documents use LibreOffice safe/view mode; audio is "
             "disabled in isolated media previews so no PipeWire device is exposed."
-        ))
+        )
+        footnote.add_css_class("dim-label")
+        box.append(footnote)
         return box
 
 
