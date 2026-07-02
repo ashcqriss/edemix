@@ -1,0 +1,211 @@
+name: Image functional tests
+
+# Tests built images, not sources: boots the amd64 live ISO in QEMU until a
+# login prompt appears on the serial console, and mounts the Raspberry Pi
+# image to verify its firmware/rootfs contents and execute its arm64 Python
+# through qemu-user emulation. Dispatch it with the run ID of a finished
+# build; after merge to the default branch it also follows every green build.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Workflow run ID whose image artifacts to test
+        required: true
+        type: string
+  workflow_run:
+    workflows: [build]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: image-tests-${{ github.event.inputs.run_id || github.event.workflow_run.id || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  iso-boot:
+    name: Boot amd64 ISO to a login prompt
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SOURCE_RUN: ${{ github.event.inputs.run_id || github.event.workflow_run.id }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: edemint-amd64-iso
+          path: artifact
+          run-id: ${{ github.event.inputs.run_id || github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Install QEMU and ISO tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            qemu-system-x86 xorriso squashfs-tools
+
+      - name: Verify design system inside the live filesystem
+        run: |
+          set -eu
+          iso="$(find artifact -maxdepth 1 -name '*.iso' -print -quit)"
+          test -n "$iso"
+          xorriso -osirrox on -indev "$iso" \
+            -extract /live/filesystem.squashfs filesystem.squashfs \
+            -extract /live/filesystem.packages filesystem.packages
+          unsquashfs -l filesystem.squashfs > squashfs-list.txt
+          for path in \
+            squashfs-root/usr/share/edemint/design/hydroganic.css \
+            squashfs-root/usr/share/edemint/design/edemint_design.py \
+            squashfs-root/usr/libexec/edemint-settings-app \
+            squashfs-root/usr/libexec/edemint-activity-monitor-app \
+            squashfs-root/etc/skel/.config/gtk-4.0/gtk.css \
+            squashfs-root/etc/skel/.config/gtk-3.0/gtk.css \
+            squashfs-root/etc/skel/.config/hypr/hyprland.conf \
+            squashfs-root/usr/share/applications/edemint-font-manager.desktop \
+          ; do
+            grep -Fxq "$path" squashfs-list.txt || {
+              echo "missing in live filesystem: $path" >&2
+              exit 1
+            }
+          done
+          # The shipped Hyprland config must carry the 0.55 rule syntax and
+          # the desktop entry rename from the bp_des_5 pass.
+          unsquashfs -no-xattrs -d extracted filesystem.squashfs \
+            etc/skel/.config/hypr/hyprland.conf \
+            usr/share/applications/edemint-font-manager.desktop
+          grep -q 'layerrule = blur on' extracted/etc/skel/.config/hypr/hyprland.conf
+          grep -q '^Name=Fontbook' extracted/usr/share/applications/edemint-font-manager.desktop
+          # App-suite runtime stack must be installed in the image.
+          for pkg in python3-gi gir1.2-gtk-4.0 gir1.2-adw-1; do
+            grep -Eq "^$pkg[[:space:]]" filesystem.packages || {
+              echo "missing package in live image: $pkg" >&2
+              exit 1
+            }
+          done
+          rm -f filesystem.squashfs
+
+      - name: Boot the ISO in QEMU until login
+        run: |
+          set -eu
+          iso="$(find artifact -maxdepth 1 -name '*.iso' -print -quit)"
+          names="$(xorriso -indev "$iso" -lsl /live 2>/dev/null | awk '{print $NF}')"
+          kernel="$(printf '%s\n' "$names" | grep -E '^vmlinuz' | head -1)"
+          initrd="$(printf '%s\n' "$names" | grep -E '^initrd' | head -1)"
+          test -n "$kernel" && test -n "$initrd"
+          xorriso -osirrox on -indev "$iso" \
+            -extract "/live/$kernel" vmlinuz -extract "/live/$initrd" initrd.img
+          accel=tcg
+          if [ -e /dev/kvm ]; then
+            sudo chmod 666 /dev/kvm || true
+            [ -w /dev/kvm ] && accel=kvm
+          fi
+          echo "QEMU acceleration: $accel"
+          qemu-system-x86_64 \
+            -machine q35,accel=$accel -cpu max -m 2048 -smp 2 \
+            -kernel vmlinuz -initrd initrd.img \
+            -append "boot=live components hostname=edemint username=edemint console=ttyS0,115200 systemd.show_status=1" \
+            -drive file="$iso",media=cdrom,readonly=on \
+            -display none -serial file:serial.log \
+            -daemonize -pidfile qemu.pid
+          booted=""
+          for _ in $(seq 1 90); do
+            if grep -aq "edemint login:" serial.log; then
+              booted=yes
+              break
+            fi
+            if grep -aqE "Kernel panic|\(initramfs\)" serial.log; then
+              echo "boot failed with panic or initramfs emergency shell" >&2
+              break
+            fi
+            sleep 10
+          done
+          kill "$(cat qemu.pid)" 2>/dev/null || true
+          echo "---- serial log tail ----"
+          tail -60 serial.log || true
+          test -n "$booted" || {
+            echo "live system did not reach a login prompt" >&2
+            exit 1
+          }
+          echo "ISO booted to a login prompt under $accel."
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: iso-boot-serial-log
+          path: serial.log
+          if-no-files-found: warn
+          retention-days: 7
+
+  pi-userspace:
+    name: Verify Pi image rootfs and arm64 userspace
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: edemint-arm64-rpi-img
+          path: artifact
+          run-id: ${{ github.event.inputs.run_id || github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Install image tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            zstd qemu-user-static binfmt-support
+
+      - name: Mount partitions and verify contents
+        run: |
+          set -eu
+          archive="$(find artifact -maxdepth 1 -name '*.img.zst' -print -quit)"
+          test -n "$archive"
+          zstd -d --rm "$archive" -o edemint-rpi.img
+          device="$(sudo losetup -Pf --show edemint-rpi.img)"
+          mkdir -p firmware rootfs
+          sudo mount -o ro "${device}p1" firmware
+          sudo mount -o ro "${device}p2" rootfs
+          echo "---- firmware partition ----"
+          ls firmware | head -20
+          test -f firmware/config.txt
+          test -f firmware/cmdline.txt
+          echo "---- rootfs design and app suite ----"
+          test -f rootfs/usr/share/edemint/design/hydroganic.css
+          test -f rootfs/usr/share/edemint/design/edemint_design.py
+          test -f rootfs/usr/libexec/edemint-settings-app
+          test -f rootfs/etc/skel/.config/gtk-4.0/gtk.css
+          grep -q 'layerrule = blur on' rootfs/etc/skel/.config/hypr/hyprland.conf
+          grep -q '^Name=Fontbook' rootfs/usr/share/applications/edemint-font-manager.desktop
+          grep -q '^Name=Advanced Camera' rootfs/usr/share/applications/edemint-camera-studio.desktop
+
+      - name: Execute the image's arm64 userspace through qemu-user
+        run: |
+          set -eu
+          echo "---- app runtime stack ----"
+          sudo chroot rootfs /usr/bin/dpkg-query -W \
+            -f='${Package} ${Version} ${db:Status-Status}\n' \
+            python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 2>&1 | tee stack.txt
+          for pkg in python3-gi gir1.2-gtk-4.0 gir1.2-adw-1; do
+            grep -Eq "^$pkg .* installed$" stack.txt || {
+              echo "missing runtime package in Pi image: $pkg" >&2
+              exit 1
+            }
+          done
+          echo "---- arm64 python executes ----"
+          sudo chroot rootfs /usr/bin/python3 - <<'PY'
+          import platform
+          import sys
+
+          for path in (
+              "/usr/share/edemint/design/edemint_design.py",
+              "/usr/libexec/edemint-settings-app",
+              "/usr/libexec/edemint-activity-monitor-app",
+          ):
+              with open(path, encoding="utf-8") as handle:
+                  compile(handle.read(), path, "exec")
+          print("arm64 python", sys.version.split()[0], "on", platform.machine(),
+                "compiled the design runtime and apps")
+          PY
