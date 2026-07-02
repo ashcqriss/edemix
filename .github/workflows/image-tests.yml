@@ -10,12 +10,15 @@ on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: Workflow run ID whose image artifacts to test
-        required: true
+        description: Workflow run ID whose image artifacts to test (empty = newest green build on this branch)
+        required: false
         type: string
   workflow_run:
     workflows: [build]
     types: [completed]
+  push:
+    branches: ["claude/**", main]
+    paths: [".github/workflows/image-tests.yml"]
 
 permissions:
   contents: read
@@ -26,19 +29,45 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  resolve:
+    name: Resolve the build run to test
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run_id: ${{ steps.pick.outputs.run_id }}
+    steps:
+      - id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPLICIT: ${{ github.event.inputs.run_id || github.event.workflow_run.id }}
+        run: |
+          set -eu
+          if [ -n "$EXPLICIT" ]; then
+            echo "run_id=$EXPLICIT" >> "$GITHUB_OUTPUT"
+            echo "testing explicitly requested build run $EXPLICIT"
+            exit 0
+          fi
+          id="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build.yml/runs?branch=$GITHUB_REF_NAME&status=success&per_page=1" \
+            --jq '.workflow_runs[0].id')"
+          test -n "$id" || {
+            echo "no successful build run found on $GITHUB_REF_NAME" >&2
+            exit 1
+          }
+          echo "run_id=$id" >> "$GITHUB_OUTPUT"
+          echo "testing newest green build run $id on $GITHUB_REF_NAME"
+
   iso-boot:
     name: Boot amd64 ISO to a login prompt
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    needs: resolve
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    env:
-      SOURCE_RUN: ${{ github.event.inputs.run_id || github.event.workflow_run.id }}
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: edemint-amd64-iso
           path: artifact
-          run-id: ${{ github.event.inputs.run_id || github.event.workflow_run.id }}
+          run-id: ${{ needs.resolve.outputs.run_id }}
           github-token: ${{ github.token }}
 
       - name: Install QEMU and ISO tooling
@@ -141,7 +170,7 @@ jobs:
 
   pi-userspace:
     name: Verify Pi image rootfs and arm64 userspace
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    needs: resolve
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -149,7 +178,7 @@ jobs:
         with:
           name: edemint-arm64-rpi-img
           path: artifact
-          run-id: ${{ github.event.inputs.run_id || github.event.workflow_run.id }}
+          run-id: ${{ needs.resolve.outputs.run_id }}
           github-token: ${{ github.token }}
 
       - name: Install image tooling
