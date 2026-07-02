@@ -84,6 +84,9 @@ jobs:
           # One extraction of /live provides the squashfs and packages list
           # here and the kernel/initrd for the boot step below.
           xorriso -osirrox on -indev "$iso" -extract /live live
+          # xorriso preserves the ISO9660 read-only modes; make the extracted
+          # tree writable so the squashfs can be removed after the checks.
+          chmod -R u+w live
           ls -la live/
           unsquashfs -l live/filesystem.squashfs > squashfs-list.txt
           for path in \
