@@ -107,13 +107,6 @@ jobs:
             usr/share/applications/edemint-font-manager.desktop
           grep -q 'layerrule = blur on' extracted/etc/skel/.config/hypr/hyprland.conf
           grep -q '^Name=Fontbook' extracted/usr/share/applications/edemint-font-manager.desktop
-          # App-suite runtime stack must be installed in the image.
-          for pkg in python3-gi gir1.2-gtk-4.0 gir1.2-adw-1; do
-            grep -Eq "^$pkg[[:space:]]" filesystem.packages || {
-              echo "missing package in live image: $pkg" >&2
-              exit 1
-            }
-          done
           rm -f filesystem.squashfs
 
       - name: Boot the ISO in QEMU until login
@@ -159,6 +152,24 @@ jobs:
             exit 1
           }
           echo "ISO booted to a login prompt under $accel."
+
+      - name: Verify app runtime packages in the live image
+        run: |
+          set -eu
+          # filesystem.packages lists Multi-Arch: same packages with an
+          # architecture qualifier (name:amd64), so match both forms.
+          awk '{print $1}' filesystem.packages > pkg-names.txt
+          fail=""
+          for pkg in python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-webkit-6.0 \
+                     nheko geary gnome-maps gnome-contacts webcamoid; do
+            if grep -Fxq -e "$pkg" -e "$pkg:amd64" pkg-names.txt; then
+              echo "present: $pkg"
+            else
+              echo "MISSING: $pkg" >&2
+              fail=1
+            fi
+          done
+          test -z "$fail"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
