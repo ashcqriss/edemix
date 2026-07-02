@@ -81,10 +81,11 @@ jobs:
           set -eu
           iso="$(find artifact -maxdepth 1 -name '*.iso' -print -quit)"
           test -n "$iso"
-          xorriso -osirrox on -indev "$iso" \
-            -extract /live/filesystem.squashfs filesystem.squashfs \
-            -extract /live/filesystem.packages filesystem.packages
-          unsquashfs -l filesystem.squashfs > squashfs-list.txt
+          # One extraction of /live provides the squashfs and packages list
+          # here and the kernel/initrd for the boot step below.
+          xorriso -osirrox on -indev "$iso" -extract /live live
+          ls -la live/
+          unsquashfs -l live/filesystem.squashfs > squashfs-list.txt
           for path in \
             squashfs-root/usr/share/edemint/design/hydroganic.css \
             squashfs-root/usr/share/edemint/design/edemint_design.py \
@@ -102,23 +103,23 @@ jobs:
           done
           # The shipped Hyprland config must carry the 0.55 rule syntax and
           # the desktop entry rename from the bp_des_5 pass.
-          unsquashfs -no-xattrs -d extracted filesystem.squashfs \
+          unsquashfs -no-xattrs -d extracted live/filesystem.squashfs \
             etc/skel/.config/hypr/hyprland.conf \
             usr/share/applications/edemint-font-manager.desktop
           grep -q 'layerrule = blur on' extracted/etc/skel/.config/hypr/hyprland.conf
           grep -q '^Name=Fontbook' extracted/usr/share/applications/edemint-font-manager.desktop
-          rm -f filesystem.squashfs
+          rm -f live/filesystem.squashfs
 
       - name: Boot the ISO in QEMU until login
         run: |
           set -eu
           iso="$(find artifact -maxdepth 1 -name '*.iso' -print -quit)"
-          names="$(xorriso -indev "$iso" -lsl /live 2>/dev/null | awk '{print $NF}')"
-          kernel="$(printf '%s\n' "$names" | grep -E '^vmlinuz' | head -1)"
-          initrd="$(printf '%s\n' "$names" | grep -E '^initrd' | head -1)"
-          test -n "$kernel" && test -n "$initrd"
-          xorriso -osirrox on -indev "$iso" \
-            -extract "/live/$kernel" vmlinuz -extract "/live/$initrd" initrd.img
+          kernel="$(find live -maxdepth 1 -type f -name 'vmlinuz*' | sort | head -1)"
+          initrd="$(find live -maxdepth 1 -type f -name 'initrd*' | sort | head -1)"
+          echo "kernel: $kernel"
+          echo "initrd: $initrd"
+          test -s "$kernel"
+          test -s "$initrd"
           accel=tcg
           if [ -e /dev/kvm ]; then
             sudo chmod 666 /dev/kvm || true
@@ -127,7 +128,7 @@ jobs:
           echo "QEMU acceleration: $accel"
           qemu-system-x86_64 \
             -machine q35,accel=$accel -cpu max -m 2048 -smp 2 \
-            -kernel vmlinuz -initrd initrd.img \
+            -kernel "$kernel" -initrd "$initrd" \
             -append "boot=live components hostname=edemint username=edemint console=ttyS0,115200 systemd.show_status=1" \
             -drive file="$iso",media=cdrom,readonly=on \
             -display none -serial file:serial.log \
@@ -158,7 +159,7 @@ jobs:
           set -eu
           # filesystem.packages lists Multi-Arch: same packages with an
           # architecture qualifier (name:amd64), so match both forms.
-          awk '{print $1}' filesystem.packages > pkg-names.txt
+          awk '{print $1}' live/filesystem.packages > pkg-names.txt
           fail=""
           for pkg in python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-webkit-6.0 \
                      nheko geary gnome-maps gnome-contacts webcamoid; do
