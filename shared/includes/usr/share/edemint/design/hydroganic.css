@@ -89,44 +89,62 @@
 @define-color borders rgba(255, 255, 255, 0.10);
 
 /* --- frosty glass window ------------------------------------------------- */
-/* The window carries a faint organic light: an ultramarine glow falling from
- * the upper left and a turquoise pool at the lower right. It is subtle enough
- * to read as depth rather than a gradient poster. */
+/* The window carries organic light, not a flat fill: an ultramarine glow
+ * falls from the upper left, a turquoise pool rises at the lower right, and
+ * a faint eco-green breath sits mid-left, so blue leads and green supports
+ * exactly as the palette pyramid asks. */
 window.ed-frost {
     background-color: @window_bg_color;
     background-image:
-        radial-gradient(circle at 12% -8%, alpha(@ed_ultramarine_500, 0.20), alpha(@ed_ultramarine_500, 0) 46%),
-        radial-gradient(circle at 88% 112%, alpha(@ed_turquoise_500, 0.14), alpha(@ed_turquoise_500, 0) 42%);
+        radial-gradient(circle at 14% -10%, alpha(@ed_ultramarine_500, 0.38), alpha(@ed_ultramarine_500, 0) 52%),
+        radial-gradient(circle at 92% 116%, alpha(@ed_turquoise_500, 0.26), alpha(@ed_turquoise_500, 0) 46%),
+        radial-gradient(circle at -6% 68%, alpha(@ed_eco_400, 0.10), alpha(@ed_eco_400, 0) 34%),
+        linear-gradient(180deg, rgba(30, 38, 96, 0.55), rgba(11, 15, 44, 0.65));
     color: @window_fg_color;
 }
 
 window.ed-frost headerbar,
 window.ed-frost .top-bar {
     background-color: @headerbar_bg_color;
-    background-image: linear-gradient(to bottom, alpha(#FFFFFF, 0.05), alpha(#FFFFFF, 0));
-    box-shadow: inset 0 -1px alpha(#FFFFFF, 0.07);
+    background-image: linear-gradient(to bottom, alpha(#FFFFFF, 0.09), alpha(#FFFFFF, 0.01));
+    box-shadow:
+        inset 0 1px alpha(#FFFFFF, 0.12),
+        inset 0 -1px alpha(@ed_azure_500, 0.35);
     border: none;
 }
 
 /* --- panelv window controls ---------------------------------------------- */
-/* Confirmed semantics: green expands, yellow hides, red closes. */
+/* Confirmed semantics: green expands, yellow hides, red closes. The button
+ * itself is the glass bead; no chip chrome around it. */
+window.ed-frost windowcontrols button {
+    background: none;
+    background-image: none;
+    border: none;
+    box-shadow: none;
+    padding: 2px;
+    min-width: 0;
+    min-height: 0;
+}
 window.ed-frost windowcontrols button > image {
-    min-width: 15px;
-    min-height: 15px;
+    min-width: 16px;
+    min-height: 16px;
     padding: 0;
     border-radius: 9999px;
     color: transparent;
-    border: 1px solid rgba(0, 0, 0, 0.35);
-    box-shadow: inset 0 1px alpha(#FFFFFF, 0.35);
+    border: 1px solid rgba(0, 0, 0, 0.40);
+    box-shadow:
+        inset 0 2px 3px alpha(#FFFFFF, 0.45),
+        inset 0 -2px 3px rgba(0, 0, 0, 0.22),
+        0 1px 3px rgba(0, 0, 0, 0.35);
 }
 window.ed-frost windowcontrols button.maximize > image {
-    background-color: @ed_expand;
+    background-image: linear-gradient(180deg, #79C271, @ed_expand);
 }
 window.ed-frost windowcontrols button.minimize > image {
-    background-color: @ed_hide;
+    background-image: linear-gradient(180deg, #F5EC85, @ed_hide);
 }
 window.ed-frost windowcontrols button.close > image {
-    background-color: @ed_close;
+    background-image: linear-gradient(180deg, #F4574B, @ed_close);
 }
 window.ed-frost windowcontrols button:hover > image {
     color: rgba(0, 0, 0, 0.55);
@@ -137,13 +155,14 @@ window.ed-frost windowcontrols button:hover > image {
 window.ed-frost .card,
 window.ed-frost preferencesgroup > box > .boxed-list,
 window.ed-frost list.boxed-list {
-    background-color: alpha(#FFFFFF, 0.05);
-    background-image: linear-gradient(160deg, alpha(#FFFFFF, 0.045), alpha(#FFFFFF, 0.01));
-    border: 1px solid alpha(#FFFFFF, 0.10);
+    background-color: alpha(#FFFFFF, 0.07);
+    background-image: linear-gradient(165deg, alpha(#FFFFFF, 0.10), alpha(#FFFFFF, 0.02) 55%, alpha(@ed_ultramarine_400, 0.06));
+    border: 1px solid alpha(#FFFFFF, 0.16);
     border-radius: 16px;
     box-shadow:
-        inset 0 1px alpha(#FFFFFF, 0.10),
-        0 10px 24px rgba(0, 0, 0, 0.22);
+        inset 0 1px alpha(#FFFFFF, 0.20),
+        inset 0 -1px alpha(#000000, 0.20),
+        0 12px 28px rgba(0, 0, 0, 0.30);
 }
 
 window.ed-frost row.expander row,
@@ -166,25 +185,33 @@ window.ed-frost list.boxed-list > row:selected {
 }
 
 /* --- hydroganic controls -------------------------------------------------- */
+/* The liquid read comes from a bright specular crest that stops sharply at
+ * ~45% height over a deep body, like light on a droplet. */
 window.ed-frost button {
-    background-color: alpha(#FFFFFF, 0.07);
-    background-image: linear-gradient(to bottom, alpha(#FFFFFF, 0.13), alpha(#FFFFFF, 0.02));
-    border: 1px solid alpha(#FFFFFF, 0.16);
+    background-color: alpha(#FFFFFF, 0.08);
+    background-image: linear-gradient(to bottom,
+        alpha(#FFFFFF, 0.26), alpha(#FFFFFF, 0.10) 46%,
+        alpha(#FFFFFF, 0.02) 52%, alpha(@ed_ultramarine_400, 0.10));
+    border: 1px solid alpha(#FFFFFF, 0.24);
     border-radius: 12px;
     box-shadow:
-        inset 0 1px alpha(#FFFFFF, 0.22),
-        0 2px 6px rgba(0, 0, 0, 0.20);
+        inset 0 1px alpha(#FFFFFF, 0.40),
+        inset 0 -1px alpha(#000000, 0.25),
+        0 3px 8px rgba(0, 0, 0, 0.28);
     color: @window_fg_color;
     padding: 6px 14px;
     min-height: 24px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 window.ed-frost button:hover {
-    background-image: linear-gradient(to bottom, alpha(#FFFFFF, 0.20), alpha(#FFFFFF, 0.06));
-    border-color: alpha(#FFFFFF, 0.24);
+    background-image: linear-gradient(to bottom,
+        alpha(#FFFFFF, 0.34), alpha(#FFFFFF, 0.15) 46%,
+        alpha(#FFFFFF, 0.05) 52%, alpha(@ed_azure_500, 0.16));
+    border-color: alpha(#FFFFFF, 0.32);
 }
 window.ed-frost button:active {
-    background-image: linear-gradient(to bottom, alpha(#000000, 0.10), alpha(#FFFFFF, 0.04));
-    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.28);
+    background-image: linear-gradient(to bottom, alpha(#000000, 0.14), alpha(#FFFFFF, 0.05));
+    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.32);
 }
 window.ed-frost button:disabled {
     opacity: 0.45;
@@ -209,18 +236,25 @@ window.ed-frost button.pill {
 }
 
 /* Lead action: ultramarine falling into azure - a hue-matched, lightness-
- * matched blue-to-blue liquid gradient with the hydroganic top light. */
+ * matched blue-to-blue liquid gradient with the hydroganic specular crest. */
 window.ed-frost button.suggested-action {
     background-color: @ed_ultramarine_500;
-    background-image: linear-gradient(135deg, @ed_ultramarine_500, alpha(@ed_azure_500, 0.92));
-    border: 1px solid alpha(@ed_ultramarine_200, 0.55);
+    background-image: linear-gradient(to bottom,
+        alpha(#FFFFFF, 0.42), alpha(#FFFFFF, 0.14) 44%,
+        alpha(#FFFFFF, 0) 50%),
+        linear-gradient(135deg, @ed_ultramarine_500, @ed_azure_500);
+    border: 1px solid alpha(@ed_ultramarine_200, 0.70);
     box-shadow:
-        inset 0 1px alpha(#FFFFFF, 0.38),
-        0 4px 14px alpha(@ed_electric_blue, 0.35);
+        inset 0 1px alpha(#FFFFFF, 0.55),
+        inset 0 -1px alpha(#000000, 0.25),
+        0 4px 16px alpha(@ed_electric_blue, 0.50);
     color: #FFFFFF;
 }
 window.ed-frost button.suggested-action:hover {
-    background-image: linear-gradient(135deg, @ed_ultramarine_400, @ed_azure_500);
+    background-image: linear-gradient(to bottom,
+        alpha(#FFFFFF, 0.50), alpha(#FFFFFF, 0.20) 44%,
+        alpha(#FFFFFF, 0) 50%),
+        linear-gradient(135deg, @ed_ultramarine_400, @ed_azure_500);
 }
 window.ed-frost button.destructive-action {
     background-color: alpha(@ed_close, 0.82);
@@ -347,11 +381,15 @@ window.ed-frost .navigation-sidebar > row:hover {
     background-color: alpha(#FFFFFF, 0.06);
 }
 window.ed-frost .navigation-sidebar > row:selected {
-    background-color: alpha(@ed_ultramarine_500, 0.42);
-    background-image: linear-gradient(135deg, alpha(@ed_ultramarine_500, 0.55), alpha(@ed_azure_500, 0.35));
+    background-color: alpha(@ed_ultramarine_500, 0.55);
+    background-image: linear-gradient(to bottom,
+        alpha(#FFFFFF, 0.24), alpha(#FFFFFF, 0.06) 48%,
+        alpha(#FFFFFF, 0) 55%),
+        linear-gradient(135deg, alpha(@ed_ultramarine_500, 0.75), alpha(@ed_azure_500, 0.50));
+    border: 1px solid alpha(@ed_ultramarine_200, 0.40);
     box-shadow:
-        inset 0 1px alpha(#FFFFFF, 0.18),
-        0 2px 8px alpha(@ed_electric_blue, 0.25);
+        inset 0 1px alpha(#FFFFFF, 0.30),
+        0 3px 10px alpha(@ed_electric_blue, 0.35);
     color: #FFFFFF;
 }
 
@@ -419,13 +457,16 @@ window.ed-frost button.toggle:checked {
 
 /* --- stat tiles (Activity Monitor and friends) ----------------------------- */
 .ed-stat {
-    background-color: alpha(#FFFFFF, 0.05);
-    background-image: linear-gradient(160deg, alpha(#FFFFFF, 0.05), alpha(#FFFFFF, 0.01));
-    border: 1px solid alpha(#FFFFFF, 0.10);
+    background-color: alpha(#FFFFFF, 0.06);
+    background-image: linear-gradient(165deg,
+        alpha(#FFFFFF, 0.12), alpha(#FFFFFF, 0.02) 60%,
+        alpha(@ed_turquoise_500, 0.08));
+    border: 1px solid alpha(#FFFFFF, 0.16);
     border-radius: 16px;
     box-shadow:
-        inset 0 1px alpha(#FFFFFF, 0.10),
-        0 8px 18px rgba(0, 0, 0, 0.20);
+        inset 0 1px alpha(#FFFFFF, 0.22),
+        inset 0 -1px alpha(#000000, 0.18),
+        0 10px 22px rgba(0, 0, 0, 0.26);
     padding: 14px;
 }
 .ed-stat-value {
@@ -506,19 +547,22 @@ window.ed-frost button.toggle:checked {
 
 /* --- app tiles (Library, Mission Control) ----------------------------------- */
 .ed-tile {
-    background-color: alpha(#FFFFFF, 0.05);
-    background-image: linear-gradient(160deg, alpha(#FFFFFF, 0.06), alpha(#FFFFFF, 0.01));
-    border: 1px solid alpha(#FFFFFF, 0.10);
+    background-color: alpha(#FFFFFF, 0.06);
+    background-image: linear-gradient(165deg,
+        alpha(#FFFFFF, 0.12), alpha(#FFFFFF, 0.02) 58%,
+        alpha(@ed_ultramarine_400, 0.08));
+    border: 1px solid alpha(#FFFFFF, 0.16);
     border-radius: 18px;
     box-shadow:
-        inset 0 1px alpha(#FFFFFF, 0.10),
-        0 8px 18px rgba(0, 0, 0, 0.20);
+        inset 0 1px alpha(#FFFFFF, 0.22),
+        inset 0 -1px alpha(#000000, 0.18),
+        0 10px 22px rgba(0, 0, 0, 0.26);
     padding: 12px;
     transition: background-color 120ms ease, border-color 120ms ease;
 }
 .ed-tile:hover {
-    background-color: alpha(#FFFFFF, 0.09);
-    border-color: alpha(@ed_turquoise_200, 0.35);
+    background-color: alpha(#FFFFFF, 0.10);
+    border-color: alpha(@ed_turquoise_200, 0.40);
 }
 
 /* --- workspace cards (Mission Control) --------------------------------------- */

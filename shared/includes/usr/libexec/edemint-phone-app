@@ -152,6 +152,8 @@ class Phone(Adw.Application):
         if DESIGN:
             DESIGN.style_window(self.window, accent="eco")
         self.window.present()
+        if self.target:
+            self.target.grab_focus()
 
     def notice(self, heading: str, message: str) -> None:
         if self.window:

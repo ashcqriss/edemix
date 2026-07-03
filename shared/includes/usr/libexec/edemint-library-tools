@@ -556,6 +556,9 @@ class LibraryToolsApp(Adw.Application):
                                 accent="eco" if self.mode == "shortcuts" else "ultramarine")
         self.install_actions()
         self.window.present()
+        search = self.app_search if self.mode == "library" else self.shortcut_search
+        if search:
+            search.grab_focus()
         if self.mode == "library":
             self.monitor_application_roots()
         else:

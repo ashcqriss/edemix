@@ -194,8 +194,7 @@ class Messenger(Adw.Application):
         target = next((argument for argument in self.arguments if argument.startswith(("matrix:", "https://matrix.to/", "@", "#", "!"))), "")
         if target and self.target_entry:
             self.target_entry.set_text(target)
-            self.target_entry.grab_focus()
-        elif "--compose" in self.arguments and self.target_entry:
+        if self.target_entry:
             self.target_entry.grab_focus()
 
     def install_actions(self) -> None:
