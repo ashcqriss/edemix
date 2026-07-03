@@ -218,8 +218,9 @@ class Settings(Adw.Application):
     def build_shell(self) -> Gtk.Widget:
         sidebar_box = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL, spacing=8,
-            margin_top=12, margin_bottom=12, margin_start=12, margin_end=12,
+            margin_top=10, margin_bottom=12, margin_start=12, margin_end=6,
         )
+        sidebar_box.add_css_class("ed-island")
         search = Gtk.SearchEntry(placeholder_text="Search settings")
         search.connect("search-changed", self.on_search)
         sidebar_box.append(search)

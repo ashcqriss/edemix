@@ -103,14 +103,18 @@ window.ed-frost {
     color: @window_fg_color;
 }
 
+/* Liquid-glass toolbars do not exist as a band: the header is transparent
+ * and its controls float as capsules over the window light. */
 window.ed-frost headerbar,
 window.ed-frost .top-bar {
-    background-color: @headerbar_bg_color;
-    background-image: linear-gradient(to bottom, alpha(#FFFFFF, 0.09), alpha(#FFFFFF, 0.01));
-    box-shadow:
-        inset 0 1px alpha(#FFFFFF, 0.12),
-        inset 0 -1px alpha(@ed_azure_500, 0.35);
+    background: none;
+    box-shadow: none;
     border: none;
+    min-height: 46px;
+}
+window.ed-frost headerbar .title,
+window.ed-frost headerbar label.title {
+    font-weight: 700;
 }
 
 /* --- panelv window controls ---------------------------------------------- */
@@ -155,14 +159,35 @@ window.ed-frost windowcontrols button:hover > image {
 window.ed-frost .card,
 window.ed-frost preferencesgroup > box > .boxed-list,
 window.ed-frost list.boxed-list {
-    background-color: alpha(#FFFFFF, 0.07);
-    background-image: linear-gradient(165deg, alpha(#FFFFFF, 0.10), alpha(#FFFFFF, 0.02) 55%, alpha(@ed_ultramarine_400, 0.06));
-    border: 1px solid alpha(#FFFFFF, 0.16);
-    border-radius: 16px;
+    background-color: alpha(#FFFFFF, 0.06);
+    background-image: linear-gradient(165deg, alpha(#FFFFFF, 0.09), alpha(#FFFFFF, 0.02) 55%, alpha(@ed_ultramarine_400, 0.06));
+    border: 1px solid alpha(#FFFFFF, 0.18);
+    border-radius: 20px;
     box-shadow:
-        inset 0 1px alpha(#FFFFFF, 0.20),
-        inset 0 -1px alpha(#000000, 0.20),
-        0 12px 28px rgba(0, 0, 0, 0.30);
+        inset 0 1px 1px alpha(#FFFFFF, 0.24),
+        inset 0 -1px 1px alpha(#FFFFFF, 0.08),
+        0 18px 44px rgba(0, 0, 0, 0.38);
+}
+
+/* The split-view panes must stay clear so islands float over the window
+ * light instead of sitting on their own column. */
+window.ed-frost overlay-split-view,
+window.ed-frost .sidebar-pane,
+window.ed-frost .content-pane {
+    background: none;
+}
+
+/* Floating glass island: a sidebar or panel detached from the window edge,
+ * the strongest single Tahoe signal. */
+.ed-island {
+    background-color: alpha(#FFFFFF, 0.055);
+    background-image: linear-gradient(170deg, alpha(#FFFFFF, 0.08), alpha(#FFFFFF, 0.015));
+    border: 1px solid alpha(#FFFFFF, 0.16);
+    border-radius: 20px;
+    box-shadow:
+        inset 0 1px 1px alpha(#FFFFFF, 0.20),
+        0 18px 44px rgba(0, 0, 0, 0.35);
+    padding: 8px;
 }
 
 window.ed-frost row.expander row,
@@ -185,33 +210,35 @@ window.ed-frost list.boxed-list > row:selected {
 }
 
 /* --- hydroganic controls -------------------------------------------------- */
-/* The liquid read comes from a bright specular crest that stops sharply at
- * ~45% height over a deep body, like light on a droplet. */
+/* Liquid-glass capsules: clear material, a soft top sheen, a faint bottom
+ * bounce light, and a rim that catches light around the whole perimeter
+ * like refraction at the edge of a lens. */
 window.ed-frost button {
-    background-color: alpha(#FFFFFF, 0.08);
+    background-color: alpha(#FFFFFF, 0.10);
     background-image: linear-gradient(to bottom,
-        alpha(#FFFFFF, 0.26), alpha(#FFFFFF, 0.10) 46%,
-        alpha(#FFFFFF, 0.02) 52%, alpha(@ed_ultramarine_400, 0.10));
-    border: 1px solid alpha(#FFFFFF, 0.24);
-    border-radius: 12px;
+        alpha(#FFFFFF, 0.16), alpha(#FFFFFF, 0.03) 55%,
+        alpha(#FFFFFF, 0.09));
+    border: 1px solid alpha(#FFFFFF, 0.30);
+    border-radius: 9999px;
     box-shadow:
-        inset 0 1px alpha(#FFFFFF, 0.40),
-        inset 0 -1px alpha(#000000, 0.25),
-        0 3px 8px rgba(0, 0, 0, 0.28);
+        inset 0 1px 1px alpha(#FFFFFF, 0.45),
+        inset 0 -1px 1px alpha(#FFFFFF, 0.16),
+        inset 1px 0 1px alpha(#FFFFFF, 0.10),
+        inset -1px 0 1px alpha(#FFFFFF, 0.10),
+        0 6px 16px rgba(0, 0, 0, 0.30);
     color: @window_fg_color;
-    padding: 6px 14px;
-    min-height: 24px;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+    padding: 7px 18px;
+    min-height: 26px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.30);
 }
 window.ed-frost button:hover {
-    background-image: linear-gradient(to bottom,
-        alpha(#FFFFFF, 0.34), alpha(#FFFFFF, 0.15) 46%,
-        alpha(#FFFFFF, 0.05) 52%, alpha(@ed_azure_500, 0.16));
-    border-color: alpha(#FFFFFF, 0.32);
+    background-color: alpha(#FFFFFF, 0.16);
+    border-color: alpha(#FFFFFF, 0.40);
 }
 window.ed-frost button:active {
-    background-image: linear-gradient(to bottom, alpha(#000000, 0.14), alpha(#FFFFFF, 0.05));
-    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.32);
+    background-color: alpha(#FFFFFF, 0.07);
+    background-image: linear-gradient(to bottom, alpha(#000000, 0.10), alpha(#FFFFFF, 0.04));
+    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.30);
 }
 window.ed-frost button:disabled {
     opacity: 0.45;
@@ -235,25 +262,25 @@ window.ed-frost button.pill {
     padding: 8px 22px;
 }
 
-/* Lead action: ultramarine falling into azure - a hue-matched, lightness-
- * matched blue-to-blue liquid gradient with the hydroganic specular crest. */
+/* Lead action: tinted liquid glass - the ultramarine-to-azure body reads
+ * through a clear capsule with the same perimeter rim as neutral glass. */
 window.ed-frost button.suggested-action {
     background-color: @ed_ultramarine_500;
     background-image: linear-gradient(to bottom,
-        alpha(#FFFFFF, 0.42), alpha(#FFFFFF, 0.14) 44%,
-        alpha(#FFFFFF, 0) 50%),
+        alpha(#FFFFFF, 0.30), alpha(#FFFFFF, 0.06) 52%,
+        alpha(#FFFFFF, 0.14)),
         linear-gradient(135deg, @ed_ultramarine_500, @ed_azure_500);
-    border: 1px solid alpha(@ed_ultramarine_200, 0.70);
+    border: 1px solid alpha(#FFFFFF, 0.50);
     box-shadow:
-        inset 0 1px alpha(#FFFFFF, 0.55),
-        inset 0 -1px alpha(#000000, 0.25),
-        0 4px 16px alpha(@ed_electric_blue, 0.50);
+        inset 0 1px 1px alpha(#FFFFFF, 0.60),
+        inset 0 -1px 1px alpha(#FFFFFF, 0.22),
+        0 6px 18px alpha(@ed_electric_blue, 0.45);
     color: #FFFFFF;
 }
 window.ed-frost button.suggested-action:hover {
     background-image: linear-gradient(to bottom,
-        alpha(#FFFFFF, 0.50), alpha(#FFFFFF, 0.20) 44%,
-        alpha(#FFFFFF, 0) 50%),
+        alpha(#FFFFFF, 0.38), alpha(#FFFFFF, 0.10) 52%,
+        alpha(#FFFFFF, 0.18)),
         linear-gradient(135deg, @ed_ultramarine_400, @ed_azure_500);
 }
 window.ed-frost button.destructive-action {
@@ -279,14 +306,16 @@ window.ed-frost button.destructive-action {
 window.ed-frost entry,
 window.ed-frost searchbar entry,
 window.ed-frost .ed-composer text {
-    background-color: rgba(8, 11, 36, 0.55);
-    border: 1px solid alpha(#FFFFFF, 0.12);
-    border-radius: 12px;
-    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.25);
+    background-color: rgba(6, 9, 30, 0.45);
+    border: 1px solid alpha(#FFFFFF, 0.20);
+    border-radius: 9999px;
+    box-shadow:
+        inset 0 2px 6px rgba(0, 0, 0, 0.28),
+        inset 0 -1px 1px alpha(#FFFFFF, 0.08);
     color: @window_fg_color;
     caret-color: @ed_turquoise_200;
-    min-height: 24px;
-    padding: 6px 10px;
+    min-height: 26px;
+    padding: 6px 14px;
 }
 window.ed-frost entry:focus-within {
     border-color: alpha(@ed_turquoise_200, 0.70);
@@ -372,9 +401,9 @@ window.ed-frost .navigation-sidebar {
     padding: 6px;
 }
 window.ed-frost .navigation-sidebar > row {
-    border-radius: 12px;
+    border-radius: 9999px;
     margin: 2px 4px;
-    padding: 2px 6px;
+    padding: 2px 10px;
     transition: background-color 120ms ease;
 }
 window.ed-frost .navigation-sidebar > row:hover {
@@ -383,13 +412,13 @@ window.ed-frost .navigation-sidebar > row:hover {
 window.ed-frost .navigation-sidebar > row:selected {
     background-color: alpha(@ed_ultramarine_500, 0.55);
     background-image: linear-gradient(to bottom,
-        alpha(#FFFFFF, 0.24), alpha(#FFFFFF, 0.06) 48%,
-        alpha(#FFFFFF, 0) 55%),
-        linear-gradient(135deg, alpha(@ed_ultramarine_500, 0.75), alpha(@ed_azure_500, 0.50));
-    border: 1px solid alpha(@ed_ultramarine_200, 0.40);
+        alpha(#FFFFFF, 0.22), alpha(#FFFFFF, 0.05) 52%,
+        alpha(#FFFFFF, 0.10)),
+        linear-gradient(135deg, alpha(@ed_ultramarine_500, 0.80), alpha(@ed_azure_500, 0.55));
+    border: 1px solid alpha(#FFFFFF, 0.42);
     box-shadow:
-        inset 0 1px alpha(#FFFFFF, 0.30),
-        0 3px 10px alpha(@ed_electric_blue, 0.35);
+        inset 0 1px 1px alpha(#FFFFFF, 0.40),
+        0 4px 12px alpha(@ed_electric_blue, 0.35);
     color: #FFFFFF;
 }
 
@@ -425,15 +454,15 @@ window.ed-frost columnview > header > button {
 /* --- tab / view switchers -------------------------------------------------- */
 window.ed-frost .ed-seg,
 window.ed-frost box.linked > button {
-    border-radius: 0;
+    border-radius: 6px;
 }
 window.ed-frost box.linked > button:first-child {
-    border-top-left-radius: 12px;
-    border-bottom-left-radius: 12px;
+    border-top-left-radius: 9999px;
+    border-bottom-left-radius: 9999px;
 }
 window.ed-frost box.linked > button:last-child {
-    border-top-right-radius: 12px;
-    border-bottom-right-radius: 12px;
+    border-top-right-radius: 9999px;
+    border-bottom-right-radius: 9999px;
 }
 window.ed-frost viewswitcher button.toggle:checked,
 window.ed-frost togglebutton:checked,
@@ -462,7 +491,7 @@ window.ed-frost button.toggle:checked {
         alpha(#FFFFFF, 0.12), alpha(#FFFFFF, 0.02) 60%,
         alpha(@ed_turquoise_500, 0.08));
     border: 1px solid alpha(#FFFFFF, 0.16);
-    border-radius: 16px;
+    border-radius: 20px;
     box-shadow:
         inset 0 1px alpha(#FFFFFF, 0.22),
         inset 0 -1px alpha(#000000, 0.18),
@@ -552,12 +581,12 @@ window.ed-frost button.toggle:checked {
         alpha(#FFFFFF, 0.12), alpha(#FFFFFF, 0.02) 58%,
         alpha(@ed_ultramarine_400, 0.08));
     border: 1px solid alpha(#FFFFFF, 0.16);
-    border-radius: 18px;
+    border-radius: 20px;
     box-shadow:
         inset 0 1px alpha(#FFFFFF, 0.22),
         inset 0 -1px alpha(#000000, 0.18),
         0 10px 22px rgba(0, 0, 0, 0.26);
-    padding: 12px;
+    padding: 14px;
     transition: background-color 120ms ease, border-color 120ms ease;
 }
 .ed-tile:hover {
@@ -568,8 +597,8 @@ window.ed-frost button.toggle:checked {
 /* --- workspace cards (Mission Control) --------------------------------------- */
 .ed-workspace {
     background-color: alpha(@ed_navy_700, 0.35);
-    border: 1px solid alpha(#FFFFFF, 0.12);
-    border-radius: 16px;
+    border: 1px solid alpha(#FFFFFF, 0.18);
+    border-radius: 20px;
     box-shadow: inset 0 1px alpha(#FFFFFF, 0.10), 0 8px 20px rgba(0, 0, 0, 0.25);
     padding: 10px;
 }
@@ -587,11 +616,15 @@ window.ed-frost button.toggle:checked {
  * neighboring apps keep matched lightness. */
 window.ed-accent-eco button.suggested-action {
     background-color: @ed_plant_700;
-    background-image: linear-gradient(135deg, @ed_plant_700, alpha(@ed_eco_400, 0.88));
-    border-color: alpha(@ed_eco_300, 0.55);
+    background-image: linear-gradient(to bottom,
+        alpha(#FFFFFF, 0.30), alpha(#FFFFFF, 0.06) 52%,
+        alpha(#FFFFFF, 0.14)),
+        linear-gradient(135deg, @ed_plant_700, @ed_eco_400);
+    border: 1px solid alpha(#FFFFFF, 0.50);
     box-shadow:
-        inset 0 1px alpha(#FFFFFF, 0.35),
-        0 4px 14px alpha(@ed_plant_700, 0.40);
+        inset 0 1px 1px alpha(#FFFFFF, 0.60),
+        inset 0 -1px 1px alpha(#FFFFFF, 0.22),
+        0 6px 18px alpha(@ed_plant_700, 0.45);
 }
 window.ed-accent-eco switch:checked,
 window.ed-accent-eco checkbutton check:checked {
@@ -611,11 +644,15 @@ window.ed-accent-eco progressbar > trough > progress {
 
 window.ed-accent-turquoise button.suggested-action {
     background-color: @ed_turquoise_700;
-    background-image: linear-gradient(135deg, @ed_turquoise_700, alpha(@ed_turquoise_300, 0.90));
-    border-color: alpha(@ed_turquoise_200, 0.55);
+    background-image: linear-gradient(to bottom,
+        alpha(#FFFFFF, 0.30), alpha(#FFFFFF, 0.06) 52%,
+        alpha(#FFFFFF, 0.14)),
+        linear-gradient(135deg, @ed_turquoise_700, @ed_turquoise_300);
+    border: 1px solid alpha(#FFFFFF, 0.50);
     box-shadow:
-        inset 0 1px alpha(#FFFFFF, 0.35),
-        0 4px 14px alpha(@ed_turquoise_500, 0.40);
+        inset 0 1px 1px alpha(#FFFFFF, 0.60),
+        inset 0 -1px 1px alpha(#FFFFFF, 0.22),
+        0 6px 18px alpha(@ed_turquoise_500, 0.45);
 }
 window.ed-accent-turquoise switch:checked,
 window.ed-accent-turquoise checkbutton check:checked {
