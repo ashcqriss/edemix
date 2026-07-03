@@ -279,7 +279,7 @@ class NoteWindow(Adw.ApplicationWindow):
         self.color.set_selected(COLORS.index(note["color"]))
         self.opacity = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0.35, 1.0, 0.05)
         self.opacity.set_value(note["opacity"])
-        self.opacity.set_width_request(130)
+        self.opacity.set_size_request(130, -1)
         self.pin = Gtk.CheckButton(label="Pinned")
         self.pin.set_active(note["pinned"])
         options.append(Gtk.Label(label="Color"))

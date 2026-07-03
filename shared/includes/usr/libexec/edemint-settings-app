@@ -192,10 +192,11 @@ class Settings(Adw.Application):
         header.pack_start(sidebar_toggle)
         toolbar.add_top_bar(header)
         toolbar.set_content(self.build_shell())
-        sidebar_toggle.bind_property(
-            "active", self.split, "show-sidebar",
-            GLib.BindingFlags.BIDIRECTIONAL | GLib.BindingFlags.SYNC_CREATE,
-        )
+        sidebar_toggle.connect(
+            "toggled", lambda button: self.split.set_show_sidebar(button.get_active()))
+        self.split.connect(
+            "notify::show-sidebar",
+            lambda split, _param: sidebar_toggle.set_active(split.get_show_sidebar()))
         self.window.set_content(toolbar)
         if DESIGN:
             DESIGN.style_window(self.window)

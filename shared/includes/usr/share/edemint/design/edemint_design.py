@@ -103,6 +103,9 @@ def breakpoint_collapse(window: Adw.ApplicationWindow,
     breakpoint API is unavailable.
     """
     try:
+        # Breakpoints require an explicit window minimum; this is the compact
+        # floor every first-party app can shrink to.
+        window.set_size_request(360, 294)
         condition = Adw.BreakpointCondition.parse(f"max-width: {width}sp")
         breakpoint = Adw.Breakpoint.new(condition)
         breakpoint.add_setter(split, "collapsed", True)
