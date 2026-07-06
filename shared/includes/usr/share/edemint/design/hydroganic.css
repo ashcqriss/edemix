@@ -219,7 +219,9 @@ window.ed-frost button {
         alpha(#FFFFFF, 0.16), alpha(#FFFFFF, 0.03) 55%,
         alpha(#FFFFFF, 0.09));
     border: 1px solid alpha(#FFFFFF, 0.30);
-    border-radius: 9999px;
+    /* Rounded rectangles are the Edemint shape language; capsules stay
+     * reserved for pills and composers. */
+    border-radius: 13px;
     box-shadow:
         inset 0 1px 1px alpha(#FFFFFF, 0.45),
         inset 0 -1px 1px alpha(#FFFFFF, 0.16),
@@ -308,7 +310,7 @@ window.ed-frost searchbar entry,
 window.ed-frost .ed-composer text {
     background-color: rgba(6, 9, 30, 0.45);
     border: 1px solid alpha(#FFFFFF, 0.20);
-    border-radius: 9999px;
+    border-radius: 12px;
     box-shadow:
         inset 0 2px 6px rgba(0, 0, 0, 0.28),
         inset 0 -1px 1px alpha(#FFFFFF, 0.08);
@@ -401,9 +403,9 @@ window.ed-frost .navigation-sidebar {
     padding: 6px;
 }
 window.ed-frost .navigation-sidebar > row {
-    border-radius: 9999px;
+    border-radius: 12px;
     margin: 2px 4px;
-    padding: 2px 10px;
+    padding: 2px 8px;
     transition: background-color 120ms ease;
 }
 window.ed-frost .navigation-sidebar > row:hover {
@@ -454,15 +456,15 @@ window.ed-frost columnview > header > button {
 /* --- tab / view switchers -------------------------------------------------- */
 window.ed-frost .ed-seg,
 window.ed-frost box.linked > button {
-    border-radius: 6px;
+    border-radius: 5px;
 }
 window.ed-frost box.linked > button:first-child {
-    border-top-left-radius: 9999px;
-    border-bottom-left-radius: 9999px;
+    border-top-left-radius: 13px;
+    border-bottom-left-radius: 13px;
 }
 window.ed-frost box.linked > button:last-child {
-    border-top-right-radius: 9999px;
-    border-bottom-right-radius: 9999px;
+    border-top-right-radius: 13px;
+    border-bottom-right-radius: 13px;
 }
 window.ed-frost viewswitcher button.toggle:checked,
 window.ed-frost togglebutton:checked,
@@ -611,9 +613,67 @@ window.ed-frost button.toggle:checked {
 }
 
 /* --- accent subsets ----------------------------------------------------------
- * An app claims a palette subset by putting one class on its window. Only the
- * lead action, checked states and highlight rails move; frost stays navy so
- * neighboring apps keep matched lightness. */
+ * Edemint is variable: an app claims a palette family with one class on its
+ * window and its WHOLE surface follows - base tint, organic light placement,
+ * frost undertone and controls. Lightness stays matched across families so
+ * neighboring apps sit together, but the hue world belongs to the app.
+ *
+ * eco: planty - dark plant ground, bright eco light growing from below-left.
+ * turquoise: watery - deep sea navy, turquoise light pooling from the depth.
+ * default: ultramarine/azure system light falling from above. */
+window.ed-frost.ed-accent-eco {
+    background-color: rgba(11, 30, 18, 0.94);
+    background-image:
+        radial-gradient(circle at 12% 114%, alpha(@ed_eco_400, 0.34), alpha(@ed_eco_400, 0) 52%),
+        radial-gradient(circle at 90% -10%, alpha(@ed_plant_700, 0.42), alpha(@ed_plant_700, 0) 50%),
+        radial-gradient(circle at 108% 72%, alpha(@ed_turquoise_500, 0.12), alpha(@ed_turquoise_500, 0) 36%),
+        linear-gradient(180deg, rgba(20, 46, 28, 0.55), rgba(7, 20, 12, 0.65));
+}
+window.ed-frost.ed-accent-eco .card,
+window.ed-frost.ed-accent-eco preferencesgroup > box > .boxed-list,
+window.ed-frost.ed-accent-eco list.boxed-list,
+window.ed-frost.ed-accent-eco .ed-island,
+window.ed-frost.ed-accent-eco .ed-stat,
+window.ed-frost.ed-accent-eco .ed-tile {
+    background-image: linear-gradient(165deg,
+        alpha(#FFFFFF, 0.09), alpha(#FFFFFF, 0.02) 55%,
+        alpha(@ed_eco_400, 0.08));
+}
+window.ed-frost.ed-accent-eco entry,
+window.ed-frost.ed-accent-eco searchbar entry {
+    background-color: rgba(5, 18, 10, 0.45);
+}
+window.ed-frost.ed-accent-eco entry:focus-within {
+    border-color: alpha(@ed_eco_400, 0.70);
+    box-shadow:
+        inset 0 2px 6px rgba(0, 0, 0, 0.25),
+        0 0 0 2px alpha(@ed_eco_400, 0.22);
+}
+
+window.ed-frost.ed-accent-turquoise {
+    background-color: rgba(7, 22, 40, 0.94);
+    background-image:
+        radial-gradient(circle at 50% 122%, alpha(@ed_turquoise_300, 0.30), alpha(@ed_turquoise_300, 0) 55%),
+        radial-gradient(circle at 8% -10%, alpha(@ed_azure_500, 0.30), alpha(@ed_azure_500, 0) 46%),
+        radial-gradient(circle at 110% 30%, alpha(@ed_turquoise_700, 0.20), alpha(@ed_turquoise_700, 0) 40%),
+        linear-gradient(180deg, rgba(12, 36, 62, 0.55), rgba(4, 14, 28, 0.65));
+}
+window.ed-frost.ed-accent-turquoise .card,
+window.ed-frost.ed-accent-turquoise preferencesgroup > box > .boxed-list,
+window.ed-frost.ed-accent-turquoise list.boxed-list,
+window.ed-frost.ed-accent-turquoise .ed-island,
+window.ed-frost.ed-accent-turquoise .ed-stat,
+window.ed-frost.ed-accent-turquoise .ed-tile {
+    background-image: linear-gradient(165deg,
+        alpha(#FFFFFF, 0.09), alpha(#FFFFFF, 0.02) 55%,
+        alpha(@ed_turquoise_300, 0.09));
+}
+window.ed-frost.ed-accent-turquoise entry,
+window.ed-frost.ed-accent-turquoise searchbar entry {
+    background-color: rgba(4, 14, 26, 0.45);
+}
+
+/* Component-level accent moves (lead action, checked states, rails): */
 window.ed-accent-eco button.suggested-action {
     background-color: @ed_plant_700;
     background-image: linear-gradient(to bottom,
