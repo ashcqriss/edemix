@@ -5,7 +5,8 @@
  *                     that stay readable; the compositor blur behind them is
  *                     optional, so every alpha here still reads on plain navy.
  *   hydroganic      - Edemint's liquid glass: controls with an organic top
- *                     light, soft depth shadow and hue-matched gradients.
+ *                     light and soft depth shadow. No painted gradients:
+ *                     the compositor's real blur is the liquid layer.
  *
  * Palette hierarchy: C1 ultramarine + C8a azure lead; C6 navy anchors the
  * frost; C7 turquoise focuses and supports; C3/C4 greens accent selected
@@ -89,23 +90,13 @@
 @define-color borders rgba(255, 255, 255, 0.10);
 
 /* --- frosty glass window ------------------------------------------------- */
-/* The window carries organic light, not a flat fill: an ultramarine glow
- * falls from the upper left, a turquoise pool rises at the lower right, and
- * a faint eco-green breath sits mid-left, so blue leads and green supports
- * exactly as the palette pyramid asks. */
-/* Every app shares this living light field: all four families present and
- * blue-led - ultramarine blooms top-left, azure sweeps top-right, eco green
- * breathes up from the lower left into the blue (the bright-blue-to-bright-
- * green transition), turquoise pools lower right. Clear glass above needs
- * saturated light beneath. */
+/* Flat translucent navy. No painted gradients anywhere: the liquid layer is
+ * the compositor's real blur behind this translucency; depth comes from
+ * layering, shadows and specular edge lines. Each app shows only its own
+ * palette subset through solid component accents. */
 window.ed-frost {
-    background-color: @window_bg_color;
-    background-image:
-        radial-gradient(circle at 12% -12%, alpha(@ed_ultramarine_500, 0.55), alpha(@ed_ultramarine_500, 0) 55%),
-        radial-gradient(circle at 96% -6%, alpha(@ed_azure_500, 0.32), alpha(@ed_azure_500, 0) 42%),
-        radial-gradient(circle at -8% 96%, alpha(@ed_eco_400, 0.22), alpha(@ed_eco_400, 0) 44%),
-        radial-gradient(circle at 94% 114%, alpha(@ed_turquoise_300, 0.24), alpha(@ed_turquoise_300, 0) 46%),
-        linear-gradient(180deg, rgba(26, 33, 88, 0.50), rgba(10, 14, 42, 0.62));
+    background-color: rgba(16, 21, 58, 0.88);
+    background-image: none;
     color: @window_fg_color;
 }
 
@@ -148,13 +139,13 @@ window.ed-frost windowcontrols button > image {
         0 1px 3px rgba(0, 0, 0, 0.35);
 }
 window.ed-frost windowcontrols button.maximize > image {
-    background-image: linear-gradient(180deg, #79C271, @ed_expand);
+    background-color: @ed_expand;
 }
 window.ed-frost windowcontrols button.minimize > image {
-    background-image: linear-gradient(180deg, #F5EC85, @ed_hide);
+    background-color: @ed_hide;
 }
 window.ed-frost windowcontrols button.close > image {
-    background-image: linear-gradient(180deg, #F4574B, @ed_close);
+    background-color: @ed_close;
 }
 window.ed-frost windowcontrols button:hover > image {
     color: rgba(0, 0, 0, 0.55);
@@ -237,7 +228,6 @@ window.ed-frost button {
     color: @window_fg_color;
     padding: 7px 18px;
     min-height: 26px;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.30);
 }
 window.ed-frost button:hover {
     background-color: alpha(#FFFFFF, 0.10);
@@ -273,8 +263,7 @@ window.ed-frost button.pill {
  * ultramarine-to-azure body with only a tight specular line, no white wash. */
 window.ed-frost button.suggested-action {
     background-color: @ed_ultramarine_500;
-    background-image: linear-gradient(135deg,
-        alpha(@ed_ultramarine_500, 0.92), alpha(@ed_azure_500, 0.88));
+    background-image: none;
     border: 1px solid alpha(#FFFFFF, 0.40);
     box-shadow:
         inset 0 1px alpha(#FFFFFF, 0.55),
@@ -282,12 +271,11 @@ window.ed-frost button.suggested-action {
     color: #FFFFFF;
 }
 window.ed-frost button.suggested-action:hover {
-    background-image: linear-gradient(135deg,
-        alpha(@ed_ultramarine_400, 0.95), alpha(@ed_azure_500, 0.92));
+    background-color: @ed_ultramarine_400;
+    background-image: none;
 }
 window.ed-frost button.destructive-action {
     background-color: alpha(@ed_close, 0.82);
-    background-image: linear-gradient(to bottom, alpha(#FFFFFF, 0.18), alpha(#FFFFFF, 0));
     border: 1px solid alpha(#FFFFFF, 0.20);
     box-shadow:
         inset 0 1px alpha(#FFFFFF, 0.30),
@@ -344,12 +332,10 @@ window.ed-frost switch {
 }
 window.ed-frost switch:checked {
     background-color: @ed_ultramarine_500;
-    background-image: linear-gradient(135deg, @ed_ultramarine_500, alpha(@ed_azure_500, 0.90));
     border-color: alpha(@ed_ultramarine_200, 0.55);
 }
 window.ed-frost switch > slider {
     background-color: #FFFFFF;
-    background-image: linear-gradient(to bottom, #FFFFFF, #DDE2F5);
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
 }
 window.ed-frost checkbutton check,
@@ -360,7 +346,6 @@ window.ed-frost checkbutton radio {
 window.ed-frost checkbutton check:checked,
 window.ed-frost checkbutton radio:checked {
     background-color: @ed_ultramarine_500;
-    background-image: linear-gradient(135deg, @ed_ultramarine_500, @ed_azure_500);
     border-color: alpha(@ed_ultramarine_200, 0.60);
     color: #FFFFFF;
 }
@@ -370,12 +355,11 @@ window.ed-frost scale > trough {
     box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.30);
 }
 window.ed-frost scale > trough > highlight {
-    background-image: linear-gradient(to right, @ed_azure_500, @ed_turquoise_300);
+    background-color: @ed_azure_500;
     border: none;
 }
 window.ed-frost scale > trough > slider {
     background-color: #FFFFFF;
-    background-image: linear-gradient(to bottom, #FFFFFF, #D8DEF3);
     border: 1px solid alpha(#000000, 0.25);
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
 }
@@ -384,17 +368,18 @@ window.ed-frost progressbar > trough {
     border-radius: 9999px;
 }
 window.ed-frost progressbar > trough > progress {
-    background-image: linear-gradient(to right, @ed_azure_500, @ed_turquoise_300);
+    background-color: @ed_azure_500;
     border-radius: 9999px;
     border: none;
 }
 window.ed-frost levelbar block.filled {
     background-color: @ed_azure_500;
-    background-image: linear-gradient(to right, @ed_azure_500, @ed_turquoise_300);
+    background-color: @ed_azure_500;
     border: none;
 }
 window.ed-frost levelbar block.filled.ed-level-high {
-    background-image: linear-gradient(to right, @ed_hide, @ed_close);
+    background-color: @ed_close;
+    background-image: none;
 }
 
 /* --- sidebars ------------------------------------------------------------- */
@@ -413,8 +398,7 @@ window.ed-frost .navigation-sidebar > row:hover {
 }
 window.ed-frost .navigation-sidebar > row:selected {
     background-color: alpha(@ed_ultramarine_500, 0.60);
-    background-image: linear-gradient(135deg,
-        alpha(@ed_ultramarine_500, 0.80), alpha(@ed_azure_500, 0.55));
+    background-image: none;
     border: 1px solid alpha(#FFFFFF, 0.35);
     box-shadow:
         inset 0 1px alpha(#FFFFFF, 0.45),
@@ -468,7 +452,6 @@ window.ed-frost viewswitcher button.toggle:checked,
 window.ed-frost togglebutton:checked,
 window.ed-frost button.toggle:checked {
     background-color: alpha(@ed_ultramarine_500, 0.50);
-    background-image: linear-gradient(135deg, alpha(@ed_ultramarine_500, 0.60), alpha(@ed_azure_500, 0.40));
     border-color: alpha(@ed_ultramarine_200, 0.45);
     color: #FFFFFF;
 }
@@ -565,7 +548,6 @@ window.ed-frost button.toggle:checked {
 }
 .ed-bubble-own {
     background-color: alpha(@ed_ultramarine_500, 0.40);
-    background-image: linear-gradient(135deg, alpha(@ed_ultramarine_500, 0.48), alpha(@ed_azure_500, 0.34));
     border: 1px solid alpha(@ed_ultramarine_200, 0.35);
     border-radius: 16px;
     padding: 10px 14px;
@@ -574,9 +556,7 @@ window.ed-frost button.toggle:checked {
 /* --- app tiles (Library, Mission Control) ----------------------------------- */
 .ed-tile {
     background-color: alpha(#FFFFFF, 0.06);
-    background-image: linear-gradient(165deg,
-        alpha(#FFFFFF, 0.12), alpha(#FFFFFF, 0.02) 58%,
-        alpha(@ed_ultramarine_400, 0.08));
+    background-image: none;
     border: 1px solid alpha(#FFFFFF, 0.16);
     border-radius: 20px;
     box-shadow:
@@ -619,10 +599,7 @@ window.ed-frost button.toggle:checked {
 /* Component-level accent moves (lead action, checked states, rails): */
 window.ed-accent-eco button.suggested-action {
     background-color: @ed_plant_700;
-    background-image: linear-gradient(to bottom,
-        alpha(#FFFFFF, 0.30), alpha(#FFFFFF, 0.06) 52%,
-        alpha(#FFFFFF, 0.14)),
-        linear-gradient(135deg, @ed_plant_700, @ed_eco_400);
+    background-image: none;
     border: 1px solid alpha(#FFFFFF, 0.50);
     box-shadow:
         inset 0 1px 1px alpha(#FFFFFF, 0.60),
@@ -632,25 +609,21 @@ window.ed-accent-eco button.suggested-action {
 window.ed-accent-eco switch:checked,
 window.ed-accent-eco checkbutton check:checked {
     background-color: @ed_plant_700;
-    background-image: linear-gradient(135deg, @ed_plant_700, @ed_eco_400);
     border-color: alpha(@ed_eco_300, 0.55);
 }
 window.ed-accent-eco .navigation-sidebar > row:selected {
     background-color: alpha(@ed_plant_700, 0.45);
-    background-image: linear-gradient(135deg, alpha(@ed_plant_700, 0.55), alpha(@ed_eco_400, 0.30));
     box-shadow: inset 0 1px alpha(#FFFFFF, 0.18), 0 2px 8px alpha(@ed_plant_900, 0.35);
 }
 window.ed-accent-eco scale > trough > highlight,
 window.ed-accent-eco progressbar > trough > progress {
-    background-image: linear-gradient(to right, @ed_plant_700, @ed_eco_400);
+    background-color: @ed_eco_400;
+    background-image: none;
 }
 
 window.ed-accent-turquoise button.suggested-action {
     background-color: @ed_turquoise_700;
-    background-image: linear-gradient(to bottom,
-        alpha(#FFFFFF, 0.30), alpha(#FFFFFF, 0.06) 52%,
-        alpha(#FFFFFF, 0.14)),
-        linear-gradient(135deg, @ed_turquoise_700, @ed_turquoise_300);
+    background-image: none;
     border: 1px solid alpha(#FFFFFF, 0.50);
     box-shadow:
         inset 0 1px 1px alpha(#FFFFFF, 0.60),
@@ -660,17 +633,16 @@ window.ed-accent-turquoise button.suggested-action {
 window.ed-accent-turquoise switch:checked,
 window.ed-accent-turquoise checkbutton check:checked {
     background-color: @ed_turquoise_500;
-    background-image: linear-gradient(135deg, @ed_turquoise_700, @ed_turquoise_300);
     border-color: alpha(@ed_turquoise_200, 0.55);
 }
 window.ed-accent-turquoise .navigation-sidebar > row:selected {
     background-color: alpha(@ed_turquoise_700, 0.50);
-    background-image: linear-gradient(135deg, alpha(@ed_turquoise_700, 0.60), alpha(@ed_turquoise_300, 0.28));
     box-shadow: inset 0 1px alpha(#FFFFFF, 0.18), 0 2px 8px alpha(@ed_turquoise_700, 0.35);
 }
 window.ed-accent-turquoise scale > trough > highlight,
 window.ed-accent-turquoise progressbar > trough > progress {
-    background-image: linear-gradient(to right, @ed_turquoise_700, @ed_turquoise_300);
+    background-color: @ed_turquoise_300;
+    background-image: none;
 }
 
 /* --- sticky notes -------------------------------------------------------------
@@ -704,23 +676,28 @@ window.ed-sticky {
 }
 .ed-note-yellow {
     background-color: #F2DE6B;
-    background-image: linear-gradient(170deg, #F7E88F, #EBD152);
+    background-color: #F2DE6B;
+    background-image: none;
 }
 .ed-note-green {
     background-color: #BFE8A9;
-    background-image: linear-gradient(170deg, #D2F0BE, #A9DC8F);
+    background-color: #BFE8A9;
+    background-image: none;
 }
 .ed-note-blue {
     background-color: #A9CBF5;
-    background-image: linear-gradient(170deg, #BFDCFB, #92BAEE);
+    background-color: #A9CBF5;
+    background-image: none;
 }
 .ed-note-pink {
     background-color: #F5B8D9;
-    background-image: linear-gradient(170deg, #FBCCE5, #EFA3CB);
+    background-color: #F5B8D9;
+    background-image: none;
 }
 .ed-note-violet {
     background-color: #CBB8F0;
-    background-image: linear-gradient(170deg, #DCCDF7, #B9A1E8);
+    background-color: #CBB8F0;
+    background-image: none;
 }
 
 /* --- misc ---------------------------------------------------------------------- */

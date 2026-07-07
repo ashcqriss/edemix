@@ -19,7 +19,6 @@
 
 headerbar {
     background-color: #10153A;
-    background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0));
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     color: #F2F4FF;
 }
