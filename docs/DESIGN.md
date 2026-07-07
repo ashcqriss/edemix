@@ -9,10 +9,13 @@ finished UI assets.
 
 1. Build and stabilize the operating-system base: boot, installation, login,
    session startup, hardware support, packages, updates, recovery, and images.
-2. Apply the first approximate UI using the geometry and color rules here.
+2. Apply the first approximate UI using the geometry, color, and liquid-glass
+   rules here — including the shell's default motion (compositor-level blur,
+   shadows, and spring animations, with a low-power opt-out profile).
 3. Build the complete UI complexes, responsive/mobile behavior, final icons,
    cursor theme, window controls, widgets, and artwork.
-4. Add animations after the static components and interactions work.
+4. Extend animations into the application layer after the static components
+   and interactions work.
 
 The UI must not delay or disguise unfinished base-system work. Conversely, base
 placeholders must not be mistaken for final Edemint design.
@@ -25,6 +28,35 @@ family, wallpaper, font system, or profile image.
 The original JPEG identities are recorded in `docs/prototypes/README.md` and
 their measured colors in `docs/PALETTE.md`.
 
+## Liquid Glass visual language
+
+Edemint's look is **liquid glass**, in the sense of Apple's Liquid Glass
+material, over a silent canvas. Three layers:
+
+1. **Canvas.** Flat, pure black `#000000` (dark mode, the default) or pure
+   white `#FFFFFF` (light mode). **No gradient, no wallpaper, no texture by
+   default.** Everything expressive happens above it.
+2. **Content.** Application windows. Their interiors stay readable and mostly
+   opaque; translucency is a garnish (e.g. the terminal at ~92% alpha), never
+   at the cost of legibility.
+3. **Glass.** The shell — dock, status region, launcher, notifications, lock
+   and power surfaces — is frosted, translucent glass floating over the two
+   layers below: neutral white/black at low alpha, compositor blur behind it,
+   a bright hairline "specular" border, rounded-rectangle/capsule geometry,
+   and soft shadows that lift it off the canvas.
+
+The palette then reads as *bright accents on glass*: ultramarine and azure
+lead, exactly per the importance pyramid below. Solid, opaque color is
+reserved for operational signals (privacy, battery-critical, updates), which
+must stay unmistakable.
+
+**Motion is macOS-like and ships with the first UI**: surfaces materialize
+with a small spring overshoot, workspaces glide, fades ease, hover states
+respond. Motion is a property of the glass, not decoration — and the
+low-power profile (`~/.config/hypr/profile.conf`, chosen in `edemint-setup`)
+turns blur, shadows, and animations off entirely without losing any state
+information.
+
 ## Prototype files and functions
 
 Prototype colors such as flat yellow and pink frequently identify component
@@ -32,18 +64,26 @@ roles; they do not automatically become production colors. The separate
 palette image controls the real UI colors, except for explicitly confirmed
 semantic colors such as `panelv`.
 
+**Two of the references are final artwork, not prototypes**: `panelv` (window
+actions — green expands, yellow hides, red closes, each with its glyph) and
+`on_off2` (the yellow-ring/violet-wave power motif). Their colors and
+semantics are binding.
+
 | Prototype | Authoritative meaning |
 |---|---|
 | `main_homescreen` | Advanced, basic, and default desktop homescreen. The left vertical dock stores important/pinned apps. The lower pill opens an expandable all-apps search/completer. The right pink line represents date, time, connections, frequencies, and status. App boxes are rounded placeholders and must be smaller than shown. |
 | `dock` | Appears when the user taps/clicks empty space where no other process owns the action. The app boxes are placeholders. The left visual consists of four semi-transparent overlapping lines; the neighboring app symbolics are gray, black, white, and pink in the sketch. |
-| `panelv` | Window action symbols and their behavior. Green expands or enters fullscreen, yellow hides/minimizes, and red closes the window. These semantics override macOS-style ordering or assumptions. |
+| `panelv` | **Final artwork.** Window action symbols and their behavior. Green expands or enters fullscreen, yellow hides/minimizes, and red closes the window. These semantics override macOS-style ordering or assumptions. |
 | `mobileratioqo` | Mobile homescreen and reference for the default narrow-screen aspect. It is predominantly blue, with partially shown centered app icons. The bottom line indicates the active app page. The upper-left line carries time, date, and status updates. Icons remain placeholders. |
 | `mobile_dock_ratio_2` | Prototype for a 1080x1920/mobile view, including the rotated interpretation where its sidebar appears on the left. Yellow blocks represent widgets, which are available on every homescreen even though previewed only here. The lower neon-pink pill is the expandable app component; the upper pink square represents date, time, and status. |
 | `login_screen` | Center circle is the profile picture. The username is shown in the rectangle below it; an optional password/code field is half that width and only appears when authentication is enabled. The upper box always shows date and time, including while locked. |
-| `on_off2` | Keyboard-oriented power symbol, composed from the yellow circle and second component. It expands to power on, turn off, or standby choices. |
+| `on_off2` | **Final artwork.** Keyboard-oriented power symbol, composed from the yellow circle and second component. It expands to power on, turn off, or standby choices. |
 | `color_palette` | Color-family and hierarchy authority for all prototypes. Individual apps may use subsets; the full palette is not applied to every component simultaneously. |
 
-Animations are deferred for every prototype and component above.
+Shell-level motion (spring pop-in, glides, eased fades) ships with the first
+UI as part of the Liquid Glass language; per-prototype component animations
+(e.g. the power control's expansion, dock overlay choreography) remain
+deferred until those components exist.
 
 ## Color complexes
 
@@ -108,14 +148,17 @@ The palette diagram is read left to right. The original naming contains two
 
 ## Current phase boundaries
 
-The first UI pass may establish palette variables, rounded geometry, readable
-text placeholders, a left dock, status region, lock hierarchy, and power-menu
-behavior. It must not claim the following are finished:
+The first UI pass may establish palette variables, the flat black canvas, the
+liquid-glass shell surfaces and their motion, rounded geometry, readable text
+placeholders, a left dock, status region, launcher, lock hierarchy, and
+power-menu behavior. It must not claim the following are finished:
 
-- final logo, profile picture, icon theme, cursor theme, wallpaper, or fonts
+- final logo, profile picture, icon theme, cursor theme, or fonts
 - the tap-in-void `dock` overlay and its four translucent overlapping lines
 - complete widgets and mobile/rotated layouts
 - production `panelv` decorations across GTK and Qt applications
-- animations or final motion curves
+- application-layer animations and per-component choreography (the shell's
+  glass motion exists; the power control's expansion and dock overlay motion
+  do not)
 
 See `docs/DESIGN_IMPLEMENTATION.md` for the exact implementation state.

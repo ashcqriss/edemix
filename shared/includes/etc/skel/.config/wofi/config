@@ -1,0 +1,12 @@
+# Edemint all-apps search/completer (opened by the dock's Apps pill and
+# Super+D). First-build approximation of the expandable app component from
+# the main_homescreen prototype.
+show=drun
+prompt=Apps
+allow_images=true
+image_size=28
+width=560
+height=480
+insensitive=true
+matching=fuzzy
+no_actions=true

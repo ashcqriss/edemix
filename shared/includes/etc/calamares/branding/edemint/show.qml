@@ -1,7 +1,7 @@
-/* Edemint Calamares slideshow — placeholder.
- * Real art and slide content land in the deferred design pass; this stub
- * keeps the installer functional and prevents Calamares from erroring on
- * a missing slideshow.
+/* Edemint Calamares slideshow — first-build visuals on the flat black
+ * canvas with the blue-led palette (docs/DESIGN.md). Real art and slide
+ * content land with the final identity assets; this keeps the installer
+ * functional and on-palette.
  */
 import QtQuick 2.5
 import calamares.slideshow 1.0
@@ -10,11 +10,26 @@ Presentation {
     id: presentation
 
     Slide {
-        Text {
-            anchors.centerIn: parent
-            text: "Installing Edemint…"
-            color: "white"
-            font.pixelSize: 28
+        Rectangle {
+            anchors.fill: parent
+            color: "#000000"
+
+            Text {
+                id: headline
+                anchors.centerIn: parent
+                text: "Installing Edemint…"
+                color: "#ffffff"
+                font.pixelSize: 28
+            }
+
+            Text {
+                anchors.top: headline.bottom
+                anchors.topMargin: 12
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "Liquid glass on a pure black canvas"
+                color: "#aea3ff"
+                font.pixelSize: 16
+            }
         }
     }
 

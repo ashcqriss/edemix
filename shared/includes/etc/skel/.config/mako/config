@@ -1,0 +1,23 @@
+# Edemint notifications — liquid glass toasts, frosted by the Hyprland
+# "notifications" layerrule. Rounded, translucent, blue-led accents; solid
+# red is reserved for critical urgency (panelv semantics: red = stop/close).
+font=JetBrains Mono 11
+anchor=top-right
+margin=14
+padding=12
+border-size=1
+border-radius=16
+background-color=#000000B8
+text-color=#FFFFFF
+border-color=#6D58FF80
+progress-color=over #2001FFAA
+default-timeout=6000
+max-icon-size=48
+
+[urgency=low]
+border-color=#FFFFFF38
+
+[urgency=critical]
+border-color=#E31515
+background-color=#E31515D9
+default-timeout=0

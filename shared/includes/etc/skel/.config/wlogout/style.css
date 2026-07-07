@@ -1,11 +1,14 @@
-/* First-build power surface, derived from on_off2 and panelv. */
+/* Edemint power surface — liquid glass. Derived from the final on_off2 and
+ * panelv artwork: hovering any action fills it with the yellow-on-violet
+ * power motif; shutdown carries the red "close" semantic. The window is a
+ * translucent scrim, frosted by the Hyprland logout_dialog layerrule. */
 * {
     font-family: "Noto Sans", sans-serif;
     background-image: none;
 }
 
 window {
-    background-color: rgba(23, 30, 84, 0.94);
+    background-color: rgba(0, 0, 0, 0.55);
 }
 
 button {
@@ -13,47 +16,50 @@ button {
     min-height: 120px;
     margin: 12px;
     padding: 20px;
-    border: 4px solid #3f136a;
+    border: 1px solid rgba(255, 255, 255, 0.22);
     border-radius: 32px;
-    color: #171e54;
-    background-color: #f4d956;
+    color: #ffffff;
+    background-color: rgba(255, 255, 255, 0.10);
     font-size: 20px;
     font-weight: 700;
-    transition: background-color 120ms ease, border-color 120ms ease;
+    transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
 }
 
+/* on_off2 (final artwork): the power motif is yellow on the violet wave. */
 button:hover,
 button:focus {
-    color: #ffffff;
-    background-color: #2001ff;
-    border-color: #74fbea;
+    color: #3f136a;
+    background-color: #f4d956;
+    border-color: #3f136a;
     outline: none;
 }
 
 #lock {
-    background-color: #88d0a8;
+    color: #88d0a8;
 }
 
 #logout {
-    background-color: #45e289;
+    color: #45e289;
 }
 
 #suspend {
-    background-color: #f4d956;
+    color: #f4d956;
 }
 
 #reboot {
-    background-color: #b67e29;
+    color: #e9de51;
 }
 
+/* panelv (final artwork): red always means close/stop. */
 #shutdown {
     color: #ffffff;
-    background-color: #e31515;
-    border-color: #750303;
+    background-color: rgba(227, 21, 21, 0.55);
+    border-color: rgba(227, 21, 21, 0.8);
 }
 
 #shutdown:hover,
 #shutdown:focus {
-    background-color: #b32b2b;
-    border-color: #74fbea;
+    color: #ffffff;
+    background-color: #e31515;
+    border-color: #750303;
 }

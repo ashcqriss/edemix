@@ -123,15 +123,22 @@ assigns them a semantic role.
 `on_off2` uses `#F4D956` with `#3F136A` as a power-control motif. These are not
 general shell defaults.
 
-## Provisional first-build UI tokens
+Both `panelv` and `on_off2` are **final artwork** (ready images), not
+prototypes — their colors, glyphs, and semantics are binding.
 
-These tokens express the blue-led hierarchy while keeping the first UI readable
-before final icons, wallpapers, and component artwork exist.
+## First-build UI tokens — Liquid Glass
+
+The canvas is flat: **pure black `#000000` (dark, the default) or pure white
+`#FFFFFF` (light) — never a gradient, never an image by default.** Shell
+surfaces are neutral glass (white at low alpha, compositor-blurred, with a
+brighter hairline border), so the palette reads as bright accents *on* the
+glass rather than as tinted panels.
 
 ```css
---ed-background: #171E54;
---ed-surface: #002C89;
---ed-surface-raised: #2001FF;
+--ed-canvas: #000000;                     /* light mode: #FFFFFF */
+--ed-glass: rgba(255, 255, 255, 0.10);    /* frosted surface tint */
+--ed-glass-edge: rgba(255, 255, 255, 0.22); /* specular hairline */
+--ed-surface: #002C89;                    /* navy anchor (components) */
 --ed-primary: #2001FF;
 --ed-primary-soft: #6D58FF;
 --ed-accent: #45E289;
@@ -144,11 +151,14 @@ before final icons, wallpapers, and component artwork exist.
 ```
 
 These are implementation defaults, not a declaration that every app must use
-the same blue surface. Final component combinations still require contrast and
-visual testing.
+the same surfaces. Solid, opaque color remains reserved for operational
+signals (privacy, battery-critical, updates). Final component combinations
+still require contrast and visual testing.
 
 ## Rules
 
+- The canvas is `#000000` or `#FFFFFF`, flat — no gradient, no wallpaper by
+  default. All depth comes from the glass above it.
 - Lead with C1 and C8a for the system, dock, and homescreens.
 - Use C6 navy as a common anchor and C4 plant green as secondary support.
 - Use C3 and C7 selectively for components, accents, and controlled gradients.

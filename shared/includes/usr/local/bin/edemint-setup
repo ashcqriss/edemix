@@ -26,12 +26,12 @@ if ! command -v whiptail >/dev/null 2>&1; then
 fi
 
 NEWT_COLORS='
-root=,#14161c
-window=,#1a1d24
-title=#33ccff,#1a1d24
-border=#33ccff,#1a1d24
-button=#14161c,#33ccff
-actbutton=#14161c,#00ff99
+root=,#000000
+window=,#171e54
+title=#74fbea,#171e54
+border=#6d58ff,#171e54
+button=#000000,#0080ff
+actbutton=#093a02,#45e289
 '
 export NEWT_COLORS
 
@@ -63,18 +63,33 @@ fi
 profile_choice="$(whiptail --title "Desktop effects" --notags \
     --menu "Pick an effects profile (you can change later in ~/.config/hypr/profile.conf):" \
     14 70 4 \
+    glass "Liquid Glass (default): blur, shadows, animations" \
     low   "Low-power: no animations / blur / shadows (Pi, 1GB-class)" \
-    full  "Full: animations, rounded corners, blur, shadows" \
     3>&1 1>&2 2>&3)" || profile_choice=""
 
+# profile.conf is sourced at the END of hyprland.conf, so plain
+# section:option keywords here override the Liquid Glass defaults.
+hypr_cfg="${XDG_CONFIG_HOME:-$HOME/.config}/hypr"
+mkdir -p "$hypr_cfg"
 case "$profile_choice" in
-    full)
-        # The $low_power literal is meant for Hyprland to read, not the shell.
-        # shellcheck disable=SC2016
-        printf '%s\n' '$low_power = false' > "${XDG_CONFIG_HOME:-$HOME/.config}/hypr/profile.conf"
+    low)
+        {
+            echo '# Low-power profile written by edemint-setup.'
+            echo 'decoration:blur:enabled = false'
+            echo 'decoration:shadow:enabled = false'
+            echo 'animations:enabled = false'
+        } > "$hypr_cfg/profile.conf"
+        hyprctl reload >/dev/null 2>&1 || true
         ;;
-    low|"")
-        : # default already low-power
+    glass)
+        {
+            echo '# Liquid Glass profile (default) — no overrides.'
+            echo '# See /etc/skel/.config/hypr/profile.conf for the low-power block.'
+        } > "$hypr_cfg/profile.conf"
+        hyprctl reload >/dev/null 2>&1 || true
+        ;;
+    "")
+        : # dialog cancelled — leave the existing profile untouched
         ;;
 esac
 

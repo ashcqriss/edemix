@@ -1,14 +1,14 @@
-# Edemint GRUB theme — placeholder visuals (no images, solid colors only,
-# so the theme works on every firmware without shipping PNG assets).
+# Edemint GRUB theme — flat black canvas + Edemint palette (no images, solid
+# colors only, so the theme works on every firmware without shipping PNGs).
 # Real art lands in the deferred design pass.
 
 title-text: ""
-title-color: "#33ccff"
+title-color: "#0080ff"
 title-font: "DejaVu Sans Bold 18"
-desktop-color: "#14161c"
+desktop-color: "#000000"
 desktop-image: ""
-message-color: "#e6e6e6"
-message-bg-color: "#14161c"
+message-color: "#e8eaf2"
+message-bg-color: "#000000"
 terminal-font: "DejaVu Sans Mono 12"
 terminal-box: "term_*.png"
 terminal-border: "0"
@@ -21,8 +21,8 @@ terminal-border: "0"
     height = 60%
 
     item_font = "DejaVu Sans Regular 14"
-    item_color = "#9ca3af"
-    selected_item_color = "#00ff99"
+    item_color = "#8a90a0"
+    selected_item_color = "#45e289"
     item_height = 28
     item_padding = 6
     item_spacing = 4
@@ -40,7 +40,7 @@ terminal-border: "0"
     left = 0
     width = 100%
     align = "center"
-    color = "#33ccff"
+    color = "#aea3ff"
     font = "DejaVu Sans Regular 11"
     text = "Edemint  ·  enter = boot   e = edit   c = grub shell"
 }
@@ -53,10 +53,10 @@ terminal-border: "0"
     top = 87%
     height = 6
 
-    fg_color = "#33ccff"
-    bg_color = "#1a1d24"
-    border_color = "#33ccff"
+    fg_color = "#0080ff"
+    bg_color = "#171e54"
+    border_color = "#6d58ff"
     text = "@TIMEOUT_NOTIFICATION_SHORT@"
-    text_color = "#e6e6e6"
+    text_color = "#e8eaf2"
     font = "DejaVu Sans Regular 10"
 }

@@ -25,10 +25,10 @@ images:
 
 # Layout / typography — placeholder values
 style:
-    sidebarBackground:    "#14161c"
+    sidebarBackground:    "#000000"
     sidebarText:          "#ffffff"
-    sidebarTextSelect:    "#33ccff"
-    sidebarTextHighlight: "#00ff99"
+    sidebarTextSelect:    "#74fbea"
+    sidebarTextHighlight: "#45e289"
 
 slideshow: "show.qml"
 
