@@ -3,14 +3,14 @@
  * surfaces to the same navy frost / ultramarine hierarchy from
  * docs/PALETTE.md. Layout and widget shapes stay stock for stability.
  */
-@define-color theme_bg_color #141A48;
-@define-color theme_base_color #10153A;
-@define-color theme_fg_color #F2F4FF;
-@define-color theme_text_color #F2F4FF;
+@define-color theme_bg_color #1B1B1F;
+@define-color theme_base_color #131316;
+@define-color theme_fg_color #F5F5F7;
+@define-color theme_text_color #F5F5F7;
 @define-color theme_selected_bg_color #2001FF;
 @define-color theme_selected_fg_color #FFFFFF;
-@define-color theme_unfocused_bg_color #10153A;
-@define-color theme_unfocused_fg_color #C9CEEC;
+@define-color theme_unfocused_bg_color #131316;
+@define-color theme_unfocused_fg_color #C9C9CE;
 @define-color borders rgba(255, 255, 255, 0.10);
 @define-color unfocused_borders rgba(255, 255, 255, 0.07);
 @define-color warning_color #E9DE51;
@@ -18,9 +18,9 @@
 @define-color success_color #45E289;
 
 headerbar {
-    background-color: #10153A;
+    background-color: #1B1B1F;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    color: #F2F4FF;
+    color: #F5F5F7;
 }
 
 /* panelv window controls: green expands, yellow hides, red closes. */
