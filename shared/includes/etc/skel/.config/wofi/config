@@ -1,0 +1,13 @@
+# Edemint all-apps search/completer (wofi) — first-build approximation of the
+# main_homescreen lower pill's expanded state. Icons stay off until the
+# production icon theme exists; entries are readable text placeholders.
+show=drun
+prompt=Search apps
+width=560
+height=440
+lines=8
+allow_markup=false
+allow_images=false
+insensitive=true
+hide_scroll=true
+matching=fuzzy

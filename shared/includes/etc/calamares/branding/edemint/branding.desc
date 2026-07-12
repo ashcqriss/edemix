@@ -23,12 +23,14 @@ images:
     productLogo:         logo.svg
     productIcon:         logo.svg
 
-# Layout / typography — placeholder values
+# Layout / typography — first-build values from docs/PALETTE.md.
+# sidebarTextSelect is the text color drawn ON sidebarTextHighlight (the
+# current-step background), so the pair must contrast with each other.
 style:
-    sidebarBackground:    "#14161c"
+    sidebarBackground:    "#171e54"
     sidebarText:          "#ffffff"
-    sidebarTextSelect:    "#33ccff"
-    sidebarTextHighlight: "#00ff99"
+    sidebarTextSelect:    "#ffffff"
+    sidebarTextHighlight: "#2001ff"
 
 slideshow: "show.qml"
 

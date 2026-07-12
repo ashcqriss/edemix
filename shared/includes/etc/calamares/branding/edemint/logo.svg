@@ -1,14 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Edemint placeholder logo — replaced in the deferred design pass.
-     The shape is intentionally minimal so the installer renders, no more. -->
+     Flat ultramarine fill per docs/PALETTE.md; gradients are forbidden by
+     default (docs/DESIGN.md). The shape is intentionally minimal so the
+     installer renders, no more. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#33ccff"/>
-      <stop offset="1" stop-color="#00ff99"/>
-    </linearGradient>
-  </defs>
-  <rect x="6" y="6" width="116" height="116" rx="24" fill="url(#g)"/>
+  <rect x="6" y="6" width="116" height="116" rx="24" fill="#2001ff"/>
   <text x="64" y="78" text-anchor="middle" font-family="sans-serif"
-        font-weight="700" font-size="56" fill="#14161c">E</text>
+        font-weight="700" font-size="56" fill="#ffffff">E</text>
 </svg>

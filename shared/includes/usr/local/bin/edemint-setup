@@ -25,13 +25,15 @@ if ! command -v whiptail >/dev/null 2>&1; then
     exit 0
 fi
 
+# Colors follow docs/PALETTE.md: navy anchor surfaces, turquoise focus,
+# eco-green confirm.
 NEWT_COLORS='
-root=,#14161c
-window=,#1a1d24
-title=#33ccff,#1a1d24
-border=#33ccff,#1a1d24
-button=#14161c,#33ccff
-actbutton=#14161c,#00ff99
+root=,#171e54
+window=,#002c89
+title=#74fbea,#002c89
+border=#74fbea,#002c89
+button=#171e54,#74fbea
+actbutton=#171e54,#45e289
 '
 export NEWT_COLORS
 
@@ -61,20 +63,42 @@ fi
 
 # --- 3. effects profile -------------------------------------------------
 profile_choice="$(whiptail --title "Desktop effects" --notags \
-    --menu "Pick an effects profile (you can change later in ~/.config/hypr/profile.conf):" \
+    --menu "Pick an effects profile (you can change later in ~/.config/hypr/effects.conf):" \
     14 70 4 \
     low   "Low-power: no animations / blur / shadows (Pi, 1GB-class)" \
     full  "Full: animations, rounded corners, blur, shadows" \
     3>&1 1>&2 2>&3)" || profile_choice=""
 
+# hyprland.conf sources effects.conf after its low-power defaults, so writing
+# real overrides here is what actually flips the effects on. profile.conf is
+# left alone — it carries the palette, not the effects.
+EFFECTS_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/effects.conf"
+mkdir -p "$(dirname "$EFFECTS_CONF")"
 case "$profile_choice" in
     full)
-        # The $low_power literal is meant for Hyprland to read, not the shell.
-        # shellcheck disable=SC2016
-        printf '%s\n' '$low_power = false' > "${XDG_CONFIG_HOME:-$HOME/.config}/hypr/profile.conf"
+        cat > "$EFFECTS_CONF" <<'EOF'
+# Written by edemint-setup: full effects profile.
+decoration {
+    blur {
+        enabled = true
+    }
+    shadow {
+        enabled = true
+    }
+}
+animations {
+    enabled = true
+}
+EOF
+        hyprctl reload >/dev/null 2>&1 || true
         ;;
-    low|"")
-        : # default already low-power
+    low)
+        printf '%s\n' '# Written by edemint-setup: low-power profile (effects off).' \
+            > "$EFFECTS_CONF"
+        hyprctl reload >/dev/null 2>&1 || true
+        ;;
+    "")
+        : # cancelled — leave the current profile untouched
         ;;
 esac
 

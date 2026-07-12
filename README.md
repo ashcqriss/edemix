@@ -11,7 +11,7 @@ ordinary PCs. Tuned to stay light on low-end hardware.
   itself Debian — so the Pi path is well-trodden.
 - **Hyprland** (a wlroots compositor) gives the "brand-new OS" look and is
   highly customisable, while still running on ~1GB RAM once the eye-candy is
-  disabled (see `low_power` in the Hyprland config).
+  disabled (the default; see `~/.config/hypr/effects.conf`).
 - AR glasses (RayNeo Air, Xreal, …) appear as ordinary USB-C DisplayPort
   **monitors**; no special driver is needed for basic display. True spatial /
   head-tracking AR is a separate, device-specific research track and is *not*

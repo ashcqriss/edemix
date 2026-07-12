@@ -1,0 +1,20 @@
+# Edemint notifications (mako) — first-build palette surfaces from
+# docs/PALETTE.md. Flat fills, rounded rectangles, no animations.
+# Critical notifications keep their text and stay on screen — state is never
+# communicated by color alone.
+font=Noto Sans 11
+background-color=#171E54
+text-color=#FFFFFF
+border-color=#74FBEA
+border-size=2
+border-radius=16
+padding=12
+margin=12
+default-timeout=8000
+max-icon-size=32
+
+[urgency=critical]
+background-color=#750303
+text-color=#FFFFFF
+border-color=#E31515
+default-timeout=0

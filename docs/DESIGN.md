@@ -36,11 +36,11 @@ semantic colors such as `panelv`.
 |---|---|
 | `main_homescreen` | Advanced, basic, and default desktop homescreen. The left vertical dock stores important/pinned apps. The lower pill opens an expandable all-apps search/completer. The right pink line represents date, time, connections, frequencies, and status. App boxes are rounded placeholders and must be smaller than shown. |
 | `dock` | Appears when the user taps/clicks empty space where no other process owns the action. The app boxes are placeholders. The left visual consists of four semi-transparent overlapping lines; the neighboring app symbolics are gray, black, white, and pink in the sketch. |
-| `panelv` | Window action symbols and their behavior. Green expands or enters fullscreen, yellow hides/minimizes, and red closes the window. These semantics override macOS-style ordering or assumptions. |
+| `panelv` | Window action symbols and their behavior. Green expands or enters fullscreen, yellow hides/minimizes, and red closes the window. These semantics override macOS-style ordering or assumptions. The prototype confirms each control carries a glyph in addition to color: paired expand arrows on green, a rounded dash on yellow, and an X on red. |
 | `mobileratioqo` | Mobile homescreen and reference for the default narrow-screen aspect. It is predominantly blue, with partially shown centered app icons. The bottom line indicates the active app page. The upper-left line carries time, date, and status updates. Icons remain placeholders. |
 | `mobile_dock_ratio_2` | Prototype for a 1080x1920/mobile view, including the rotated interpretation where its sidebar appears on the left. Yellow blocks represent widgets, which are available on every homescreen even though previewed only here. The lower neon-pink pill is the expandable app component; the upper pink square represents date, time, and status. |
 | `login_screen` | Center circle is the profile picture. The username is shown in the rectangle below it; an optional password/code field is half that width and only appears when authentication is enabled. The upper box always shows date and time, including while locked. |
-| `on_off2` | Keyboard-oriented power symbol, composed from the yellow circle and second component. It expands to power on, turn off, or standby choices. |
+| `on_off2` | Keyboard-oriented power symbol, composed from the yellow circle and second component — an open yellow ring crossed by a dark-violet wave line. It expands to power on, turn off, or standby choices. |
 | `color_palette` | Color-family and hierarchy authority for all prototypes. Individual apps may use subsets; the full palette is not applied to every component simultaneously. |
 
 Animations are deferred for every prototype and component above.
@@ -75,8 +75,15 @@ The palette diagram is read left to right. The original naming contains two
 
 - Match adjacent surfaces by both hue and lightness: blue beside blue, green
   beside green, and bright beside bright where possible.
-- Cross-family movement should use a deliberate transition or gradient, such as
-  bright blue to bright green, rather than an abrupt jump.
+- **Gradients are forbidden by default.** Surfaces use flat fills. Cross-family
+  movement uses deliberate stepped transitions — adjacent solid bands, such as
+  bright blue beside bright green — rather than blended gradients or abrupt
+  jumps. A component may use a gradient only when its brief explicitly
+  approves one.
+- **Backgrounds must work in light and dark mode.** Every background/surface
+  role defines a light and a dark variant, and components must stay readable
+  on both (see the surface-role table in `PALETTE.md`). The first build ships
+  the dark set.
 - Two simultaneously open applications may create an unavoidable mismatch;
   that does not redefine the internal palette of either app.
 - An application consumes only the subset appropriate to its function. Browser,

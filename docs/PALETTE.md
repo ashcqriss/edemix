@@ -147,13 +147,35 @@ These are implementation defaults, not a declaration that every app must use
 the same blue surface. Final component combinations still require contrast and
 visual testing.
 
+## Light and dark surface roles
+
+Backgrounds must work in both light and dark mode. The first build ships the
+dark set; the light values are the approved counterparts for the later theme
+work. Both columns use flat fills — gradients are forbidden by default.
+
+| Role | Dark | Light |
+|---|---|---|
+| background | `#171E54` | `#FFFFFF` |
+| surface | `#002C89` | `#AEA3FF` |
+| raised / selection | `#2001FF` | `#2001FF` |
+| text | `#FFFFFF` | `#171E54` |
+| focus ring | `#74FBEA` | `#2001FF` |
+
+The turquoise focus ring is a dark-mode color only: it is nearly invisible on
+white, so light mode focuses with ultramarine instead. Semantic colors
+(success, warning, danger) are shared across both modes.
+
 ## Rules
 
 - Lead with C1 and C8a for the system, dock, and homescreens.
 - Use C6 navy as a common anchor and C4 plant green as secondary support.
-- Use C3 and C7 selectively for components, accents, and controlled gradients.
+- Use C3 and C7 selectively for components, accents, and controlled stepped
+  transitions. Gradients are forbidden by default; a component may use one
+  only with explicit approval in its brief.
 - Reserve C5, C8b, and warm colors for rare/application-specific uses.
 - Match neighboring colors by hue and lightness whenever possible.
+- Every background role has a light and a dark variant; components must stay
+  readable on both.
 - Do not treat yellow, pink, gold, red, or green prototype blocks as defaults
   unless their component description explicitly assigns that meaning.
 - Never encode state by color alone; retain shape, symbol, or text.
