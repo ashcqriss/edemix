@@ -1,0 +1,29 @@
+/* Edemint GTK4/libadwaita app colors — dark set from docs/PALETTE.md.
+ * Backgrounds use the navy background role (never plain black); raised
+ * surfaces use navy-700; accents use light steps on the dark background
+ * (accent text) and ultramarine-500 for filled accent controls. Apps flip
+ * these roles in light mode: the theme-switch work replaces this file with
+ * the light counterpart. Flat fills only. */
+@define-color window_bg_color #171e54;
+@define-color window_fg_color #ffffff;
+@define-color view_bg_color #171e54;
+@define-color view_fg_color #ffffff;
+@define-color headerbar_bg_color #002c89;
+@define-color headerbar_fg_color #ffffff;
+@define-color sidebar_bg_color #002c89;
+@define-color sidebar_fg_color #ffffff;
+@define-color card_bg_color #002c89;
+@define-color card_fg_color #ffffff;
+@define-color dialog_bg_color #171e54;
+@define-color dialog_fg_color #ffffff;
+@define-color popover_bg_color #002c89;
+@define-color popover_fg_color #ffffff;
+@define-color accent_bg_color #2001ff;
+@define-color accent_fg_color #ffffff;
+@define-color accent_color #aea3ff;
+@define-color destructive_bg_color #e31515;
+@define-color destructive_fg_color #ffffff;
+@define-color destructive_color #e31515;
+@define-color success_color #45e289;
+@define-color warning_color #e9de51;
+@define-color error_color #e31515;
