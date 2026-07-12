@@ -6,8 +6,11 @@
 [terminal]
 vt = 1
 
+# tuigreet is a TTY app, so it can only use named terminal colors; these
+# approximate the palette families (ultramarine->lightblue,
+# turquoise->lightcyan, eco->lightgreen) per docs/PALETTE.md.
 [default_session]
-command = "sh -c 'command -v tuigreet >/dev/null 2>&1 && exec tuigreet --time --remember --cmd Hyprland || exec agreety --cmd Hyprland'"
+command = "sh -c 'command -v tuigreet >/dev/null 2>&1 && exec tuigreet --time --remember --theme \"container=black;border=lightblue;title=lightcyan;greet=white;prompt=lightblue;input=white;action=lightcyan;button=lightgreen\" --cmd Hyprland || exec agreety --cmd Hyprland'"
 user = "greetd"
 
 # To boot straight into the desktop with no login prompt (kiosk / live feel),

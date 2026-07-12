@@ -1,0 +1,7 @@
+# Edemint system defaults: dark mode is the first-build default; libadwaita
+# and portal-aware apps read color-scheme from here (docs/PALETTE.md).
+# Users override per-account via normal settings.
+[org/gnome/desktop/interface]
+color-scheme='prefer-dark'
+font-name='Noto Sans 11'
+monospace-font-name='JetBrains Mono 11'

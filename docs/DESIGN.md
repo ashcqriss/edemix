@@ -80,10 +80,12 @@ The palette diagram is read left to right. The original naming contains two
   bright blue beside bright green — rather than blended gradients or abrupt
   jumps. A component may use a gradient only when its brief explicitly
   approves one.
-- **Backgrounds must work in light and dark mode.** Every background/surface
-  role defines a light and a dark variant, and components must stay readable
-  on both (see the surface-role table in `PALETTE.md`). The first build ships
-  the dark set.
+- **Backgrounds must work in light and dark mode.** Mode switching flips the
+  app/surface background between its dark and light roles and swaps accents
+  between light and dark steps of the same family: light accents on dark
+  backgrounds, dark accents on light backgrounds. Every other element keeps
+  its assigned palette hue in both modes (see the mode table in `PALETTE.md`).
+  The first build ships the dark set.
 - Two simultaneously open applications may create an unavoidable mismatch;
   that does not redefine the internal palette of either app.
 - An application consumes only the subset appropriate to its function. Browser,

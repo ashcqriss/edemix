@@ -18,8 +18,11 @@ not the complete Edemint component system.
 - Flat fills everywhere: the former gradient active window border is now flat
   ultramarine, the placeholder logo lost its gradient, and no shipped surface
   uses a gradient (gradients are forbidden by default per `DESIGN.md`).
-- Light/dark surface-role pairs recorded in `PALETTE.md`; the first build
-  ships the dark set.
+- Light/dark mode doctrine recorded in `PALETTE.md`: mode flips app
+  backgrounds and swaps accents between light and dark steps of the same
+  family; all other elements keep their fixed palette hues. The first build
+  ships the dark set as the OS default (GTK settings, dconf color-scheme for
+  libadwaita/portal apps, and Qt via the gtk3 platform theme).
 - A persistent left pinned-app dock with a lower all-apps search/completer.
 - Palette-styled wofi completer surface (rounded, flat, text placeholders)
   and mako notification surface with a persistent danger style for critical
@@ -35,6 +38,20 @@ not the complete Edemint component system.
 - GRUB theme, Calamares sidebar/slideshow/logo, foot terminal palette, and the
   setup wizard colors aligned to `PALETTE.md` (the pre-palette cyan/green
   placeholder values are gone).
+- OS-wide surfaces beyond the shell: tuigreet login theme (named terminal
+  colors approximating the families), a minimal Calamares `stylesheet.qss`
+  (light installer surface, dark accent steps), swayosd volume/brightness OSD,
+  and fastfetch defaults.
+
+## Known whole-OS gaps
+
+- No Plymouth boot splash is shipped at all (the package is absent); boot
+  shows kernel text until the greeter. A palette Plymouth theme is a separate
+  work item that also touches initramfs and kernel cmdline.
+- TTY apps (tuigreet, whiptail, fastfetch) can only approximate the palette
+  with terminal colors.
+- Firefox, and any app drawing proprietary decorations or theming, follows
+  only the dark-mode preference, not the palette.
 
 ## Deliberately pending
 

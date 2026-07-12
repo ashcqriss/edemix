@@ -131,6 +131,12 @@ systemctl enable edemint-battery-limit.service || true
 systemctl disable NetworkManager-wait-online.service 2>/dev/null || true
 systemctl mask    plymouth-quit-wait.service        2>/dev/null || true
 
+# --- Theme defaults: compile the dconf db so libadwaita/portal apps see
+#     the dark color-scheme default shipped in /etc/dconf/db/local.d/.
+if command -v dconf >/dev/null 2>&1; then
+    dconf update || true
+fi
+
 # --- Locale trim (§optim) — clip ~150MB of unused-locale files ----------
 if command -v localepurge >/dev/null 2>&1; then
     localepurge 2>/dev/null || true

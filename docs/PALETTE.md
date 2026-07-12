@@ -147,23 +147,31 @@ These are implementation defaults, not a declaration that every app must use
 the same blue surface. Final component combinations still require contrast and
 visual testing.
 
-## Light and dark surface roles
+## Light and dark mode
 
-Backgrounds must work in both light and dark mode. The first build ships the
-dark set; the light values are the approved counterparts for the later theme
-work. Both columns use flat fills — gradients are forbidden by default.
+Mode switching changes exactly two things:
 
-| Role | Dark | Light |
+1. **App/surface backgrounds** flip between the dark and light background
+   roles.
+2. **Accents** swap lightness steps within the SAME family: light steps on
+   dark backgrounds, dark steps on light backgrounds.
+
+Every other element keeps its assigned palette hue in both modes — the hue
+families never change, only the background role and the accent step used
+against it. Both modes use flat fills. The first build ships the dark set.
+
+| Role | Dark mode | Light mode |
 |---|---|---|
 | background | `#171E54` | `#FFFFFF` |
-| surface | `#002C89` | `#AEA3FF` |
-| raised / selection | `#2001FF` | `#2001FF` |
 | text | `#FFFFFF` | `#171E54` |
+| ultramarine accent steps | `#6D58FF`, `#AEA3FF` | `#2001FF`, `#002C89` |
+| turquoise accent steps | `#74FBEA`, `#1EE5CE` | `#04A89D`, `#007C76` |
+| green accent steps | `#45E289`, `#88D0A8` | `#21920F`, `#0D6300` |
+| selection / raised | `#2001FF` | `#2001FF` |
 | focus ring | `#74FBEA` | `#2001FF` |
 
-The turquoise focus ring is a dark-mode color only: it is nearly invisible on
-white, so light mode focuses with ultramarine instead. Semantic colors
-(success, warning, danger) are shared across both modes.
+Fixed-hue elements — the dock, the semantic success/warning/danger colors,
+the `panelv` controls, and the `on_off2` motif — are identical in both modes.
 
 ## Rules
 

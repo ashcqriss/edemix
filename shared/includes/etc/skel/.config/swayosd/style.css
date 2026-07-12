@@ -1,0 +1,27 @@
+/* Edemint volume/brightness OSD (swayosd) — dark-mode surface with light
+ * accent steps per docs/PALETTE.md. Flat fills, rounded rectangles. */
+window {
+    background: rgba(23, 30, 84, 0.96);
+    border: 2px solid #74fbea;
+    border-radius: 24px;
+    color: #ffffff;
+}
+
+label {
+    color: #ffffff;
+}
+
+image {
+    color: #aea3ff;
+}
+
+progressbar trough {
+    background-color: #002c89;
+    border-radius: 8px;
+}
+
+progressbar progress {
+    background-color: #6d58ff;
+    background-image: none;
+    border-radius: 8px;
+}

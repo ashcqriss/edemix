@@ -1,0 +1,10 @@
+// Edemint fastfetch defaults. Terminal apps can only reference the ANSI
+// palette; foot maps blue->azure and cyan->turquoise (docs/PALETTE.md).
+{
+    "display": {
+        "color": {
+            "keys": "blue",
+            "title": "cyan"
+        }
+    }
+}

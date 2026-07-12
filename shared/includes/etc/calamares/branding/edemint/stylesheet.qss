@@ -1,0 +1,36 @@
+/* Edemint Calamares stylesheet (auto-loaded from the branding component).
+ * The installer content pane is a light surface, so accents use the DARK
+ * steps of the palette families per docs/PALETTE.md: ultramarine-500
+ * buttons, navy-700 hover/focus. Flat fills only — no gradients.
+ * Kept deliberately minimal: module widgets keep native rendering. */
+
+QPushButton {
+    background-color: #2001ff;
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 18px;
+}
+
+QPushButton:hover, QPushButton:focus {
+    background-color: #002c89;
+    color: #ffffff;
+}
+
+QPushButton:disabled {
+    background-color: #aea3ff;
+    color: #ffffff;
+}
+
+QProgressBar {
+    border: 1px solid #002c89;
+    border-radius: 8px;
+    text-align: center;
+    background-color: #ffffff;
+    color: #171e54;
+}
+
+QProgressBar::chunk {
+    background-color: #2001ff;
+    border-radius: 7px;
+}
