@@ -1,0 +1,37 @@
+#!/bin/sh
+# Edemint power-profile cycler — steps through the profiles reported by
+# power-profiles-daemon and notifies the result. Wired to the battery pill
+# in the status bar and to edemint-quick.
+set -u
+
+if ! command -v powerprofilesctl >/dev/null 2>&1; then
+    notify-send "Edemint" "power-profiles-daemon is not available" 2>/dev/null || true
+    exit 1
+fi
+
+current="$(powerprofilesctl get 2>/dev/null || echo balanced)"
+# `powerprofilesctl list` marks the active profile with '*': lines look like
+# "* performance:" / "  balanced:".
+profiles="$(powerprofilesctl list 2>/dev/null | sed -n 's/^[* ] *\([a-z-]*\):$/\1/p')"
+[ -n "$profiles" ] || profiles="power-saver
+balanced"
+
+next=""
+found=0
+first=""
+for p in $profiles; do
+    [ -z "$first" ] && first="$p"
+    if [ "$found" = 1 ]; then
+        next="$p"
+        break
+    fi
+    [ "$p" = "$current" ] && found=1
+done
+[ -n "$next" ] || next="$first"
+
+if powerprofilesctl set "$next" 2>/dev/null; then
+    notify-send "Edemint" "Power profile: $next" 2>/dev/null || true
+else
+    notify-send "Edemint" "Could not set power profile $next" 2>/dev/null || true
+    exit 1
+fi

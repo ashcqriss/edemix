@@ -1,0 +1,92 @@
+#!/bin/sh
+# Edemint quick settings — the toggles and panels a desktop needs at hand,
+# as a wofi menu. Bound to Super+S in hyprland.conf. Every entry shows its
+# live state where one exists, and every action reports its result as a
+# notification. POSIX sh; missing optional tools degrade to a notification
+# instead of a silent failure.
+set -u
+
+notify() {
+    notify-send "Edemint" "$1" 2>/dev/null || true
+}
+
+night_state()  { pidof wlsunset >/dev/null 2>&1 && echo on || echo off; }
+gaming_state() { edemint-gaming status 2>/dev/null | grep -qi '\bon\b' && echo on || echo off; }
+rec_state()    { pidof wf-recorder >/dev/null 2>&1 && echo recording || echo idle; }
+
+MENU="Night light [$(night_state)]
+Gaming mode [$(gaming_state)]
+Screen recorder [$(rec_state)]
+Screenshot area to clipboard
+Color picker
+Power profile: cycle
+Wi-Fi (nmtui)
+Bluetooth manager
+Sound mixer
+System monitor
+Updates
+Keybind help
+Lock screen"
+
+choice="$(printf '%s\n' "$MENU" | wofi --dmenu --prompt 'Quick settings' \
+    --width 420 --height 500 --insensitive)" || exit 0
+
+case "$choice" in
+    "Night light"*)
+        if pidof wlsunset >/dev/null 2>&1; then
+            pkill wlsunset && notify "Night light off"
+        else
+            # Manual schedule mirrors the session default in hyprland.conf.
+            wlsunset -S 07:00 -s 20:00 -t 3800 >/dev/null 2>&1 &
+            notify "Night light on"
+        fi ;;
+    "Gaming mode"*)
+        if edemint-gaming status 2>/dev/null | grep -qi '\bon\b'; then
+            if edemint-gaming off >/dev/null 2>&1; then
+                notify "Gaming mode off"
+            else
+                notify "Gaming mode: switch failed (authentication?)"
+            fi
+        else
+            if edemint-gaming on >/dev/null 2>&1; then
+                notify "Gaming mode on"
+            else
+                notify "Gaming mode: switch failed (authentication?)"
+            fi
+        fi ;;
+    "Screen recorder"*)
+        if pidof wf-recorder >/dev/null 2>&1; then
+            pkill -INT wf-recorder && notify "Recording saved in ~/Videos"
+        else
+            mkdir -p "$HOME/Videos"
+            wf-recorder -g "$(slurp)" \
+                -f "$HOME/Videos/edemint-$(date +%Y%m%d-%H%M%S).mp4" \
+                >/dev/null 2>&1 &
+            notify "Recording started — open Quick settings again to stop"
+        fi ;;
+    "Screenshot area"*)
+        grim -g "$(slurp)" - | wl-copy && notify "Screenshot copied" ;;
+    "Color picker")
+        if command -v hyprpicker >/dev/null 2>&1; then
+            color="$(hyprpicker -a 2>/dev/null)" && notify "Picked $color (copied)"
+        else
+            notify "hyprpicker is not installed on this image"
+        fi ;;
+    "Power profile"*)
+        edemint-power-profile ;;
+    "Wi-Fi"*)
+        foot -T "Wi-Fi" -e nmtui-connect >/dev/null 2>&1 & ;;
+    "Bluetooth manager")
+        blueman-manager >/dev/null 2>&1 & ;;
+    "Sound mixer")
+        pavucontrol >/dev/null 2>&1 & ;;
+    "System monitor")
+        foot -T "System monitor" -e htop >/dev/null 2>&1 & ;;
+    "Updates")
+        edemint-updates-click >/dev/null 2>&1 & ;;
+    "Keybind help")
+        edemint-keybinds >/dev/null 2>&1 & ;;
+    "Lock screen")
+        hyprlock >/dev/null 2>&1 & ;;
+    *) : ;;
+esac

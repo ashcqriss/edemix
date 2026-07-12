@@ -20,6 +20,9 @@ window#waybar.edemint-status {
 #memory,
 #battery,
 #network,
+#bluetooth,
+#backlight,
+#idle_inhibitor,
 #pulseaudio,
 #tray,
 #custom-ai-privacy,
@@ -43,6 +46,35 @@ window#waybar.edemint-status {
 #network,
 #pulseaudio {
     background: rgba(109, 88, 255, 0.66);
+}
+
+/* Workspace pills: glass at rest, opaque ultramarine when active
+ * (emphasis goes solid), danger red on urgent. */
+#workspaces {
+    background: transparent;
+    margin: 0 2px;
+}
+
+#workspaces button {
+    min-height: 32px;
+    padding: 0 10px;
+    margin: 0 2px;
+    border-radius: 16px;
+    background: rgba(0, 44, 137, 0.62);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.24);
+}
+
+#workspaces button.active {
+    background: #2001ff;
+}
+
+#workspaces button.urgent {
+    background: #e31515;
+}
+
+#idle_inhibitor.activated {
+    color: #74fbea;
 }
 
 #battery.warning {

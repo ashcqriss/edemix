@@ -5,27 +5,40 @@
 
 CHEAT=$(cat <<'EOF'
 ─── Edemint keybinds ───────────────────────────────────────────────
-Super + Return    terminal (foot)
-Super + D         app launcher (wofi)
-Super + E         file manager (thunar)
-Super + Q         close window
-Super + F         fullscreen
-Super + V         toggle floating
-Super + L         lock screen
-Super + ?         this help
-Super + A         AI assistant overlay (if enabled)
-Super + Shift + S screenshot region (hyprshot + swappy)
-Super + Shift + V clipboard history (cliphist)
-Super + 1..4      switch workspace
-Super + Shift 1..4 move window to workspace
-Super + ←↑→↓      move focus
-Super + =/-       cursor zoom in / out
-XF86 Brightness   ±5% (swayosd OSD)
-XF86 Audio        ±5% / mute (swayosd OSD)
+Super + Return       terminal (foot)
+Super + D            app launcher (wofi)
+Super + E            file manager (thunar)
+Super + S            quick settings
+Super + Q            close window
+Super + F            fullscreen
+Super + T            toggle split direction
+Super + V            toggle floating
+Super + G            group windows (tabs); Super+Alt+←→ cycle tabs
+Alt + Tab            cycle windows
+Super + Tab          previous workspace
+Super + `            scratchpad; Super+Shift+` send window there
+Super + L            lock screen
+Super + ?            this help
+Super + A            AI assistant (if enabled)
+Super + 1..9, 0      switch workspace; +Shift moves the window
+Super + ←↑→↓         move focus
+Super + Shift ←↑→↓   move window
+Super + Ctrl ←↑→↓    resize window
+Super + drag         move (left) / resize (right) with the mouse
+Print                screenshot to ~/Pictures
+Super + Print        screenshot area to clipboard
+Super + Shift + S    screenshot area to editor (swappy)
+Super + Shift + R    screen record start/stop
+Super + Shift + C    color picker
+Super + Shift + V    clipboard history (cliphist)
+Super + =/-          cursor zoom in / out
+XF86 Media           play/pause/next/prev (playerctl)
+XF86 Brightness      ±5% (swayosd OSD)
+XF86 Audio           ±5% / mute (swayosd OSD)
 ─── Esc to close ──────────────────────────────────────────────────
 EOF
 )
 
-echo "$CHEAT" | wofi --dmenu --width 720 --height 520 \
+echo "$CHEAT" | wofi --dmenu --width 760 --height 640 \
     --prompt "Edemint keybinds" --insensitive >/dev/null 2>&1 || \
     echo "$CHEAT"

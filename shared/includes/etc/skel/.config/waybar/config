@@ -9,36 +9,67 @@
     "modules-left": [],
     "modules-center": [],
     "modules-right": [
+        "hyprland/workspaces",
         "clock",
         "custom/ai-privacy",
         "custom/cam-mic",
         "custom/updates",
+        "idle_inhibitor",
         "tray",
         "pulseaudio",
+        "backlight",
         "network",
+        "bluetooth",
         "cpu",
         "memory",
         "battery"
     ],
 
+    "hyprland/workspaces": {
+        "format": "{id}",
+        "on-click": "activate",
+        "sort-by-number": true
+    },
     "clock": {
         "format": "{:%a %d %b  %H:%M}",
-        "tooltip-format": "<big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>"
+        "tooltip-format": "<big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>",
+        "on-click": "edemint-quick"
+    },
+    "idle_inhibitor": {
+        "format": "{icon}",
+        "format-icons": { "activated": "STAY", "deactivated": "IDLE" },
+        "tooltip-format-activated": "Idle inhibitor on — screen stays awake",
+        "tooltip-format-deactivated": "Idle inhibitor off — normal idle/lock"
     },
     "cpu": {
-        "format": "CPU {usage}%"
+        "format": "CPU {usage}%",
+        "on-click": "foot -T 'System monitor' -e htop"
     },
     "memory": {
-        "format": "RAM {}%"
+        "format": "RAM {}%",
+        "on-click": "foot -T 'System monitor' -e htop"
     },
     "battery": {
         "format": "BAT {capacity}%",
-        "format-charging": "BAT +{capacity}%"
+        "format-charging": "BAT +{capacity}%",
+        "on-click": "edemint-power-profile"
+    },
+    "backlight": {
+        "format": "LUX {percent}%",
+        "on-scroll-up": "brightnessctl set +5%",
+        "on-scroll-down": "brightnessctl set 5%-"
     },
     "network": {
         "format-wifi": "NET {essid}",
         "format-ethernet": "NET wired",
-        "format-disconnected": "NET off"
+        "format-disconnected": "NET off",
+        "on-click": "foot -T 'Wi-Fi' -e nmtui-connect"
+    },
+    "bluetooth": {
+        "format": "BT {status}",
+        "format-connected": "BT {num_connections}",
+        "format-disabled": "BT off",
+        "on-click": "blueman-manager"
     },
     "pulseaudio": {
         "format": "VOL {volume}%",

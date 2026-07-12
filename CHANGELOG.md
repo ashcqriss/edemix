@@ -4,6 +4,29 @@ All notable changes to Edemint are recorded here.
 
 ## Unreleased
 
+### Added — ripe desktop pass
+- `edemint-quick` — Super+S / clock-click quick-settings menu: night light,
+  gaming mode, screen recorder, screenshot, color picker, power profile,
+  Wi-Fi, Bluetooth, sound, system monitor, updates, lock.
+- `edemint-power-profile` — cycles power-profiles-daemon profiles from the
+  battery pill.
+- Status bar: workspace pills, Bluetooth, backlight (scroll to dim), idle
+  inhibitor; every pill now does something on click.
+- Hyprland: workspaces 1-9/0 with Super+Tab bounce and Super+scroll, mouse
+  move/resize (Super+drag), window groups (tabs), Alt+Tab, scratchpad
+  workspace, keyboard move/resize, media keys, Print-key screenshots,
+  color picker bind.
+- Files app: thumbnails (tumbler + ffmpegthumbnailer), archive
+  extract/compress in the context menu, removable-media handling. GUI text
+  editor (gnome-text-editor) added to the desktop set.
+
+### Fixed — ripe desktop pass
+- The polkit authentication agent never started: Debian ships it under
+  /usr/lib/<triplet>/libexec/, not the hardcoded /usr/lib path. GUI
+  privilege prompts (installing apps, mounting disks) now work.
+- Night light ran with latitude/longitude 0,0 (equatorial sunset times for
+  everyone); replaced with an explicit 07:00-20:00 schedule.
+
 ### Added — mega features
 - `edemint-rollback` — walk the btrfs root back to any snapper snapshot;
   apt now takes pre/post snapshots around every dpkg pass.

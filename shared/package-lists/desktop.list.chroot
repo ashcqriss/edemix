@@ -17,6 +17,14 @@ qt6-gtk-platformtheme
 dbus-user-session
 dconf-cli
 
+# --- ripe-desktop extras: thumbnails, archives-in-Files, removable media,
+#     and a GUI text editor. All in Trixie main on both arches. -----------
+tumbler
+ffmpegthumbnailer
+thunar-archive-plugin
+thunar-volman
+gnome-text-editor
+
 # --- portals (screen sharing, file pickers, Flatpak integration; §8) ---
 # NOTE: xdg-desktop-portal-hyprland is installed best-effort by
 # 0050-extra-desktop.hook.chroot (may not be in Trixie main); the gtk
