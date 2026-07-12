@@ -106,13 +106,16 @@ rules and hardware targets:
   bright blue beside bright green — rather than blended gradients or abrupt
   jumps. A component may use a gradient only when its brief explicitly
   approves one.
-- **App backgrounds are plain black or white.** Dark mode puts app content on
-  black; light mode puts it on white. Mode switching flips that background
-  and swaps accents between light and dark steps of the same family: light
-  accents on black, dark accents on white. Every other element keeps its
+- **App backgrounds are black or white — as conscious values.** Dark mode
+  puts app content on near-black `ink` (`#0C0F1D`); light mode on near-white
+  `paper` (`#F4F6FF`). The raw extremes `#000000`/`#FFFFFF` are deliberately
+  avoided: true black halates text and smears on OLED, true white glares,
+  and both read as unconsidered defaults. Mode switching flips ink/paper and
+  swaps accents between light and dark steps of the same family: light
+  accents on ink, dark accents on paper. Every other element keeps its
   assigned palette hue in both modes (see the mode table in `PALETTE.md`).
   System/shell surfaces — dock, status region, launcher, lock, power — stay
-  palette-led and do not switch to black/white. The first build ships the
+  palette-led and do not switch to ink/paper. The first build ships the
   dark set.
 - Two simultaneously open applications may create an unavoidable mismatch;
   that does not redefine the internal palette of either app.

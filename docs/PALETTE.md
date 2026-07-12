@@ -164,23 +164,33 @@ full-effects-profile enhancement, not a legibility dependency.
 
 ## Light and dark mode
 
-App content backgrounds are plain **black** in dark mode and plain **white**
-in light mode. Mode switching changes exactly two things:
+App content backgrounds are black in dark mode and white in light mode —
+but as **conscious** values, not the raw extremes. Pure `#000000` halates
+light text and smears on OLED; pure `#FFFFFF` glares. The app background
+tokens are therefore a near-black **ink** and a near-white **paper**, each
+carrying the design language's blue cast:
 
-1. **App backgrounds** flip between black and white.
+| Token | Hex | Role |
+|---|---|---|
+| `ink` | `#0C0F1D` | dark-mode app background |
+| `paper` | `#F4F6FF` | light-mode app background |
+
+Mode switching changes exactly two things:
+
+1. **App backgrounds** flip between ink and paper.
 2. **Accents** swap lightness steps within the SAME family: light steps on
-   the black background, dark steps on the white background.
+   ink, dark steps on paper.
 
 Every other element keeps its assigned palette hue in both modes — the hue
 families never change, only the background and the accent step used against
 it. System/shell surfaces (dock, status region, launcher, lock, power) stay
-palette-led in both modes; black/white applies to app content backgrounds.
+palette-led in both modes; ink/paper applies to app content backgrounds.
 Both modes use flat fills. The first build ships the dark set.
 
 | Role | Dark mode | Light mode |
 |---|---|---|
-| app background | `#000000` | `#FFFFFF` |
-| app text | `#FFFFFF` | `#000000` |
+| app background | `#0C0F1D` ink | `#F4F6FF` paper |
+| app text | `#F4F6FF` paper | `#0C0F1D` ink |
 | ultramarine accent steps | `#6D58FF`, `#AEA3FF` | `#2001FF`, `#002C89` |
 | turquoise accent steps | `#74FBEA`, `#1EE5CE` | `#04A89D`, `#007C76` |
 | green accent steps | `#45E289`, `#88D0A8` | `#21920F`, `#0D6300` |

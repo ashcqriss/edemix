@@ -23,7 +23,8 @@ not the complete Edemint component system.
   family; all other elements keep their fixed palette hues. The first build
   ships the dark set as the OS default (GTK settings, dconf color-scheme for
   libadwaita/portal apps, and Qt via the gtk3 platform theme).
-- App content backgrounds are plain black (dark set) / white (light set),
+- App content backgrounds are conscious near-black ink #0C0F1D (dark set)
+  / near-white paper #F4F6FF (light set) — never raw #000000/#FFFFFF —
   applied through GTK3 and GTK4/libadwaita named-color overrides in skel
   `gtk.css` and the foot terminal. The elements on that background keep
   their palette hues: navy-700 header bars / sidebars / cards / popovers,
