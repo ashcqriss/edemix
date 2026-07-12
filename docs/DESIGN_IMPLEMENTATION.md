@@ -23,11 +23,14 @@ not the complete Edemint component system.
   family; all other elements keep their fixed palette hues. The first build
   ships the dark set as the OS default (GTK settings, dconf color-scheme for
   libadwaita/portal apps, and Qt via the gtk3 platform theme).
-- App backgrounds are the navy background role, never plain black: GTK3 and
-  GTK4/libadwaita named-color overrides in skel `gtk.css` recolor app
-  windows, views, header bars, cards, and selection onto the palette
-  (navy-950 background, navy-700 raised surfaces, ultramarine-500 accent).
-  The light counterpart replaces these files when mode switching lands.
+- App content backgrounds are plain black (dark set) / white (light set),
+  applied through GTK3 and GTK4/libadwaita named-color overrides in skel
+  `gtk.css` and the foot terminal. The elements on that background keep
+  their palette hues: navy-700 header bars / sidebars / cards / popovers,
+  ultramarine-500 selection and filled accents, ultramarine-200 accent text,
+  semantic success/warning/danger. Shell surfaces stay palette-led and do
+  not switch to black/white. The light counterpart replaces these files
+  when mode switching lands.
 - A persistent left pinned-app dock with a lower all-apps search/completer.
 - Palette-styled wofi completer surface (rounded, flat, text placeholders)
   and mako notification surface with a persistent danger style for critical
