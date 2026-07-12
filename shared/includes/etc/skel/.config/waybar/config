@@ -2,43 +2,41 @@
     "name": "edemint-status",
     "layer": "top",
     "position": "top",
-    "height": 36,
-    "spacing": 6,
-    "margin-top": 12,
-    "margin-right": 14,
-    "modules-left": [],
+    "height": 30,
+    "spacing": 0,
+    "modules-left": ["custom/logo", "hyprland/workspaces", "hyprland/window"],
     "modules-center": [],
     "modules-right": [
-        "hyprland/workspaces",
-        "clock",
-        "group/alerts",
         "tray",
-        "group/connect",
-        "group/telemetry"
+        "custom/ai-privacy",
+        "custom/cam-mic",
+        "custom/updates",
+        "idle_inhibitor",
+        "pulseaudio",
+        "backlight",
+        "network",
+        "bluetooth",
+        "cpu",
+        "memory",
+        "battery",
+        "clock"
     ],
 
-    "group/alerts": {
-        "orientation": "inherit",
-        "modules": [
-            "custom/ai-privacy",
-            "custom/cam-mic",
-            "custom/updates",
-            "idle_inhibitor"
-        ]
+    "custom/logo": {
+        "format": "E",
+        "tooltip": false,
+        "on-click": "edemint-quick",
+        "on-click-right": "edemint-settings"
     },
-    "group/connect": {
-        "orientation": "inherit",
-        "modules": ["pulseaudio", "backlight", "network", "bluetooth"]
-    },
-    "group/telemetry": {
-        "orientation": "inherit",
-        "modules": ["cpu", "memory", "battery"]
-    },
-
     "hyprland/workspaces": {
         "format": "{id}",
         "on-click": "activate",
         "sort-by-number": true
+    },
+    "hyprland/window": {
+        "format": "{title}",
+        "max-length": 48,
+        "separate-outputs": true
     },
     "clock": {
         "format": "{:%a %d %b  %H:%M}",

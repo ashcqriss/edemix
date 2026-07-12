@@ -1,116 +1,115 @@
 * {
-    font-family: "JetBrains Mono", sans-serif;
-    font-size: 11px;
+    font-family: "Noto Sans", sans-serif;
+    font-size: 12px;
     font-weight: 600;
     min-height: 0;
     border: none;
 }
 
+/* macOS-style menu bar: one continuous slim glass strip, edge to edge.
+ * Left: Edemint mark, workspaces, focused-window title. Right: flat
+ * status items with the clock at the far right. Flat tint + hairline
+ * bottom edge (docs/PALETTE.md glass tokens); windows tile below the
+ * strip, so the blend over the solid wallpaper stays deterministic and
+ * legible without blur. The full effects profile blurs behind it. */
 window#waybar.edemint-status {
-    background: transparent;
+    background: rgba(23, 30, 84, 0.72);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.14);
     color: #ffffff;
 }
 
-/* Edemint glass, refined into clusters: workspaces · clock · alerts ·
- * tray · connectivity · telemetry. Each cluster is one glass capsule
- * (flat tint + hairline edge, docs/PALETTE.md glass tokens); modules
- * inside carry no chrome of their own, separated by hairlines. The bar
- * is anchored over the solid wallpaper, so the blends stay legible
- * without blur; the full effects profile blurs behind it. */
+/* The Edemint mark stands in for the platform menu until the real logo
+ * exists. Left-click: quick settings; right-click: all settings. */
+#custom-logo {
+    padding: 0 14px;
+    font-weight: 800;
+    font-size: 14px;
+    color: #ffffff;
+}
+
+#custom-logo:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+#window {
+    padding: 0 10px;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+/* Flat menu-bar items: no chrome, hover highlight like menu titles. */
 #clock,
-#tray,
-#alerts,
-#connect,
-#telemetry,
-#group-alerts,
-#group-connect,
-#group-telemetry {
-    min-height: 32px;
-    margin: 0 2px;
-    border-radius: 16px;
-    background: rgba(0, 44, 137, 0.62);
-    color: #ffffff;
-    border: 1px solid rgba(255, 255, 255, 0.24);
-}
-
-/* Clock is the primary element: ultramarine, standing slightly apart. */
-#clock {
-    padding: 0 16px;
-    background: rgba(32, 1, 255, 0.58);
-}
-
-/* Connectivity cluster: soft violet tint. */
-#connect,
-#group-connect {
-    background: rgba(109, 88, 255, 0.66);
-}
-
-#tray {
-    padding: 0 11px;
-}
-
-/* Modules inside a cluster: transparent, hairline-separated. */
-#custom-ai-privacy,
-#custom-cam-mic,
-#custom-updates,
-#idle_inhibitor,
-#pulseaudio,
-#backlight,
-#network,
-#bluetooth,
 #cpu,
 #memory,
-#battery {
-    min-height: 32px;
-    padding: 0 10px;
+#battery,
+#network,
+#bluetooth,
+#backlight,
+#idle_inhibitor,
+#pulseaudio,
+#tray,
+#custom-ai-privacy,
+#custom-cam-mic,
+#custom-updates {
+    padding: 0 9px;
     background: transparent;
-    border: none;
-    border-radius: 0;
     color: #ffffff;
 }
 
-#custom-cam-mic,
-#custom-updates,
-#idle_inhibitor,
-#backlight,
-#network,
-#bluetooth,
-#memory,
-#battery {
-    border-left: 1px solid rgba(255, 255, 255, 0.14);
+#clock:hover,
+#cpu:hover,
+#memory:hover,
+#battery:hover,
+#network:hover,
+#bluetooth:hover,
+#backlight:hover,
+#idle_inhibitor:hover,
+#pulseaudio:hover,
+#custom-ai-privacy:hover,
+#custom-updates:hover {
+    background: rgba(255, 255, 255, 0.12);
 }
 
-/* Empty/idle modules collapse instead of leaving stub pills. */
+/* Clock sits at the far right, like macOS. */
+#clock {
+    padding: 0 14px;
+    font-weight: 700;
+}
+
+/* Empty/idle modules collapse instead of leaving dead padding. */
 #custom-cam-mic.idle,
 #custom-updates.none {
     padding: 0;
-    border: none;
     min-height: 0;
 }
 
-/* Workspace pills: glass at rest, opaque ultramarine when active
- * (emphasis goes solid), danger red on urgent. */
+/* Workspaces: flat numbers; the active one is a small solid ultramarine
+ * chip (emphasis goes solid), urgent turns danger red. */
 #workspaces {
     background: transparent;
-    margin: 0 2px;
 }
 
 #workspaces button {
-    min-height: 32px;
-    padding: 0 10px;
-    margin: 0 2px;
-    border-radius: 16px;
-    background: rgba(0, 44, 137, 0.62);
+    padding: 0 8px;
+    margin: 4px 2px;
+    border-radius: 8px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.75);
+}
+
+#workspaces button:hover {
+    background: rgba(255, 255, 255, 0.12);
     color: #ffffff;
-    border: 1px solid rgba(255, 255, 255, 0.24);
 }
 
 #workspaces button.active {
     background: #2001ff;
+    color: #ffffff;
 }
 
 #workspaces button.urgent {
     background: #e31515;
+    color: #ffffff;
 }
 
 /* The idle inhibitor recedes until it actually holds the screen awake. */
@@ -129,13 +128,12 @@ window#waybar.edemint-status {
 #battery.critical {
     color: #ffffff;
     background: #e31515;
-    border-radius: 12px;
-    margin: 3px 2px;
-    border-left: none;
+    border-radius: 8px;
+    margin: 4px 2px;
 }
 
 /* Privacy colors are operational signals, not decoration. Active alerts
- * go fully opaque (emphasis goes solid). */
+ * become small solid chips (emphasis goes solid). */
 #custom-ai-privacy.disabled {
     color: #aea3ff;
 }
@@ -151,8 +149,8 @@ window#waybar.edemint-status {
 #custom-ai-privacy.cloud-active {
     color: #ffffff;
     background: #e31515;
-    border-radius: 12px;
-    margin: 3px 2px;
+    border-radius: 8px;
+    margin: 4px 2px;
 }
 
 #custom-cam-mic.camera,
@@ -160,9 +158,8 @@ window#waybar.edemint-status {
 #custom-cam-mic.both {
     color: #ffffff;
     background: #e31515;
-    border-radius: 12px;
-    margin: 3px 2px;
-    border-left: none;
+    border-radius: 8px;
+    margin: 4px 2px;
 }
 
 #custom-updates.available {
@@ -172,9 +169,8 @@ window#waybar.edemint-status {
 #custom-updates.reboot {
     color: #171e54;
     background: #e9de51;
-    border-radius: 12px;
-    margin: 3px 2px;
-    border-left: none;
+    border-radius: 8px;
+    margin: 4px 2px;
 }
 
 /* Tooltips float over arbitrary content: high-alpha glass. */

@@ -24,7 +24,10 @@ All notable changes to Edemint are recorded here.
   inhibitor; every pill now does something on click. Refined into grouped
   glass clusters (clock | alerts | tray | connectivity | telemetry) with
   hairline separators; idle/empty modules collapse instead of leaving stub
-  pills; active alerts pop fully opaque.
+  pills; active alerts pop fully opaque. Later reworked into a macOS-style
+  full-width menu bar: Edemint mark (click = quick settings, right-click =
+  settings hub), workspaces, and window title left; flat status items with
+  the far-right clock; hover highlights.
 - Hyprland: workspaces 1-9/0 with Super+Tab bounce and Super+scroll, mouse
   move/resize (Super+drag), window groups (tabs), Alt+Tab, scratchpad
   workspace, keyboard move/resize, media keys, Print-key screenshots,

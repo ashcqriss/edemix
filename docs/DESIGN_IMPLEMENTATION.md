@@ -37,7 +37,11 @@ not the complete Edemint component system.
 - Palette-styled wofi completer surface (rounded, flat, text placeholders)
   and mako notification surface with a persistent danger style for critical
   urgency.
-- A separate top-right date/time, connection, and system-status region.
+- The status region is a slim full-width menu-bar strip (macOS-style, per
+  design-owner direction): Edemint mark + workspaces + focused-window title
+  on the left, flat right-aligned status items with the clock at the far
+  right, hover highlights, and solid alert chips. This supersedes the
+  earlier floating top-right pill region from the sketch.
 - Rounded Hyprland window geometry and palette-driven active borders.
 - Lock hierarchy based on `login_screen`: persistent time/date, centered
   username, and compact password input.
