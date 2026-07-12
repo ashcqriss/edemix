@@ -36,6 +36,20 @@ All notable changes to Edemint are recorded here.
   extract/compress in the context menu, removable-media handling. GUI text
   editor (gnome-text-editor) added to the desktop set.
 
+### Fixed — compatibility pass
+- Hyprland shadow syntax targeted 0.45+ (`shadow { enabled }`), but Trixie
+  ships 0.41 where the keyword is `drop_shadow` — every login would flash a
+  config-error banner. All four places (main config, skel effects, both
+  effects writers) now use the 0.41 name, with a note for the backports
+  migration.
+- `bringactivetotop` no longer exists in current Hyprland; the Alt+Tab raise
+  now uses `alterzorder, top`.
+- `edemint-settings` rotate reset display scale to 1.0, silently wiping
+  fractional scaling; it now reads and preserves the current scale, and
+  reports when no output is focused.
+- `edemint-settings` cursor-size called `hyprctl setcursor` with an empty
+  theme name, which could clobber the cursor theme; dconf-only now.
+
 ### Fixed — ripe desktop pass
 - The polkit authentication agent never started: Debian ships it under
   /usr/lib/<triplet>/libexec/, not the hardcoded /usr/lib path. GUI

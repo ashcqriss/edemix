@@ -78,15 +78,14 @@ case "$profile_choice" in
     full)
         cat > "$EFFECTS_CONF" <<'EOF'
 # Written by edemint-setup: full effects profile.
+# drop_shadow is the Trixie (Hyprland 0.41) name; 0.45+ renamed it.
 decoration {
+    drop_shadow = true
     blur {
         enabled = true
         size = 8
         passes = 3
         vibrancy = 0.17
-    }
-    shadow {
-        enabled = true
     }
 }
 animations {

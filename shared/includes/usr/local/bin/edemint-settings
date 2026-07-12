@@ -68,15 +68,14 @@ write_effects() {
     if [ "$1" = full ]; then
         cat > "$EFFECTS_CONF" <<'EOF'
 # Written by edemint-settings: full effects profile.
+# drop_shadow is the Trixie (Hyprland 0.41) name; 0.45+ renamed it.
 decoration {
+    drop_shadow = true
     blur {
         enabled = true
         size = 8
         passes = 3
         vibrancy = 0.17
-    }
-    shadow {
-        enabled = true
     }
 }
 animations {
@@ -121,9 +120,10 @@ appearance_menu() {
                     && notify "Text scale $f" ;;
             "Cursor size: "*)
                 c="${sel#Cursor size: }"
+                # dconf only: hyprctl setcursor needs a theme name, and we
+                # ship no cursor theme yet (deferred artwork pass).
                 dconf write /org/gnome/desktop/interface/cursor-size "$c" 2>/dev/null
-                hyprctl setcursor "" "$c" >/dev/null 2>&1 || true
-                notify "Cursor size $c" ;;
+                notify "Cursor size $c (applies to newly started apps)" ;;
             "Back"|"") return 0 ;;
         esac
     done
@@ -190,12 +190,19 @@ displays_menu() {
                 else
                     notify "No focused output found"
                 fi ;;
-            "Rotate focused output: normal")
-                [ -n "$mon" ] && hyprctl keyword monitor "$mon,preferred,auto,1,transform,0" >/dev/null 2>&1 \
-                    && notify "Output $mon: normal orientation" ;;
-            "Rotate focused output: 90")
-                [ -n "$mon" ] && hyprctl keyword monitor "$mon,preferred,auto,1,transform,1" >/dev/null 2>&1 \
-                    && notify "Output $mon rotated 90 degrees" ;;
+            "Rotate focused output: "*)
+                if [ -n "$mon" ]; then
+                    # Preserve the user's scale instead of resetting to 1.
+                    cur="$(hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused == true).scale' 2>/dev/null | head -n 1)"
+                    [ -n "$cur" ] || cur=1
+                    t=0
+                    [ "${sel#Rotate focused output: }" = "90" ] && t=1
+                    if [ "$t" = 1 ]; then desc="rotated 90 degrees"; else desc="normal orientation"; fi
+                    hyprctl keyword monitor "$mon,preferred,auto,$cur,transform,$t" >/dev/null 2>&1 \
+                        && notify "Output $mon: $desc (scale $cur kept)"
+                else
+                    notify "No focused output found"
+                fi ;;
             "AR glasses status") in_term "AR glasses" "edemint-ar-status" ;;
             "Back"|"") return 0 ;;
         esac
