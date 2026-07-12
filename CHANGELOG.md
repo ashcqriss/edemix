@@ -21,7 +21,10 @@ All notable changes to Edemint are recorded here.
 - `edemint-power-profile` — cycles power-profiles-daemon profiles from the
   battery pill.
 - Status bar: workspace pills, Bluetooth, backlight (scroll to dim), idle
-  inhibitor; every pill now does something on click.
+  inhibitor; every pill now does something on click. Refined into grouped
+  glass clusters (clock | alerts | tray | connectivity | telemetry) with
+  hairline separators; idle/empty modules collapse instead of leaving stub
+  pills; active alerts pop fully opaque.
 - Hyprland: workspaces 1-9/0 with Super+Tab bounce and Super+scroll, mouse
   move/resize (Super+drag), window groups (tabs), Alt+Tab, scratchpad
   workspace, keyboard move/resize, media keys, Print-key screenshots,

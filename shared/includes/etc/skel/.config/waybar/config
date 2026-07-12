@@ -11,19 +11,29 @@
     "modules-right": [
         "hyprland/workspaces",
         "clock",
-        "custom/ai-privacy",
-        "custom/cam-mic",
-        "custom/updates",
-        "idle_inhibitor",
+        "group/alerts",
         "tray",
-        "pulseaudio",
-        "backlight",
-        "network",
-        "bluetooth",
-        "cpu",
-        "memory",
-        "battery"
+        "group/connect",
+        "group/telemetry"
     ],
+
+    "group/alerts": {
+        "orientation": "inherit",
+        "modules": [
+            "custom/ai-privacy",
+            "custom/cam-mic",
+            "custom/updates",
+            "idle_inhibitor"
+        ]
+    },
+    "group/connect": {
+        "orientation": "inherit",
+        "modules": ["pulseaudio", "backlight", "network", "bluetooth"]
+    },
+    "group/telemetry": {
+        "orientation": "inherit",
+        "modules": ["cpu", "memory", "battery"]
+    },
 
     "hyprland/workspaces": {
         "format": "{id}",
