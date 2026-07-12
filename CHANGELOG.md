@@ -5,6 +5,10 @@ All notable changes to Edemint are recorded here.
 ## Unreleased
 
 ### Added — ripe desktop pass
+- Soft accent theme: ultramarine-400 leads, navy shell tints, softer
+  selection - switchable against the default bold theme in
+  edemint-settings > Appearance (swaps Waybar/wofi/Hyprland/GTK-dark
+  variants and relaunches the bars).
 - `edemint-settings` — full settings hub (Super+I, app grid, quick menu):
   Network (Wi-Fi/airplane toggles, nmtui), Bluetooth power, display
   scale/rotate per output, Appearance (working dark/light app-mode switch,

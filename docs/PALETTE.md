@@ -147,6 +147,20 @@ These are implementation defaults, not a declaration that every app must use
 the same blue surface. Final component combinations still require contrast and
 visual testing.
 
+## Accent themes
+
+Two accent themes, both inside the C1 ultramarine family:
+
+| Theme | Lead accent | Character |
+|---|---|---|
+| `bold` (default) | `ultramarine-500 #2001FF` | vivid: electric clock/dock tints, hard selection |
+| `soft` | `ultramarine-400 #6D58FF` | quieter: navy shell tints, softer selection/borders |
+
+`edemint-settings` (Appearance) switches them by swapping the `.bold`/`.soft`
+variants of the Waybar styles, wofi style, Hyprland profile, and the dark GTK
+set. The light GTK set always keeps dark accent steps per the mode rules.
+Semantic colors and the hue hierarchy are identical in both themes.
+
 ## Glass material tokens
 
 Flat translucent tints for the floating control layer (see the material rules

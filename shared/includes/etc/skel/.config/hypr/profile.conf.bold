@@ -1,0 +1,15 @@
+# Edemint Hyprland profile.
+#
+# These first-build values mirror docs/PALETTE.md. They lead with the level-1
+# ultramarine family, use level-2 navy as the anchor, and keep green/turquoise
+# for accents. Hardware- or user-specific profiles may override them.
+
+$ed_background = rgba(171e54ff)
+$ed_surface = rgba(002c89ff)
+$ed_primary = rgba(2001ffff)
+$ed_primary_soft = rgba(6d58ffff)
+$ed_accent = rgba(45e289ff)
+$ed_focus = rgba(74fbeaff)
+
+# Effect overrides (blur, shadows, animations) do not belong here: they live
+# in ~/.config/hypr/effects.conf, which edemint-setup manages.

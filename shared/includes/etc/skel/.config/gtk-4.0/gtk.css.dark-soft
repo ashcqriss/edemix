@@ -1,0 +1,31 @@
+/* Edemint GTK4/libadwaita app colors — dark set, SOFT accent variant (ultramarine-400).
+ * App content sits on near-black ink #0C0F1D (never raw #000000 — see the
+ * conscious ink/paper rule); the elements on it keep palette hues:
+ * navy-700 header bars / sidebars / cards / popovers, ultramarine-500
+ * filled accents and selection, ultramarine-200 accent text (light step on
+ * the black background), semantic success/warning/danger. The theme-switch
+ * work replaces this file with the light counterpart (paper #F4F6FF,
+ * dark accent steps). Flat fills only. */
+@define-color window_bg_color #0c0f1d;
+@define-color window_fg_color #f4f6ff;
+@define-color view_bg_color #0c0f1d;
+@define-color view_fg_color #f4f6ff;
+@define-color dialog_bg_color #0c0f1d;
+@define-color dialog_fg_color #f4f6ff;
+@define-color headerbar_bg_color #002c89;
+@define-color headerbar_fg_color #ffffff;
+@define-color sidebar_bg_color #002c89;
+@define-color sidebar_fg_color #ffffff;
+@define-color card_bg_color #002c89;
+@define-color card_fg_color #ffffff;
+@define-color popover_bg_color #002c89;
+@define-color popover_fg_color #ffffff;
+@define-color accent_bg_color #6d58ff;
+@define-color accent_fg_color #ffffff;
+@define-color accent_color #aea3ff;
+@define-color destructive_bg_color #e31515;
+@define-color destructive_fg_color #ffffff;
+@define-color destructive_color #e31515;
+@define-color success_color #45e289;
+@define-color warning_color #e9de51;
+@define-color error_color #e31515;

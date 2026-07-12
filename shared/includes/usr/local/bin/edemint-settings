@@ -26,6 +26,7 @@ AI_CFG="${XDG_CONFIG_HOME:-$HOME/.config}/edemint-ai/config.toml"
 GTK3_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/gtk-3.0"
 GTK4_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/gtk-4.0"
 EFFECTS_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/effects.conf"
+ACCENT_STATE="${XDG_CONFIG_HOME:-$HOME/.config}/edemint/accent"
 
 # ---- state probes --------------------------------------------------------
 wifi_state()   { nmcli radio wifi 2>/dev/null || echo unknown; }
@@ -39,6 +40,7 @@ ai_state()     { grep -q '^enabled = true' "$AI_CFG" 2>/dev/null && echo enabled
 ai_backend()   { sed -n 's/^backend *= *"\{0,1\}\([a-z]*\).*/\1/p' "$AI_CFG" 2>/dev/null | head -n 1; }
 local_state()  { grep -q '^local_only *= *true' "$AI_CFG" 2>/dev/null && echo on || echo off; }
 power_state()  { powerprofilesctl get 2>/dev/null || echo unavailable; }
+accent_state() { cat "$ACCENT_STATE" 2>/dev/null || echo bold; }
 
 focused_monitor() {
     hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused == true).name' 2>/dev/null | head -n 1
@@ -47,9 +49,15 @@ focused_monitor() {
 # ---- appearance ----------------------------------------------------------
 switch_mode() {
     # $1 = dark|light. Swaps the app-surface colors (ink/paper doctrine);
-    # shell surfaces stay palette-led and are untouched by design.
+    # shell surfaces stay palette-led and are untouched by design. The dark
+    # set honors the chosen accent theme; the light set always uses dark
+    # accent steps per the mode rules.
     for d in "$GTK3_DIR" "$GTK4_DIR"; do
-        [ -f "$d/gtk.css.$1" ] && cp "$d/gtk.css.$1" "$d/gtk.css"
+        src="$d/gtk.css.$1"
+        if [ "$1" = dark ] && [ "$(accent_state)" = soft ] && [ -f "$d/gtk.css.dark-soft" ]; then
+            src="$d/gtk.css.dark-soft"
+        fi
+        [ -f "$src" ] && cp "$src" "$d/gtk.css"
         if [ -f "$d/settings.ini" ]; then
             if [ "$1" = dark ]; then
                 sed -i 's/^gtk-application-prefer-dark-theme=.*/gtk-application-prefer-dark-theme=1/' "$d/settings.ini"
@@ -60,6 +68,34 @@ switch_mode() {
     done
     dconf write /org/gnome/desktop/interface/color-scheme "'prefer-$1'" 2>/dev/null || true
     notify "App color mode: $1. Newly started apps use it now; restart open apps to apply."
+}
+
+switch_accent() {
+    # $1 = bold|soft. Bold leads with ultramarine-500; soft leads with
+    # ultramarine-400 and quiets the vivid shell tints. Both stay inside
+    # the C1 family (docs/PALETTE.md).
+    a="$1"
+    mkdir -p "$(dirname "$ACCENT_STATE")"
+    printf '%s\n' "$a" > "$ACCENT_STATE"
+    wbdir="${XDG_CONFIG_HOME:-$HOME/.config}/waybar"
+    for f in "$wbdir/style.css" "$wbdir/style-dock.css" \
+             "${XDG_CONFIG_HOME:-$HOME/.config}/wofi/style.css" \
+             "${XDG_CONFIG_HOME:-$HOME/.config}/hypr/profile.conf"; do
+        [ -f "$f.$a" ] && cp "$f.$a" "$f"
+    done
+    if [ "$(mode_state)" = dark ]; then
+        for d in "$GTK3_DIR" "$GTK4_DIR"; do
+            src="$d/gtk.css.dark"
+            [ "$a" = soft ] && [ -f "$d/gtk.css.dark-soft" ] && src="$d/gtk.css.dark-soft"
+            [ -f "$src" ] && cp "$src" "$d/gtk.css"
+        done
+    fi
+    hyprctl reload >/dev/null 2>&1 || true
+    # Waybar only reads CSS at startup; relaunch both bars.
+    pkill -x waybar 2>/dev/null
+    hyprctl dispatch exec "waybar -c ~/.config/waybar/config -s ~/.config/waybar/style.css" >/dev/null 2>&1 || true
+    hyprctl dispatch exec "waybar -c ~/.config/waybar/config-dock -s ~/.config/waybar/style-dock.css" >/dev/null 2>&1 || true
+    notify "Accent theme: $a"
 }
 
 write_effects() {
@@ -97,6 +133,7 @@ appearance_menu() {
     while true; do
         sel="$(printf '%s\n' \
             "App color mode [$(mode_state)] - switch" \
+            "Accent theme [$(accent_state)] - switch" \
             "Effects profile [$(effects_state)] - switch" \
             "Night light [$(night_state)] - toggle" \
             "Text scale: 1.0" "Text scale: 1.15" "Text scale: 1.3" \
@@ -105,6 +142,8 @@ appearance_menu() {
         case "$sel" in
             "App color mode [dark]"*)  switch_mode light ;;
             "App color mode [light]"*) switch_mode dark ;;
+            "Accent theme [bold]"*)    switch_accent soft ;;
+            "Accent theme ["*)         switch_accent bold ;;
             "Effects profile [full]"*)      write_effects low ;;
             "Effects profile [low-power]"*) write_effects full ;;
             "Night light"*)
