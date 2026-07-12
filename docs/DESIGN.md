@@ -61,6 +61,32 @@ The palette diagram is read left to right. The original naming contains two
 | C7 | seventh | neon blue-green / turquoise | 4 | Third-level supporting family. |
 | C8a | last | azure + ultramarine | 2 | Core UI and design-language colors. |
 
+## Material: Edemint glass
+
+The floating control layer uses a liquid-glass material adapted to Edemint's
+rules and hardware targets:
+
+- **Control layer only.** Glass applies to the dock, status region, launcher,
+  notifications, OSD, tooltips, and full-screen overlays (power, lock input).
+  App content stays opaque black/white — glass never carries content.
+- **Flat glass.** A glass surface is a flat translucent palette tint plus a
+  single hairline edge (`rgba(255,255,255,0.24)`). The no-gradient rule
+  applies to materials too: no simulated sheen, no gradient highlights.
+- **Lensing is compositor blur** and exists only in the full effects profile
+  (`~/.config/hypr/effects.conf` adds blur + layer rules). The low-power
+  profile keeps the same tints without blur: surfaces anchored over the
+  solid wallpaper blend deterministically, and surfaces floating over app
+  content use >= 0.80 alpha so text stays legible unblurred. Low-power is
+  also the reduced-transparency accessibility answer.
+- **Emphasis goes opaque.** Hover/active states, selection, primary actions
+  (the Apps pill), and every semantic or critical surface (danger pills,
+  critical notifications, shutdown) stay fully solid. Tint prominence is
+  reserved for them.
+- **No glass on glass.** One glass layer per screen region; a glass surface
+  never floats above another glass surface.
+- **Legibility floor.** White text on any glass blend must hold >= 4.5:1
+  against the worst-case backdrop; raise the alpha before adding new colors.
+
 ## Importance pyramid
 
 | Tier | Use | Families |

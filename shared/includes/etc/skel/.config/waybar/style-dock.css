@@ -6,11 +6,14 @@
     border: none;
 }
 
-/* Text remains temporary until the production icon theme exists. */
+/* Text remains temporary until the production icon theme exists.
+ * Edemint glass: flat translucent tint + hairline edge; anchored over the
+ * solid wallpaper so it reads without blur. Hover and primary actions stay
+ * opaque (emphasis goes solid — docs/DESIGN.md material rules). */
 window#waybar.edemint-dock {
-    background: rgba(32, 1, 255, 0.92);
+    background: rgba(32, 1, 255, 0.58);
     color: #ffffff;
-    border: 1px solid rgba(116, 251, 234, 0.34);
+    border: 1px solid rgba(255, 255, 255, 0.26);
     border-radius: 28px;
 }
 
@@ -25,7 +28,7 @@ window#waybar.edemint-dock {
     margin: 4px 10px;
     padding: 0;
     border-radius: 18px;
-    background: #002c89;
+    background: rgba(0, 44, 137, 0.66);
     color: #ffffff;
 }
 

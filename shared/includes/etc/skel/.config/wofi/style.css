@@ -1,11 +1,13 @@
 /* Edemint all-apps completer — flat palette surfaces (docs/PALETTE.md):
  * navy-950 body, navy-700 input, ultramarine selection, turquoise focus
  * border. Rounded rectangles are the default shape language; no gradients. */
+/* Floating glass: >= 0.80 alpha so entries stay legible over any app even
+ * without blur; the full effects profile blurs behind it. */
 window {
     font-family: "Noto Sans", sans-serif;
     font-size: 14px;
-    background-color: #171e54;
-    border: 2px solid #74fbea;
+    background-color: rgba(23, 30, 84, 0.84);
+    border: 2px solid rgba(116, 251, 234, 0.60);
     border-radius: 24px;
     color: #ffffff;
 }
@@ -18,7 +20,7 @@ window {
     padding: 8px 16px;
     border: none;
     border-radius: 18px;
-    background-color: #002c89;
+    background-color: rgba(0, 44, 137, 0.72);
     color: #ffffff;
 }
 

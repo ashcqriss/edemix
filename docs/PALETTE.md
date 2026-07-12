@@ -147,6 +147,21 @@ These are implementation defaults, not a declaration that every app must use
 the same blue surface. Final component combinations still require contrast and
 visual testing.
 
+## Glass material tokens
+
+Flat translucent tints for the floating control layer (see the material rules
+in `DESIGN.md`). Alphas are chosen so text survives WITHOUT blur; blur is a
+full-effects-profile enhancement, not a legibility dependency.
+
+```css
+--ed-glass-primary: rgba(32, 1, 255, 0.58);   /* dock body, clock */
+--ed-glass-anchor: rgba(0, 44, 137, 0.62);    /* status pills, dock buttons */
+--ed-glass-soft: rgba(109, 88, 255, 0.66);    /* secondary pills */
+--ed-glass-floating: rgba(23, 30, 84, 0.84);  /* launcher, notifications, OSD */
+--ed-glass-overlay: rgba(23, 30, 84, 0.80);   /* full-screen scrims */
+--ed-glass-edge: rgba(255, 255, 255, 0.24);   /* hairline edge, no gradients */
+```
+
 ## Light and dark mode
 
 App content backgrounds are plain **black** in dark mode and plain **white**

@@ -11,6 +11,10 @@ window#waybar.edemint-status {
     color: #ffffff;
 }
 
+/* Edemint glass: flat translucent tints + one hairline edge (no gradients,
+ * no sheen). The bar is anchored over the solid wallpaper, so these blends
+ * stay deterministic and legible even without compositor blur; the full
+ * effects profile adds blur behind them (docs/DESIGN.md material rules). */
 #clock,
 #cpu,
 #memory,
@@ -25,20 +29,20 @@ window#waybar.edemint-status {
     margin: 0 2px;
     padding: 0 11px;
     border-radius: 16px;
-    background: rgba(0, 44, 137, 0.94);
+    background: rgba(0, 44, 137, 0.62);
     color: #ffffff;
-    border: 1px solid rgba(116, 251, 234, 0.28);
+    border: 1px solid rgba(255, 255, 255, 0.24);
 }
 
 #clock {
     padding: 0 16px;
-    background: rgba(32, 1, 255, 0.94);
+    background: rgba(32, 1, 255, 0.58);
     color: #ffffff;
 }
 
 #network,
 #pulseaudio {
-    background: rgba(109, 88, 255, 0.96);
+    background: rgba(109, 88, 255, 0.66);
 }
 
 #battery.warning {
@@ -87,9 +91,10 @@ window#waybar.edemint-status {
     border-color: #e9de51;
 }
 
+/* Tooltips float over arbitrary content: high-alpha glass. */
 tooltip {
-    background: #171e54;
+    background: rgba(23, 30, 84, 0.92);
     color: #ffffff;
-    border: 1px solid #74fbea;
+    border: 1px solid rgba(255, 255, 255, 0.24);
     border-radius: 12px;
 }

@@ -4,8 +4,10 @@
     background-image: none;
 }
 
+/* Full-screen glass scrim; the action buttons on it stay opaque (emphasis
+ * goes solid — docs/DESIGN.md material rules). */
 window {
-    background-color: rgba(23, 30, 84, 0.94);
+    background-color: rgba(23, 30, 84, 0.80);
 }
 
 button {

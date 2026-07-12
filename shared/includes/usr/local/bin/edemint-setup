@@ -81,6 +81,9 @@ case "$profile_choice" in
 decoration {
     blur {
         enabled = true
+        size = 8
+        passes = 3
+        vibrancy = 0.17
     }
     shadow {
         enabled = true
@@ -89,6 +92,10 @@ decoration {
 animations {
     enabled = true
 }
+# Lensing: blur behind the glass control layer (dock, status, launcher,
+# notifications, OSD, power overlay). See docs/DESIGN.md material rules.
+layerrule = blur, ^(waybar|wofi|notifications|swayosd|logout_dialog)$
+layerrule = ignorezero, ^(waybar|wofi|notifications|swayosd|logout_dialog)$
 EOF
         hyprctl reload >/dev/null 2>&1 || true
         ;;

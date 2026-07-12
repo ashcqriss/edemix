@@ -1,9 +1,10 @@
-# Edemint notifications (mako) — first-build palette surfaces from
-# docs/PALETTE.md. Flat fills, rounded rectangles, no animations.
-# Critical notifications keep their text and stay on screen — state is never
-# communicated by color alone.
+# Edemint notifications (mako) — glass surface from docs/PALETTE.md
+# (floating tint at 0.84 alpha: legible without blur; the full effects
+# profile blurs behind it). Flat fills, rounded rectangles, no animations.
+# Critical notifications go fully opaque — emphasis goes solid, and state is
+# never communicated by color alone.
 font=Noto Sans 11
-background-color=#171E54
+background-color=#171E54D6
 text-color=#FFFFFF
 border-color=#74FBEA
 border-size=2

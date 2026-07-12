@@ -43,6 +43,13 @@ not the complete Edemint component system.
 - Low-power defaults with blur, shadows, and animations disabled. The "full"
   effects profile is now functional: `edemint-setup` writes
   `~/.config/hypr/effects.conf`, sourced after the low-power defaults.
+- Edemint glass material on the control layer (material rules in
+  `DESIGN.md`, tokens in `PALETTE.md`): translucent flat tints with hairline
+  edges on the dock, status pills, tooltips, launcher, notifications, OSD,
+  power scrim, and lock input. Emphasis, hover, selection, and critical
+  surfaces stay opaque. The full effects profile adds compositor blur
+  behind these layers (lensing); alphas are tuned so everything stays
+  legible without it.
 - GRUB theme, Calamares sidebar/slideshow/logo, foot terminal palette, and the
   setup wizard colors aligned to `PALETTE.md` (the pre-palette cyan/green
   placeholder values are gone).
