@@ -1,0 +1,321 @@
+#!/bin/sh
+# Edemint settings — the OS settings hub for the first-build shell.
+# A hierarchical wofi menu over real backends: NetworkManager, bluez,
+# hyprctl, wireplumber, power-profiles-daemon, dconf, and the edemint-*
+# helpers. Every toggle shows its live state and reports the result as a
+# notification. Wayland-session tool (wofi); terminal tasks open in foot.
+# The production GUI settings app belongs to edemint-shell — this hub is
+# the complete interim implementation, not a mockup.
+set -u
+
+notify() {
+    notify-send "Edemint settings" "$1" 2>/dev/null || true
+}
+
+menu() {
+    wofi --dmenu --prompt "$1" --width 480 --height 520 --insensitive
+}
+
+# Open a command in a terminal and keep the output readable.
+in_term() {
+    foot -T "$1" -e sh -c "$2; printf '\n[enter to close] '; read -r _" \
+        >/dev/null 2>&1 &
+}
+
+AI_CFG="${XDG_CONFIG_HOME:-$HOME/.config}/edemint-ai/config.toml"
+GTK3_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/gtk-3.0"
+GTK4_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/gtk-4.0"
+EFFECTS_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/effects.conf"
+
+# ---- state probes --------------------------------------------------------
+wifi_state()   { nmcli radio wifi 2>/dev/null || echo unknown; }
+net_state()    { nmcli networking 2>/dev/null || echo unknown; }
+bt_state()     { bluetoothctl show 2>/dev/null | grep -q "Powered: yes" && echo on || echo off; }
+night_state()  { pidof wlsunset >/dev/null 2>&1 && echo on || echo off; }
+mode_state()   { grep -q '^gtk-application-prefer-dark-theme=1' "$GTK4_DIR/settings.ini" 2>/dev/null && echo dark || echo light; }
+effects_state(){ grep -q '^decoration' "$EFFECTS_CONF" 2>/dev/null && echo full || echo low-power; }
+gaming_state() { edemint-gaming status 2>/dev/null | grep -qi '\bon\b' && echo on || echo off; }
+ai_state()     { grep -q '^enabled = true' "$AI_CFG" 2>/dev/null && echo enabled || echo disabled; }
+ai_backend()   { sed -n 's/^backend *= *"\{0,1\}\([a-z]*\).*/\1/p' "$AI_CFG" 2>/dev/null | head -n 1; }
+local_state()  { grep -q '^local_only *= *true' "$AI_CFG" 2>/dev/null && echo on || echo off; }
+power_state()  { powerprofilesctl get 2>/dev/null || echo unavailable; }
+
+focused_monitor() {
+    hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused == true).name' 2>/dev/null | head -n 1
+}
+
+# ---- appearance ----------------------------------------------------------
+switch_mode() {
+    # $1 = dark|light. Swaps the app-surface colors (ink/paper doctrine);
+    # shell surfaces stay palette-led and are untouched by design.
+    for d in "$GTK3_DIR" "$GTK4_DIR"; do
+        [ -f "$d/gtk.css.$1" ] && cp "$d/gtk.css.$1" "$d/gtk.css"
+        if [ -f "$d/settings.ini" ]; then
+            if [ "$1" = dark ]; then
+                sed -i 's/^gtk-application-prefer-dark-theme=.*/gtk-application-prefer-dark-theme=1/' "$d/settings.ini"
+            else
+                sed -i 's/^gtk-application-prefer-dark-theme=.*/gtk-application-prefer-dark-theme=0/' "$d/settings.ini"
+            fi
+        fi
+    done
+    dconf write /org/gnome/desktop/interface/color-scheme "'prefer-$1'" 2>/dev/null || true
+    notify "App color mode: $1. Newly started apps use it now; restart open apps to apply."
+}
+
+write_effects() {
+    # $1 = full|low
+    mkdir -p "$(dirname "$EFFECTS_CONF")"
+    if [ "$1" = full ]; then
+        cat > "$EFFECTS_CONF" <<'EOF'
+# Written by edemint-settings: full effects profile.
+decoration {
+    blur {
+        enabled = true
+        size = 8
+        passes = 3
+        vibrancy = 0.17
+    }
+    shadow {
+        enabled = true
+    }
+}
+animations {
+    enabled = true
+}
+# Lensing: blur behind the glass control layer (docs/DESIGN.md).
+layerrule = blur, ^(waybar|wofi|notifications|swayosd|logout_dialog)$
+layerrule = ignorezero, ^(waybar|wofi|notifications|swayosd|logout_dialog)$
+EOF
+    else
+        printf '%s\n' '# Written by edemint-settings: low-power profile (effects off).' \
+            > "$EFFECTS_CONF"
+    fi
+    hyprctl reload >/dev/null 2>&1 || true
+    notify "Effects profile: $1"
+}
+
+appearance_menu() {
+    while true; do
+        sel="$(printf '%s\n' \
+            "App color mode [$(mode_state)] - switch" \
+            "Effects profile [$(effects_state)] - switch" \
+            "Night light [$(night_state)] - toggle" \
+            "Text scale: 1.0" "Text scale: 1.15" "Text scale: 1.3" \
+            "Cursor size: 24" "Cursor size: 32" "Cursor size: 48" \
+            "Back" | menu "Appearance")" || return 0
+        case "$sel" in
+            "App color mode [dark]"*)  switch_mode light ;;
+            "App color mode [light]"*) switch_mode dark ;;
+            "Effects profile [full]"*)      write_effects low ;;
+            "Effects profile [low-power]"*) write_effects full ;;
+            "Night light"*)
+                if pidof wlsunset >/dev/null 2>&1; then
+                    pkill wlsunset && notify "Night light off"
+                else
+                    wlsunset -S 07:00 -s 20:00 -t 3800 >/dev/null 2>&1 &
+                    notify "Night light on"
+                fi ;;
+            "Text scale: "*)
+                f="${sel#Text scale: }"
+                dconf write /org/gnome/desktop/interface/text-scaling-factor "$f" 2>/dev/null \
+                    && notify "Text scale $f" ;;
+            "Cursor size: "*)
+                c="${sel#Cursor size: }"
+                dconf write /org/gnome/desktop/interface/cursor-size "$c" 2>/dev/null
+                hyprctl setcursor "" "$c" >/dev/null 2>&1 || true
+                notify "Cursor size $c" ;;
+            "Back"|"") return 0 ;;
+        esac
+    done
+}
+
+# ---- network / bluetooth -------------------------------------------------
+network_menu() {
+    while true; do
+        sel="$(printf '%s\n' \
+            "Wi-Fi radio [$(wifi_state)] - toggle" \
+            "Networking [$(net_state)] - toggle (airplane mode)" \
+            "Pick a Wi-Fi network (nmtui)" \
+            "Edit connections (nmtui)" \
+            "Connection status" \
+            "Back" | menu "Network")" || return 0
+        case "$sel" in
+            "Wi-Fi radio [enabled]"*)  nmcli radio wifi off && notify "Wi-Fi off" ;;
+            "Wi-Fi radio ["*)          nmcli radio wifi on && notify "Wi-Fi on" ;;
+            "Networking [enabled]"*)   nmcli networking off && notify "Airplane mode on" ;;
+            "Networking ["*)           nmcli networking on && notify "Airplane mode off" ;;
+            "Pick a Wi-Fi"*)           in_term "Wi-Fi" "nmtui-connect" ;;
+            "Edit connections"*)       in_term "Connections" "nmtui-edit" ;;
+            "Connection status")       in_term "Network status" "nmcli general status; echo; nmcli connection show --active; echo; resolvectl status | head -20" ;;
+            "Back"|"") return 0 ;;
+        esac
+    done
+}
+
+bluetooth_menu() {
+    while true; do
+        sel="$(printf '%s\n' \
+            "Bluetooth power [$(bt_state)] - toggle" \
+            "Open Bluetooth manager (blueman)" \
+            "Paired devices" \
+            "Back" | menu "Bluetooth")" || return 0
+        case "$sel" in
+            "Bluetooth power [on]"*)  bluetoothctl power off >/dev/null 2>&1 && notify "Bluetooth off" ;;
+            "Bluetooth power ["*)     bluetoothctl power on >/dev/null 2>&1 && notify "Bluetooth on" ;;
+            "Open Bluetooth"*)        blueman-manager >/dev/null 2>&1 & ;;
+            "Paired devices")         in_term "Bluetooth" "bluetoothctl devices Paired 2>/dev/null || bluetoothctl paired-devices" ;;
+            "Back"|"") return 0 ;;
+        esac
+    done
+}
+
+# ---- displays --------------------------------------------------------------
+displays_menu() {
+    while true; do
+        sel="$(printf '%s\n' \
+            "List outputs and modes" \
+            "Scale focused output: 1.0" "Scale focused output: 1.25" \
+            "Scale focused output: 1.5" "Scale focused output: 2.0" \
+            "Rotate focused output: normal" "Rotate focused output: 90" \
+            "AR glasses status" \
+            "Back" | menu "Displays")" || return 0
+        mon="$(focused_monitor)"
+        case "$sel" in
+            "List outputs"*) in_term "Displays" "hyprctl monitors; echo; echo 'kanshi profiles: ~/.config/kanshi/config'" ;;
+            "Scale focused output: "*)
+                s="${sel#Scale focused output: }"
+                if [ -n "$mon" ]; then
+                    hyprctl keyword monitor "$mon,preferred,auto,$s" >/dev/null 2>&1 \
+                        && notify "Output $mon scaled to $s (kanshi may reapply its profile on hotplug)"
+                else
+                    notify "No focused output found"
+                fi ;;
+            "Rotate focused output: normal")
+                [ -n "$mon" ] && hyprctl keyword monitor "$mon,preferred,auto,1,transform,0" >/dev/null 2>&1 \
+                    && notify "Output $mon: normal orientation" ;;
+            "Rotate focused output: 90")
+                [ -n "$mon" ] && hyprctl keyword monitor "$mon,preferred,auto,1,transform,1" >/dev/null 2>&1 \
+                    && notify "Output $mon rotated 90 degrees" ;;
+            "AR glasses status") in_term "AR glasses" "edemint-ar-status" ;;
+            "Back"|"") return 0 ;;
+        esac
+    done
+}
+
+# ---- sound -----------------------------------------------------------------
+sound_menu() {
+    while true; do
+        sel="$(printf '%s\n' \
+            "Output mute - toggle" \
+            "Volume 25%" "Volume 50%" "Volume 75%" "Volume 100%" \
+            "Microphone mute - toggle" \
+            "Open mixer (pavucontrol)" \
+            "Back" | menu "Sound")" || return 0
+        case "$sel" in
+            "Output mute"*)     wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle 2>/dev/null && notify "Output mute toggled" ;;
+            "Volume "*)
+                v="${sel#Volume }"
+                wpctl set-volume @DEFAULT_AUDIO_SINK@ "$v" 2>/dev/null && notify "Volume $v" ;;
+            "Microphone mute"*) wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle 2>/dev/null && notify "Microphone mute toggled" ;;
+            "Open mixer"*)      pavucontrol >/dev/null 2>&1 & ;;
+            "Back"|"") return 0 ;;
+        esac
+    done
+}
+
+# ---- power -----------------------------------------------------------------
+power_menu() {
+    while true; do
+        sel="$(printf '%s\n' \
+            "Power profile [$(power_state)] - pick" \
+            "Battery charge limit: 80%" \
+            "Battery charge limit: reset (100%)" \
+            "Battery limit status" \
+            "Idle and lock policy" \
+            "Back" | menu "Power & battery")" || return 0
+        case "$sel" in
+            "Power profile"*)
+                p="$(powerprofilesctl list 2>/dev/null | sed -n 's/^[* ] *\([a-z-]*\):$/\1/p' | menu "Pick profile")" || continue
+                [ -n "$p" ] && powerprofilesctl set "$p" 2>/dev/null && notify "Power profile: $p" ;;
+            "Battery charge limit: 80%")  in_term "Battery limit" "edemint-battery-limit set 80" ;;
+            "Battery charge limit: reset"*) in_term "Battery limit" "edemint-battery-limit reset" ;;
+            "Battery limit status")       in_term "Battery limit" "edemint-battery-limit show" ;;
+            "Idle and lock policy")
+                notify "Dim at 4 min, screen off at 6, lock at 7, lock before sleep. Edit ~/.config/hypr/hypridle.conf" ;;
+            "Back"|"") return 0 ;;
+        esac
+    done
+}
+
+# ---- privacy & AI ----------------------------------------------------------
+privacy_menu() {
+    while true; do
+        sel="$(printf '%s\n' \
+            "AI assistant [$(ai_state)] - toggle" \
+            "AI backend [$(ai_backend)] - pick" \
+            "Local-only mode [$(local_state)] - toggle (blocks cloud)" \
+            "Camera / microphone status" \
+            "Back" | menu "Privacy & AI")" || return 0
+        case "$sel" in
+            "AI assistant [enabled]"*)  edemint-ai disable >/dev/null 2>&1; notify "AI assistant disabled" ;;
+            "AI assistant ["*)          in_term "Edemint AI" "edemint-ai enable" ;;
+            "AI backend"*)
+                b="$(printf '%s\n' claude openai gemini ollama | menu "Pick backend")" || continue
+                [ -n "$b" ] && in_term "Edemint AI" "edemint-ai backend $b" ;;
+            "Local-only mode [on]"*)
+                sed -i 's/^local_only *=.*/local_only = false/' "$AI_CFG" 2>/dev/null \
+                    && notify "Local-only off - cloud backends allowed" ;;
+            "Local-only mode ["*)
+                sed -i 's/^local_only *=.*/local_only = true/' "$AI_CFG" 2>/dev/null \
+                    && notify "Local-only on - every cloud call refused" ;;
+            "Camera / microphone status")
+                notify "$(edemint-privacy-status 2>/dev/null | jq -r '.tooltip' 2>/dev/null || echo 'status unavailable')" ;;
+            "Back"|"") return 0 ;;
+        esac
+    done
+}
+
+# ---- system ----------------------------------------------------------------
+system_menu() {
+    while true; do
+        sel="$(printf '%s\n' \
+            "Check updates now" \
+            "Snapshots and rollback" \
+            "System health report (doctor)" \
+            "Gaming mode [$(gaming_state)] - toggle" \
+            "NVIDIA driver opt-in" \
+            "Config sync status" \
+            "About this system" \
+            "Back" | menu "System")" || return 0
+        case "$sel" in
+            "Check updates now")     edemint-updates-click >/dev/null 2>&1 & ;;
+            "Snapshots and rollback") in_term "Rollback" "edemint-rollback list" ;;
+            "System health"*)        in_term "Doctor" "edemint-doctor" ;;
+            "Gaming mode [on]"*)     in_term "Gaming mode" "edemint-gaming off" ;;
+            "Gaming mode ["*)        in_term "Gaming mode" "edemint-gaming on" ;;
+            "NVIDIA driver"*)        in_term "NVIDIA" "edemint-nvidia-toggle" ;;
+            "Config sync status")    in_term "Sync" "edemint-sync status" ;;
+            "About this system")     in_term "About" "fastfetch 2>/dev/null || (. /etc/os-release && echo \"\$PRETTY_NAME\" && uname -rm)" ;;
+            "Back"|"") return 0 ;;
+        esac
+    done
+}
+
+# ---- main ------------------------------------------------------------------
+while true; do
+    top="$(printf '%s\n' \
+        "Network" "Bluetooth" "Displays" "Appearance" "Sound" \
+        "Power & battery" "Privacy & AI" "System" "Quit" \
+        | menu "Settings")" || exit 0
+    case "$top" in
+        "Network")        network_menu ;;
+        "Bluetooth")      bluetooth_menu ;;
+        "Displays")       displays_menu ;;
+        "Appearance")     appearance_menu ;;
+        "Sound")          sound_menu ;;
+        "Power & battery") power_menu ;;
+        "Privacy & AI")   privacy_menu ;;
+        "System")         system_menu ;;
+        "Quit"|"") exit 0 ;;
+    esac
+done

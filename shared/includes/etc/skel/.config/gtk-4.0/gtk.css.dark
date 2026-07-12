@@ -3,8 +3,9 @@
  * conscious ink/paper rule); the elements on it keep palette hues:
  * navy-700 header bars / sidebars / cards / popovers, ultramarine-500
  * filled accents and selection, ultramarine-200 accent text (light step on
- * the black background), semantic success/warning/danger. edemint-settings (Appearance)
- * copies gtk.css.dark / gtk.css.light over this file to switch modes. Flat fills only. */
+ * the black background), semantic success/warning/danger. The theme-switch
+ * work replaces this file with the light counterpart (paper #F4F6FF,
+ * dark accent steps). Flat fills only. */
 @define-color window_bg_color #0c0f1d;
 @define-color window_fg_color #f4f6ff;
 @define-color view_bg_color #0c0f1d;

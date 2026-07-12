@@ -74,6 +74,27 @@ PRODUCTION_REMEDIATION_PLAN.md tracks what release-readiness still needs.
   (edemint-gaming, gmr alias).
 - Containers: podman + distrobox.
 
+## Settings
+
+- edemint-settings (Super+I, in the app grid and quick menu): hierarchical
+  settings hub over real backends with live state on every entry.
+  - Network: Wi-Fi radio and airplane-mode toggles, nmtui picker/editor,
+    connection + DNS status.
+  - Bluetooth: power toggle, paired devices, blueman manager.
+  - Displays: output list, per-output scale (1.0-2.0) and rotation via
+    hyprctl, AR-glasses status.
+  - Appearance: dark/light app-mode switch (ink/paper doctrine; swaps
+    gtk.css + settings.ini + dconf color-scheme), effects profile
+    (low-power/full incl. glass blur), night light, text scale, cursor
+    size.
+  - Sound: output/mic mute, volume presets (wpctl), mixer.
+  - Power: profile picker, battery charge limit (80%/reset/status), idle
+    policy summary.
+  - Privacy & AI: assistant enable/disable, backend picker, local-only
+    egress lock, camera/mic status.
+  - System: updates, snapshots/rollback, health report, gaming mode,
+    NVIDIA opt-in, config sync, about.
+
 ## Edemint helper suite
 
 - edemint-rollback — btrfs rollback to any snapper snapshot; apt takes

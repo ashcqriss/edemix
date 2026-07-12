@@ -9,6 +9,7 @@ Super + Return       terminal (foot)
 Super + D            app launcher (wofi)
 Super + E            file manager (thunar)
 Super + S            quick settings
+Super + I            all settings (edemint-settings)
 Super + Q            close window
 Super + F            fullscreen
 Super + T            toggle split direction

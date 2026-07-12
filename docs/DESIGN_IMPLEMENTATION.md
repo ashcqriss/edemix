@@ -30,8 +30,9 @@ not the complete Edemint component system.
   their palette hues: navy-700 header bars / sidebars / cards / popovers,
   ultramarine-500 selection and filled accents, ultramarine-200 accent text,
   semantic success/warning/danger. Shell surfaces stay palette-led and do
-  not switch to black/white. The light counterpart replaces these files
-  when mode switching lands.
+  not switch to ink/paper. Mode switching is implemented for apps:
+  `edemint-settings` (Appearance) swaps gtk.css.dark/.light, the GTK
+  settings.ini flags, and the dconf color-scheme.
 - A persistent left pinned-app dock with a lower all-apps search/completer.
 - Palette-styled wofi completer surface (rounded, flat, text placeholders)
   and mako notification surface with a persistent danger style for critical

@@ -14,7 +14,8 @@ night_state()  { pidof wlsunset >/dev/null 2>&1 && echo on || echo off; }
 gaming_state() { edemint-gaming status 2>/dev/null | grep -qi '\bon\b' && echo on || echo off; }
 rec_state()    { pidof wf-recorder >/dev/null 2>&1 && echo recording || echo idle; }
 
-MENU="Night light [$(night_state)]
+MENU="All settings
+Night light [$(night_state)]
 Gaming mode [$(gaming_state)]
 Screen recorder [$(rec_state)]
 Screenshot area to clipboard
@@ -32,6 +33,8 @@ choice="$(printf '%s\n' "$MENU" | wofi --dmenu --prompt 'Quick settings' \
     --width 420 --height 500 --insensitive)" || exit 0
 
 case "$choice" in
+    "All settings")
+        edemint-settings >/dev/null 2>&1 & ;;
     "Night light"*)
         if pidof wlsunset >/dev/null 2>&1; then
             pkill wlsunset && notify "Night light off"

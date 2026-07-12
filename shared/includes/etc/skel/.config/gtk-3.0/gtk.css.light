@@ -1,0 +1,12 @@
+/* Edemint GTK3 app colors — light set from docs/PALETTE.md.
+ * App content sits on near-white paper #F4F6FF (never raw #FFFFFF — see
+ * the conscious ink/paper rule); accents use the DARK steps on paper.
+ * edemint-settings copies gtk.css.dark / gtk.css.light over gtk.css.
+ * Flat fills only. */
+@define-color theme_bg_color #f4f6ff;
+@define-color theme_base_color #f4f6ff;
+@define-color theme_fg_color #0c0f1d;
+@define-color theme_text_color #0c0f1d;
+@define-color theme_selected_bg_color #2001ff;
+@define-color theme_selected_fg_color #ffffff;
+@define-color borders #aea3ff;

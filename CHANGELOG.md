@@ -5,6 +5,16 @@ All notable changes to Edemint are recorded here.
 ## Unreleased
 
 ### Added — ripe desktop pass
+- `edemint-settings` — full settings hub (Super+I, app grid, quick menu):
+  Network (Wi-Fi/airplane toggles, nmtui), Bluetooth power, display
+  scale/rotate per output, Appearance (working dark/light app-mode switch,
+  effects profile, night light, text scale, cursor size), Sound (wpctl
+  volume/mute), Power (profile picker, battery charge limit), Privacy & AI
+  (enable/backend/local-only), System (updates, rollback, doctor, gaming,
+  NVIDIA, sync, about). Live state on every toggle.
+- Light/dark app-mode switching landed: gtk.css.dark/.light variants are
+  swapped by edemint-settings together with settings.ini and the dconf
+  color-scheme, per the ink/paper doctrine. Shell surfaces stay palette-led.
 - `edemint-quick` — Super+S / clock-click quick-settings menu: night light,
   gaming mode, screen recorder, screenshot, color picker, power profile,
   Wi-Fi, Bluetooth, sound, system monitor, updates, lock.

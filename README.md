@@ -65,6 +65,7 @@ bs=4M status=progress`) or boot it in a VM. Flash the Pi image with
 | `Super`+`Return` | terminal (foot) |
 | `Super`+`D` | app launcher (wofi) |
 | `Super`+`S` | quick settings |
+| `Super`+`I` | all settings |
 | `Super`+`Q` | close window |
 | `Super`+`E` | file manager |
 | `Super`+`F` | fullscreen |
