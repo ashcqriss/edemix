@@ -8,6 +8,13 @@
 # the complete interim implementation, not a mockup.
 set -u
 
+# ---- HARDCODED FEATURE SWITCH ---------------------------------------------
+# The optional accent themes (soft = ultramarine-400, gamma = planty greens)
+# are OPTIONS; bold ultramarine-500 is and stays the default. Set this to 0
+# to remove the accent picker entirely and pin every switch path to the
+# default theme. Nothing else in the hub depends on it.
+ACCENT_THEMES_ENABLED=1
+
 notify() {
     notify-send "Edemint settings" "$1" 2>/dev/null || true
 }
@@ -40,7 +47,14 @@ ai_state()     { grep -q '^enabled = true' "$AI_CFG" 2>/dev/null && echo enabled
 ai_backend()   { sed -n 's/^backend *= *"\{0,1\}\([a-z]*\).*/\1/p' "$AI_CFG" 2>/dev/null | head -n 1; }
 local_state()  { grep -q '^local_only *= *true' "$AI_CFG" 2>/dev/null && echo on || echo off; }
 power_state()  { powerprofilesctl get 2>/dev/null || echo unavailable; }
-accent_state() { cat "$ACCENT_STATE" 2>/dev/null || echo bold; }
+accent_state() {
+    # With the hardcoded switch off, the answer is always the default.
+    if [ "$ACCENT_THEMES_ENABLED" = 1 ]; then
+        cat "$ACCENT_STATE" 2>/dev/null || echo bold
+    else
+        echo bold
+    fi
+}
 
 focused_monitor() {
     hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused == true).name' 2>/dev/null | head -n 1
@@ -54,8 +68,9 @@ switch_mode() {
     # accent steps per the mode rules.
     for d in "$GTK3_DIR" "$GTK4_DIR"; do
         src="$d/gtk.css.$1"
-        if [ "$1" = dark ] && [ "$(accent_state)" = soft ] && [ -f "$d/gtk.css.dark-soft" ]; then
-            src="$d/gtk.css.dark-soft"
+        a="$(accent_state)"
+        if [ "$1" = dark ] && [ "$a" != bold ] && [ -f "$d/gtk.css.dark-$a" ]; then
+            src="$d/gtk.css.dark-$a"
         fi
         [ -f "$src" ] && cp "$src" "$d/gtk.css"
         if [ -f "$d/settings.ini" ]; then
@@ -71,9 +86,10 @@ switch_mode() {
 }
 
 switch_accent() {
-    # $1 = bold|soft. Bold leads with ultramarine-500; soft leads with
-    # ultramarine-400 and quiets the vivid shell tints. Both stay inside
-    # the C1 family (docs/PALETTE.md).
+    # $1 = bold|soft|gamma. Bold (default) leads with ultramarine-500;
+    # soft leads with ultramarine-400; gamma leads with the planty greens
+    # (plant-900 selection, eco steps). See docs/PALETTE.md accent table.
+    [ "$ACCENT_THEMES_ENABLED" = 1 ] || { notify "Accent themes are disabled on this build"; return 0; }
     a="$1"
     mkdir -p "$(dirname "$ACCENT_STATE")"
     printf '%s\n' "$a" > "$ACCENT_STATE"
@@ -86,7 +102,7 @@ switch_accent() {
     if [ "$(mode_state)" = dark ]; then
         for d in "$GTK3_DIR" "$GTK4_DIR"; do
             src="$d/gtk.css.dark"
-            [ "$a" = soft ] && [ -f "$d/gtk.css.dark-soft" ] && src="$d/gtk.css.dark-soft"
+            [ "$a" != bold ] && [ -f "$d/gtk.css.dark-$a" ] && src="$d/gtk.css.dark-$a"
             [ -f "$src" ] && cp "$src" "$d/gtk.css"
         done
     fi
@@ -131,9 +147,11 @@ EOF
 
 appearance_menu() {
     while true; do
+        accent_entry=""
+        [ "$ACCENT_THEMES_ENABLED" = 1 ] && accent_entry="Accent theme [$(accent_state)] - pick"
         sel="$(printf '%s\n' \
             "App color mode [$(mode_state)] - switch" \
-            "Accent theme [$(accent_state)] - switch" \
+            ${accent_entry:+"$accent_entry"} \
             "Effects profile [$(effects_state)] - switch" \
             "Night light [$(night_state)] - toggle" \
             "Text scale: 1.0" "Text scale: 1.15" "Text scale: 1.3" \
@@ -142,8 +160,12 @@ appearance_menu() {
         case "$sel" in
             "App color mode [dark]"*)  switch_mode light ;;
             "App color mode [light]"*) switch_mode dark ;;
-            "Accent theme [bold]"*)    switch_accent soft ;;
-            "Accent theme ["*)         switch_accent bold ;;
+            "Accent theme ["*)
+                a="$(printf '%s\n' "bold (default)" "soft" "gamma" | menu "Accent theme")" || continue
+                case "$a" in
+                    "bold (default)") switch_accent bold ;;
+                    soft|gamma)       switch_accent "$a" ;;
+                esac ;;
             "Effects profile [full]"*)      write_effects low ;;
             "Effects profile [low-power]"*) write_effects full ;;
             "Night light"*)

@@ -1,4 +1,4 @@
-/* Edemint GTK4/libadwaita app colors — dark set from docs/PALETTE.md.
+/* Edemint GTK4/libadwaita app colors — dark set, GAMMA accent variant (planty greens).
  * App content sits on near-black ink #0C0F1D (never raw #000000 — see the
  * conscious ink/paper rule); the elements on it keep palette hues:
  * navy-700 header bars / sidebars / cards / popovers, ultramarine-500
@@ -19,9 +19,9 @@
 @define-color card_fg_color #ffffff;
 @define-color popover_bg_color #002c89;
 @define-color popover_fg_color #ffffff;
-@define-color accent_bg_color #2001ff;
+@define-color accent_bg_color #0d6300;
 @define-color accent_fg_color #ffffff;
-@define-color accent_color #aea3ff;
+@define-color accent_color #88d0a8;
 @define-color destructive_bg_color #e31515;
 @define-color destructive_fg_color #ffffff;
 @define-color destructive_color #e31515;

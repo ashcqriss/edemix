@@ -1,0 +1,70 @@
+* {
+    font-family: "JetBrains Mono", sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    min-height: 0;
+    border: none;
+}
+
+/* GAMMA accent variant: navy glass, turquoise AI accent, planty greens.
+ * edemint-settings copies style-dock.css.bold/.soft over style-dock.css.
+ *
+ * Text remains temporary until the production icon theme exists.
+ * Edemint glass: flat translucent tint + hairline edge; anchored over the
+ * solid wallpaper so it reads without blur. Hover and primary actions stay
+ * opaque (emphasis goes solid — docs/DESIGN.md material rules). */
+window#waybar.edemint-dock {
+    background: rgba(0, 44, 137, 0.58);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.26);
+    border-radius: 28px;
+}
+
+#custom-home,
+#custom-browser,
+#custom-files,
+#custom-terminal,
+#custom-ai,
+#custom-power {
+    min-width: 52px;
+    min-height: 52px;
+    margin: 4px 10px;
+    padding: 0;
+    border-radius: 18px;
+    background: rgba(23, 30, 84, 0.70);
+    color: #ffffff;
+}
+
+#custom-home:hover,
+#custom-browser:hover,
+#custom-files:hover,
+#custom-terminal:hover,
+#custom-ai:hover,
+#custom-power:hover {
+    background: #6d58ff;
+    color: #ffffff;
+}
+
+#custom-ai {
+    background: #04a89d;
+    color: #ffffff;
+}
+
+#custom-apps {
+    min-width: 52px;
+    min-height: 34px;
+    margin: 8px 10px;
+    padding: 0;
+    border-radius: 18px;
+    background: #45e289;
+    color: #171e54;
+}
+
+#custom-apps:hover {
+    background: #74fbea;
+    color: #171e54;
+}
+
+#custom-power {
+    color: #f4d956;
+}

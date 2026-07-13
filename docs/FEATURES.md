@@ -84,8 +84,8 @@ PRODUCTION_REMEDIATION_PLAN.md tracks what release-readiness still needs.
   - Displays: output list, per-output scale (1.0-2.0) and rotation via
     hyprctl, AR-glasses status.
   - Appearance: dark/light app-mode switch (ink/paper doctrine; swaps
-    gtk.css + settings.ini + dconf color-scheme), bold/soft accent theme
-    (ultramarine-500 vs ultramarine-400 lead), effects profile
+    gtk.css + settings.ini + dconf color-scheme), accent themes: bold default,
+    soft and gamma options (hardcoded kill-switch in edemint-settings), effects profile
     (low-power/full incl. glass blur), night light, text scale, cursor
     size.
   - Sound: output/mic mute, volume presets (wpctl), mixer.

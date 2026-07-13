@@ -1,0 +1,182 @@
+* {
+    font-family: "Noto Sans", sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    min-height: 0;
+    border: none;
+}
+
+/* macOS-style menu bar: one continuous slim glass strip, edge to edge.
+ * Left: Edemint mark, workspaces, focused-window title. Right: flat
+ * status items with the clock at the far right. Flat tint + hairline
+ * bottom edge (docs/PALETTE.md glass tokens); windows tile below the
+ * strip, so the blend over the solid wallpaper stays deterministic and
+ * legible without blur. The full effects profile blurs behind it. */
+window#waybar.edemint-status {
+    background: rgba(23, 30, 84, 0.72);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+    color: #ffffff;
+}
+
+/* The Edemint mark stands in for the platform menu until the real logo
+ * exists. Left-click: quick settings; right-click: all settings. */
+#custom-logo {
+    padding: 0 14px;
+    font-weight: 800;
+    font-size: 14px;
+    color: #ffffff;
+}
+
+#custom-logo:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+#window {
+    padding: 0 10px;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+/* Flat menu-bar items: no chrome, hover highlight like menu titles. */
+#clock,
+#cpu,
+#memory,
+#battery,
+#network,
+#bluetooth,
+#backlight,
+#idle_inhibitor,
+#pulseaudio,
+#tray,
+#custom-ai-privacy,
+#custom-cam-mic,
+#custom-updates {
+    padding: 0 9px;
+    background: transparent;
+    color: #ffffff;
+}
+
+#clock:hover,
+#cpu:hover,
+#memory:hover,
+#battery:hover,
+#network:hover,
+#bluetooth:hover,
+#backlight:hover,
+#idle_inhibitor:hover,
+#pulseaudio:hover,
+#custom-ai-privacy:hover,
+#custom-updates:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+/* Clock sits at the far right, like macOS. */
+#clock {
+    padding: 0 14px;
+    font-weight: 700;
+}
+
+/* Empty/idle modules collapse instead of leaving dead padding. */
+#custom-cam-mic.idle,
+#custom-updates.none {
+    padding: 0;
+    min-height: 0;
+}
+
+/* Workspaces: flat numbers; the active one is a small solid ultramarine
+ * chip (emphasis goes solid), urgent turns danger red. */
+#workspaces {
+    background: transparent;
+}
+
+#workspaces button {
+    padding: 0 8px;
+    margin: 4px 2px;
+    border-radius: 8px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.75);
+}
+
+#workspaces button:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+}
+
+#workspaces button.active {
+    background: #0d6300;
+    color: #ffffff;
+}
+
+#workspaces button.urgent {
+    background: #e31515;
+    color: #ffffff;
+}
+
+/* The idle inhibitor recedes until it actually holds the screen awake. */
+#idle_inhibitor {
+    color: rgba(255, 255, 255, 0.55);
+}
+
+#idle_inhibitor.activated {
+    color: #74fbea;
+}
+
+#battery.warning {
+    color: #e9de51;
+}
+
+#battery.critical {
+    color: #ffffff;
+    background: #e31515;
+    border-radius: 8px;
+    margin: 4px 2px;
+}
+
+/* Privacy colors are operational signals, not decoration. Active alerts
+ * become small solid chips (emphasis goes solid). */
+#custom-ai-privacy.disabled {
+    color: #aea3ff;
+}
+
+#custom-ai-privacy.local {
+    color: #45e289;
+}
+
+#custom-ai-privacy.cloud-idle {
+    color: #e9de51;
+}
+
+#custom-ai-privacy.cloud-active {
+    color: #ffffff;
+    background: #e31515;
+    border-radius: 8px;
+    margin: 4px 2px;
+}
+
+#custom-cam-mic.camera,
+#custom-cam-mic.mic,
+#custom-cam-mic.both {
+    color: #ffffff;
+    background: #e31515;
+    border-radius: 8px;
+    margin: 4px 2px;
+}
+
+#custom-updates.available {
+    color: #74fbea;
+}
+
+#custom-updates.reboot {
+    color: #171e54;
+    background: #e9de51;
+    border-radius: 8px;
+    margin: 4px 2px;
+}
+
+/* Tooltips float over arbitrary content: high-alpha glass. */
+tooltip {
+    background: rgba(23, 30, 84, 0.92);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.24);
+    border-radius: 12px;
+}

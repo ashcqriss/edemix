@@ -149,17 +149,22 @@ visual testing.
 
 ## Accent themes
 
-Two accent themes, both inside the C1 ultramarine family:
+`bold` is THE default and ships active; `soft` and `gamma` are options only.
+A hardcoded switch at the top of `edemint-settings`
+(`ACCENT_THEMES_ENABLED=0`) removes the options entirely and pins every
+switch path to the default.
 
 | Theme | Lead accent | Character |
 |---|---|---|
 | `bold` (default) | `ultramarine-500 #2001FF` | vivid: electric clock/dock tints, hard selection |
-| `soft` | `ultramarine-400 #6D58FF` | quieter: navy shell tints, softer selection/borders |
+| `soft` (option) | `ultramarine-400 #6D58FF` | quieter: navy shell tints, softer selection/borders |
+| `gamma` (option) | `plant-900 #0D6300` + eco steps | planty: green selection/accents, eco-300 borders, turquoise AI accent, navy shell tints |
 
-`edemint-settings` (Appearance) switches them by swapping the `.bold`/`.soft`
-variants of the Waybar styles, wofi style, Hyprland profile, and the dark GTK
-set. The light GTK set always keeps dark accent steps per the mode rules.
-Semantic colors and the hue hierarchy are identical in both themes.
+`edemint-settings` (Appearance) switches them by swapping the
+`.bold`/`.soft`/`.gamma` variants of the Waybar styles, wofi style, Hyprland
+profile, and the dark GTK set. The light GTK set always keeps dark accent
+steps per the mode rules. Semantic colors and the hue hierarchy are identical
+in all themes; white on `#0D6300` holds ~7.5:1.
 
 ## Glass material tokens
 

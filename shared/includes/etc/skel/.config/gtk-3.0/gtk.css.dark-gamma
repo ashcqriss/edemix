@@ -1,4 +1,4 @@
-/* Edemint GTK3 app colors — dark set from docs/PALETTE.md.
+/* Edemint GTK3 app colors — dark set, GAMMA accent variant (planty greens).
  * App content sits on near-black ink #0C0F1D (never raw #000000 — see the
  * conscious ink/paper rule); the elements on it keep palette hues
  * (ultramarine-500 selection, navy-700 borders). edemint-settings (Appearance)
@@ -7,6 +7,6 @@
 @define-color theme_base_color #0c0f1d;
 @define-color theme_fg_color #f4f6ff;
 @define-color theme_text_color #f4f6ff;
-@define-color theme_selected_bg_color #2001ff;
+@define-color theme_selected_bg_color #0d6300;
 @define-color theme_selected_fg_color #ffffff;
 @define-color borders #002c89;
