@@ -12,12 +12,24 @@ set -u
 # The optional accent themes (soft = ultramarine-400, gamma = planty greens)
 # are OPTIONS; bold ultramarine-500 is and stays the default. Set this to 0
 # to remove the accent picker entirely and pin every switch path to the
-# default theme. Nothing else in the hub depends on it.
+# default theme. Nothing else in the hub depends on it. Note: flipping it
+# off does not rewrite files a user already switched — new users always
+# start from the bold skel defaults; run switch_accent bold first if you
+# need to force an existing account back.
 ACCENT_THEMES_ENABLED=1
 
 notify() {
     notify-send "Edemint settings" "$1" 2>/dev/null || true
 }
+
+# This hub is a Wayland-session tool: bail out with a clear message instead
+# of exiting silently when wofi cannot run (TTY, missing package).
+if [ -z "${WAYLAND_DISPLAY:-}" ] || ! command -v wofi >/dev/null 2>&1; then
+    echo "edemint-settings needs a running Wayland session with wofi." >&2
+    echo "From a TTY, use the individual tools: nmtui, bluetoothctl," >&2
+    echo "powerprofilesctl, edemint-ai, edemint-gaming, edemint-doctor." >&2
+    exit 1
+fi
 
 menu() {
     wofi --dmenu --prompt "$1" --width 480 --height 520 --insensitive
@@ -66,11 +78,11 @@ switch_mode() {
     # shell surfaces stay palette-led and are untouched by design. The dark
     # set honors the chosen accent theme; the light set always uses dark
     # accent steps per the mode rules.
+    ma="$(accent_state)"
     for d in "$GTK3_DIR" "$GTK4_DIR"; do
         src="$d/gtk.css.$1"
-        a="$(accent_state)"
-        if [ "$1" = dark ] && [ "$a" != bold ] && [ -f "$d/gtk.css.dark-$a" ]; then
-            src="$d/gtk.css.dark-$a"
+        if [ "$1" = dark ] && [ "$ma" != bold ] && [ -f "$d/gtk.css.dark-$ma" ]; then
+            src="$d/gtk.css.dark-$ma"
         fi
         [ -f "$src" ] && cp "$src" "$d/gtk.css"
         if [ -f "$d/settings.ini" ]; then

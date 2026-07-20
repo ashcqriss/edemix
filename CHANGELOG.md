@@ -43,6 +43,22 @@ All notable changes to Edemint are recorded here.
   extract/compress in the context menu, removable-media handling. GUI text
   editor (gnome-text-editor) added to the desktop set.
 
+### Fixed — theme-consistency pass
+- edemint-sync did not sync ~/.config/wofi, ~/.config/mako, or the
+  ~/.config/edemint accent state, so a synced machine could carry
+  soft/gamma waybar+GTK files while edemint-settings believed the theme
+  was bold - the next mode switch would then mix themes. All three now
+  sync with the rest of the shell config.
+- edemint-settings exited silently when run outside a Wayland session;
+  it now explains itself and points at the TTY-equivalent tools.
+- Stale comments cleaned: the dark-soft GTK variants still described the
+  pre-settings-hub switch mechanism, variant headers referenced only
+  .bold/.soft after gamma landed, and the wallpaper comment implied a
+  light wallpaper is pending (it is deliberately fixed navy - the glass
+  legibility math depends on it).
+- switch_mode reused the variable name "a" shared with the accent picker
+  paths (POSIX sh has no locals); renamed defensively.
+
 ### Fixed — compatibility pass
 - Hyprland shadow syntax targeted 0.45+ (`shadow { enabled }`), but Trixie
   ships 0.41 where the keyword is `drop_shadow` — every login would flash a

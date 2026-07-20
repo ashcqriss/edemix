@@ -7,7 +7,7 @@
 }
 
 /* SOFT accent variant: navy glass instead of vivid ultramarine.
- * edemint-settings copies style-dock.css.bold/.soft over style-dock.css.
+ * edemint-settings copies style-dock.css.bold/.soft/.gamma over style-dock.css.
  *
  * Text remains temporary until the production icon theme exists.
  * Edemint glass: flat translucent tint + hairline edge; anchored over the

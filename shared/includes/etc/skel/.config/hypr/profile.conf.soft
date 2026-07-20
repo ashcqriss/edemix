@@ -1,5 +1,5 @@
 # Edemint Hyprland profile — SOFT accent variant (ultramarine-400 leads).
-# edemint-settings copies profile.conf.bold/.soft over profile.conf.
+# edemint-settings copies profile.conf.bold/.soft/.gamma over profile.conf.
 #
 # These first-build values mirror docs/PALETTE.md. They lead with the level-1
 # ultramarine family, use level-2 navy as the anchor, and keep green/turquoise

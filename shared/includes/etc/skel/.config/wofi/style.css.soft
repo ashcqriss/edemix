@@ -2,7 +2,7 @@
  * navy-950 body, navy-700 input, ultramarine selection, turquoise focus
  * border. Rounded rectangles are the default shape language; no gradients. */
 /* SOFT accent variant (selection ultramarine-400); edemint-settings
- * copies style.css.bold/.soft over style.css.
+ * copies style.css.bold/.soft/.gamma over style.css.
  *
  * Floating glass: >= 0.80 alpha so entries stay legible over any app even
  * without blur; the full effects profile blurs behind it. */

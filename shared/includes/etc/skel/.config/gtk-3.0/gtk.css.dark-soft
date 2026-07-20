@@ -1,9 +1,9 @@
 /* Edemint GTK3 app colors — dark set, SOFT accent variant (ultramarine-400).
  * App content sits on near-black ink #0C0F1D (never raw #000000 — see the
  * conscious ink/paper rule); the elements on it keep palette hues
- * (ultramarine-500 selection, navy-700 borders). The theme-switch work
- * replaces this file with the light counterpart (paper #F4F6FF, dark
- * accent steps). Flat fills only. */
+ * (ultramarine-500 selection, navy-700 borders). edemint-settings
+ * (Appearance) copies the gtk.css.dark* variants over gtk.css. Flat
+ * fills only. */
 @define-color theme_bg_color #0c0f1d;
 @define-color theme_base_color #0c0f1d;
 @define-color theme_fg_color #f4f6ff;

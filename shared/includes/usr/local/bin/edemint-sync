@@ -2,7 +2,8 @@
 # Edemint sync — git-based config sync across machines.
 #
 # What's synced:  ~/.config/{hypr,kanshi,edemint-ai,foot,waybar,wlogout,
-#                            mimeapps.list,fontconfig,gtk-3.0,gtk-4.0}
+#                            wofi,mako,edemint,mimeapps.list,fontconfig,
+#                            gtk-3.0,gtk-4.0}
 # What's NOT:     anything in gnome-keyring (API keys), session state,
 #                 caches, $HOME/.local/share/*, ~/.ssh, ~/.gnupg.
 #
@@ -22,7 +23,11 @@ set -eu
 STORE="${XDG_DATA_HOME:-$HOME/.local/share}/edemint-sync"
 CFG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}"
 
-# What to sync — relative paths inside $CFG_DIR.
+# What to sync — relative paths inside $CFG_DIR. wofi and edemint (accent
+# state) ride along so a synced machine keeps a CONSISTENT theme: without
+# the accent state file, edemint-settings would report bold while the
+# synced waybar/gtk files are soft/gamma, and the next mode switch would
+# mix themes.
 PATHS_REL="
 hypr
 kanshi
@@ -30,6 +35,9 @@ edemint-ai
 foot
 waybar
 wlogout
+wofi
+mako
+edemint
 mimeapps.list
 fontconfig
 gtk-3.0
